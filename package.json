@@ -1,0 +1,19 @@
+{
+  "name": "shattered-plains-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build-site.mjs",
+    "start": "node outputs/convex-static-server.js",
+    "preview": "npm run build && node outputs/convex-static-server.js dist",
+    "convex:dev": "npx convex dev",
+    "convex:deploy": "npx convex deploy"
+  },
+  "dependencies": {
+    "@convex-dev/auth": "latest",
+    "convex": "^1.42.1"
+  },
+  "allowScripts": {
+    "esbuild@0.27.0": true
+  }
+}

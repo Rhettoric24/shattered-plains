@@ -1,0 +1,32 @@
+import { query } from "./_generated/server";
+import {
+  BUILDING_RULES,
+  COMBAT_RULES,
+  ECONOMY_RULES,
+  PLATEAU_RUN_RULES,
+  STARTING_RULES,
+  TIME_RULES,
+  UNIT_RULES,
+} from "./rules";
+
+export const getGameConfig = query({
+  args: {},
+  handler: async () => {
+    return {
+      startingAcres: STARTING_RULES.acres,
+      openAcresPerNewPlayer: STARTING_RULES.openAcresPerNewPlayer,
+      startingSpheres: STARTING_RULES.spheres,
+      startingGemhearts: STARTING_RULES.gemhearts,
+      realMsPerGameDay: TIME_RULES.realMsPerGameDay,
+      raidTravelGameDays: TIME_RULES.raidTravelGameDays,
+      speedReductionPerPoint: TIME_RULES.speedReductionPerPoint,
+      spheresPerAcrePerGameDay: ECONOMY_RULES.spheresPerAcrePerGameDay,
+      marketSpheresPerLevelPerGameDay:
+        ECONOMY_RULES.marketSpheresPerLevelPerGameDay,
+      watchtowerDefensePerLevel: COMBAT_RULES.watchtowerDefensePerLevel,
+      units: UNIT_RULES,
+      buildings: BUILDING_RULES,
+      plateauRuns: PLATEAU_RUN_RULES,
+    };
+  },
+});

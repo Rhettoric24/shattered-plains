@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shattered Plains Convex Multiplayer</title>
+    <link rel="stylesheet" href="shattered-plains-styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section id="account-screen" class="setup-panel account-panel">
+        <div class="setup-copy">
+          <p class="eyebrow">Convex multiplayer</p>
+          <h1>Shattered Plains</h1>
+          <h2>Create or enter a warcamp</h2>
+          <p>This version uses Convex Auth. Your email and password control the account; your warcamp name controls your in-game identity.</p>
+        </div>
+        <div class="account-forms">
+          <form id="create-account-form" class="setup-form">
+            <h3>Create account</h3>
+            <label>Email</label>
+            <input id="create-email" type="email" placeholder="you@example.com" autocomplete="email" />
+            <label>Password</label>
+            <input id="create-password" type="password" placeholder="At least 8 characters" autocomplete="new-password" />
+            <label>Warcamp name</label>
+            <input id="create-warcamp-name" placeholder="Your in-game warcamp" autocomplete="off" />
+            <button id="register" type="submit">Create account</button>
+          </form>
+
+          <form id="sign-in-form" class="setup-form">
+            <h3>Sign in</h3>
+            <label>Email</label>
+            <input id="sign-in-email" type="email" placeholder="you@example.com" autocomplete="email" />
+            <label>Password</label>
+            <input id="sign-in-password" type="password" placeholder="Your password" autocomplete="current-password" />
+            <button type="submit" class="secondary">Sign in</button>
+          </form>
+
+          <p id="message" class="hint account-message"></p>
+        </div>
+      </section>
+
+      <section id="game-screen" class="dashboard hidden">
+        <aside class="sidebar">
+          <div class="brand-block">
+            <p class="eyebrow">Command</p>
+            <h1>Shattered Plains</h1>
+            <span id="game-date">Not signed in</span>
+          </div>
+          <nav class="side-nav" aria-label="Dashboard sections">
+            <button class="nav-button active" type="button" data-view="overview">Overview</button>
+            <button class="nav-button" type="button" data-view="buildings">Buildings</button>
+            <button class="nav-button" type="button" data-view="army">Army</button>
+            <button class="nav-button" type="button" data-view="raids">Raids</button>
+            <button class="nav-button" type="button" data-view="plateau">Plateau</button>
+            <button class="nav-button" type="button" data-view="inbox">Inbox <span id="inbox-badge" class="nav-badge hidden">0</span></button>
+            <button class="nav-button hidden" type="button" data-view="testing" data-admin-only="true">Testing</button>
+            <button class="nav-button" type="button" data-view="chronicle">Chronicle</button>
+          </nav>
+          <button id="logout" class="secondary sidebar-logout" type="button">Sign out</button>
+        </aside>
+
+        <section class="main-panel">
+          <header class="dashboard-header">
+            <div>
+              <p class="eyebrow" id="view-eyebrow">Overview</p>
+              <h2 id="view-title">Warcamp status</h2>
+            </div>
+            <div class="player-chip">
+              <span>Signed in</span>
+              <strong id="player-name">Player</strong>
+              <small id="admin-status">Standard account</small>
+            </div>
+          </header>
+
+          <section class="resource-strip" aria-label="Current resources">
+            <article><span>Acres</span><strong id="res-acres">0</strong></article>
+            <article><span>Spheres</span><strong id="res-spheres">0</strong></article>
+            <article><span>Gemhearts</span><strong id="res-gemhearts">0</strong></article>
+            <article><span>Open acres</span><strong id="res-open-acres">0</strong></article>
+            <article><span>Power</span><strong id="res-power">0</strong></article>
+            <article><span>Available</span><strong id="res-available">0</strong></article>
+          </section>
+
+          <section class="view active" id="view-overview" data-title="Warcamp status" data-eyebrow="Overview">
+            <div class="stats-grid dashboard-stats">
+              <article><span>Acres</span><strong id="acres">0</strong></article>
+              <article><span>Spheres</span><strong id="spheres">0</strong></article>
+              <article><span>Gemhearts</span><strong id="gemhearts">0</strong></article>
+              <article><span>Income/day</span><strong id="income">0</strong></article>
+              <article><span>Units</span><strong id="units-total">0</strong></article>
+              <article><span>Power</span><strong id="power">0</strong></article>
+              <article><span>Home Power</span><strong id="home-power">0</strong></article>
+              <article><span>Available</span><strong id="available-total">0</strong></article>
+              <article><span>Away</span><strong id="away-total">0</strong></article>
+              <article><span>Open acres</span><strong id="open-acres">0</strong></article>
+            </div>
+            <div class="overview-grid">
+              <section class="panel compact-panel">
+                <p class="eyebrow">Army</p>
+                <h2>Ready forces</h2>
+                <div id="overview-units" class="summary-list"></div>
+              </section>
+              <section class="panel compact-panel">
+                <p class="eyebrow">Buildings</p>
+                <h2>Warcamp upgrades</h2>
+                <div id="overview-buildings" class="summary-list"></div>
+              </section>
+              <section class="panel compact-panel">
+                <p class="eyebrow">Raids</p>
+                <h2>Current operations</h2>
+                <div id="overview-raids" class="summary-list"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="view" id="view-buildings" data-title="Upgrade warcamp" data-eyebrow="Buildings">
+            <section class="panel full-panel">
+              <p class="eyebrow">Buildings</p>
+              <h2>Choose the next investment</h2>
+              <div id="buildings" class="building-grid"></div>
+            </section>
+          </section>
+
+          <section class="view" id="view-army" data-title="Recruit and inspect units" data-eyebrow="Army">
+            <section class="panel full-panel">
+              <p class="eyebrow">Roster</p>
+              <h2>Units and unlocks</h2>
+              <div id="unit-roster" class="building-grid"></div>
+            </section>
+            <section class="panel full-panel">
+              <p class="eyebrow">Recruiting</p>
+              <h2>Raise units</h2>
+              <form id="train-form" class="action-row contained-form">
+                <label>Unit type</label>
+                <select id="train-unit"></select>
+                <label>Amount</label>
+                <input id="train-count" type="number" min="1" value="5" />
+                <button>Train</button>
+              </form>
+            </section>
+          </section>
+
+          <section class="view" id="view-raids" data-title="Raid planning" data-eyebrow="Raids">
+            <section class="panel full-panel">
+              <p class="eyebrow">Open plains</p>
+              <h2>Raid contested acres</h2>
+              <form id="open-form" class="raid-form contained-form">
+                <div class="form-wide">
+                  <label>Raid units</label>
+                  <div id="open-raid-units" class="unit-input-grid"></div>
+                </div>
+                <label>Acres</label>
+                <input id="open-raid-acres" type="number" min="1" value="3" />
+                <div id="open-raid-preview" class="raid-preview form-wide"></div>
+                <button>Launch open raid</button>
+              </form>
+            </section>
+            <section class="panel full-panel">
+              <p class="eyebrow">Parshendi</p>
+              <h2>Raid sphere stores</h2>
+              <form id="sphere-form" class="raid-form contained-form">
+                <div class="form-wide">
+                  <label>Raid units</label>
+                  <div id="sphere-raid-units" class="unit-input-grid"></div>
+                </div>
+                <div id="sphere-raid-preview" class="raid-preview form-wide"></div>
+                <button>Launch sphere raid</button>
+              </form>
+            </section>
+            <section class="panel full-panel">
+              <p class="eyebrow">Rival</p>
+              <h2>Raid another account</h2>
+              <form id="player-form" class="raid-form contained-form">
+                <label>Target</label>
+                <select id="target"></select>
+                <div class="form-wide">
+                  <label>Raid units</label>
+                  <div id="player-raid-units" class="unit-input-grid"></div>
+                </div>
+                <label>Acres</label>
+                <input id="player-raid-acres" type="number" min="1" value="2" />
+                <div id="player-raid-preview" class="raid-preview form-wide"></div>
+                <button>Launch player raid</button>
+              </form>
+            </section>
+            <section class="panel full-panel">
+              <p class="eyebrow">Operations</p>
+              <h2>Raids in motion</h2>
+              <div class="raid-queue-grid">
+                <div>
+                  <h3>Outgoing</h3>
+                  <div id="outgoing-queue" class="list"></div>
+                </div>
+                <div>
+                  <h3>Incoming</h3>
+                  <div id="incoming-queue" class="list"></div>
+                </div>
+                <div>
+                  <h3>World</h3>
+                  <div id="world-queue" class="list"></div>
+                </div>
+              </div>
+              <div id="queue" class="list hidden"></div>
+            </section>
+          </section>
+
+          <section class="view" id="view-plateau" data-title="Plateau runs" data-eyebrow="Gemhearts">
+            <section class="panel full-panel">
+              <p class="eyebrow">Event</p>
+              <h2>Current plateau run</h2>
+              <div id="plateau-status" class="plateau-status"></div>
+            </section>
+            <section class="panel full-panel">
+              <p class="eyebrow">Commit</p>
+              <h2>Send troops to the run</h2>
+              <form id="plateau-form" class="raid-form contained-form">
+                <div class="form-wide">
+                  <label>Plateau run units</label>
+                  <div id="plateau-run-units" class="unit-input-grid"></div>
+                </div>
+                <div id="plateau-run-preview" class="raid-preview form-wide"></div>
+                <button>Commit to plateau run</button>
+              </form>
+            </section>
+            <section class="panel full-panel">
+              <p class="eyebrow">Roster</p>
+              <h2>Committed warcamps</h2>
+              <div id="plateau-participants" class="list"></div>
+            </section>
+          </section>
+
+          <section class="view" id="view-inbox" data-title="Messages and alerts" data-eyebrow="Inbox">
+            <section class="panel full-panel">
+              <div class="section-heading split-heading">
+                <div>
+                  <p class="eyebrow">Notifications</p>
+                  <h2>Inbox</h2>
+                </div>
+                <button id="mark-inbox-read" type="button" class="secondary">Mark all read</button>
+              </div>
+              <div id="inbox-list" class="list"></div>
+            </section>
+            <section class="panel full-panel">
+              <p class="eyebrow">Message</p>
+              <h2>Send a spanreed note</h2>
+              <form id="message-form" class="message-form contained-form">
+                <label>Recipient</label>
+                <select id="message-target"></select>
+                <label>Subject</label>
+                <input id="message-subject" maxlength="80" placeholder="Short subject" />
+                <label>Message</label>
+                <textarea id="message-text" rows="4" maxlength="1000" placeholder="Write a short message"></textarea>
+                <button>Send message</button>
+              </form>
+            </section>
+          </section>
+
+          <section class="view hidden" id="view-testing" data-title="Time controls" data-eyebrow="Testing" data-admin-only="true">
+            <section class="panel full-panel">
+              <p class="eyebrow">Testing</p>
+              <h2>Move the prototype clock</h2>
+              <div class="test-actions">
+                <button id="finish-raids" type="button">Finish pending raids</button>
+                <button id="start-plateau" type="button">Start plateau run</button>
+                <button id="finish-plateau" type="button">Finish plateau run</button>
+              </div>
+              <p class="hint">These tools call Convex testing helpers. Economy is lazy-settled when you train, build, or open your dashboard.</p>
+            </section>
+          </section>
+
+          <section class="view" id="view-chronicle" data-title="Event log" data-eyebrow="Chronicle">
+            <section class="panel full-panel">
+              <p class="eyebrow">Chronicle</p>
+              <h2>Recent events</h2>
+              <div id="log" class="list"></div>
+            </section>
+          </section>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="convex-client.js"></script>
+  </body>
+</html>
