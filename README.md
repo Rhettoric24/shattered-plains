@@ -44,5 +44,22 @@ npm run preview
 - Plateau Runs are checked every five minutes and open during the noon and 8 PM Mountain time windows.
 - The dashboard includes a World Alerts strip for open Plateau Runs, incoming raids, unread messages, and outgoing raids.
 
+## Returning To The Project
+
+Start with `docs/project-handoff.md`. It explains the live URL, architecture, important files, deployment flow, admin setup, and next patch direction.
+
+Common commands:
+
+```bash
+npm start
+npm run build
+npx convex dev
+git status
+```
+
+## Reference Docs
+
+See `docs/project-handoff.md` for the quickest project handoff.
 See `docs/convex-migration-plan.md` for the migration roadmap.
 See `docs/deployment-checklist.md` for deployment steps.
+See `docs/patch-roadmap.md` for planned gameplay patches.
