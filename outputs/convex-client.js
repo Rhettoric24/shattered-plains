@@ -6,6 +6,7 @@ const CONVEX_URL =
 const client = new ConvexHttpClient(CONVEX_URL);
 const AUTH_TOKEN_KEY = "sp-convex-auth-token";
 const AUTH_REFRESH_KEY = "sp-convex-auth-refresh-token";
+const DASHBOARD_REFRESH_MS = 30000;
 
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY);
 let refreshToken = localStorage.getItem(AUTH_REFRESH_KEY);
@@ -857,4 +858,4 @@ if (authToken) load();
 else signedOut();
 setInterval(() => {
   if (authToken) load();
-}, 5000);
+}, DASHBOARD_REFRESH_MS);
