@@ -13,6 +13,7 @@ import type * as army from "../army.js";
 import type * as auth from "../auth.js";
 import type * as buildings from "../buildings.js";
 import type * as config from "../config.js";
+import type * as crons from "../crons.js";
 import type * as economy from "../economy.js";
 import type * as economyHelpers from "../economyHelpers.js";
 import type * as game from "../game.js";
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   buildings: typeof buildings;
   config: typeof config;
+  crons: typeof crons;
   economy: typeof economy;
   economyHelpers: typeof economyHelpers;
   game: typeof game;

@@ -80,10 +80,12 @@ export default defineSchema({
     difficulty: v.number(),
     spherePool: v.number(),
     gemheartReward: v.number(),
+    scheduleKey: v.optional(v.string()),
     winnerPlayerId: v.optional(v.id("players")),
     resolvedAt: v.optional(v.number()),
   })
     .index("by_status", ["status"])
+    .index("by_schedule_key", ["scheduleKey"])
     .index("by_closes_at", ["closesAt"]),
 
   plateauCommitments: defineTable({

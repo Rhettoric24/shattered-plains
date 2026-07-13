@@ -93,6 +93,119 @@ async function activePlayerCount(ctx: any, now: number) {
   return Math.max(1, activePlayers.length);
 }
 
+async function createPlateauRun(
+  ctx: any,
+  now: number,
+  options: { scheduleKey?: string; source: "admin" | "schedule" },
+) {
+  const existing = await ctx.db
+    .query("plateauRuns")
+    .withIndex("by_status", (q: any) => q.eq("status", "open"))
+    .first();
+  if (existing) {
+    return { created: false, plateauRunId: existing._id };
+  }
+
+  if (options.scheduleKey) {
+    const alreadyStarted = await ctx.db
+      .query("plateauRuns")
+      .withIndex("by_schedule_key", (q: any) =>
+        q.eq("scheduleKey", options.scheduleKey),
+      )
+      .unique();
+    if (alreadyStarted) {
+      return { created: false, plateauRunId: alreadyStarted._id };
+    }
+  }
+
+  const activeCount = await activePlayerCount(ctx, now);
+  const randomShiftMagnitude = seededInt(
+    `${now}:plateau:difficulty:magnitude`,
+    PLATEAU_RUN_RULES.difficultyRandomMin,
+    PLATEAU_RUN_RULES.difficultyRandomMax,
+  );
+  const randomShiftSign =
+    seededInt(`${now}:plateau:difficulty:sign`, 0, 1) === 0 ? -1 : 1;
+  const difficulty = Math.max(
+    PLATEAU_RUN_RULES.minimumDifficulty,
+    activeCount * PLATEAU_RUN_RULES.difficultyPerActivePlayer +
+      randomShiftMagnitude * randomShiftSign,
+  );
+  const spherePool =
+    activeCount * PLATEAU_RUN_RULES.sphereRewardPerActivePlayer +
+    seededInt(
+      `${now}:plateau:spheres`,
+      PLATEAU_RUN_RULES.sphereRewardRandomMin,
+      PLATEAU_RUN_RULES.sphereRewardRandomMax,
+    );
+  const closesAt = now + PLATEAU_RUN_RULES.joinRealMs;
+
+  const plateauRunId = await ctx.db.insert("plateauRuns", {
+    status: "open",
+    opensAt: now,
+    closesAt,
+    resolvesAt: closesAt,
+    difficulty,
+    spherePool,
+    gemheartReward: PLATEAU_RUN_RULES.gemheartReward,
+    ...(options.scheduleKey ? { scheduleKey: options.scheduleKey } : {}),
+  });
+
+  const players = await ctx.db.query("players").collect();
+  for (const player of players) {
+    await ctx.db.insert("messages", {
+      toPlayerId: player._id,
+      kind: "system",
+      subject: "Plateau Run Open",
+      body: `A Plateau Run has opened. Difficulty ${difficulty}, sphere pool ${spherePool}.`,
+      createdAt: now,
+    });
+  }
+
+  await ctx.db.insert("gameEvents", {
+    text: `A ${options.source === "schedule" ? "scheduled " : ""}Plateau Run opened for ${activeCount} active warcamps. Difficulty ${difficulty}.`,
+    createdAt: now,
+  });
+
+  await ctx.scheduler.runAt(closesAt, internal.plateauRuns.resolvePlateauRun, {
+    plateauRunId,
+  });
+
+  return {
+    created: true,
+    plateauRunId,
+    activeCount,
+    difficulty,
+    spherePool,
+    closesAt,
+  };
+}
+
+function mountainScheduleSlot(now: number) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Denver",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(now));
+  const value = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+  const hour = Number(value("hour"));
+  const minute = Number(value("minute"));
+
+  if ((hour !== 12 && hour !== 20) || minute >= 15) {
+    return null;
+  }
+
+  return {
+    label: hour === 12 ? "noon Mountain" : "8 PM Mountain",
+    scheduleKey: `${value("year")}-${value("month")}-${value("day")}:${hour}`,
+  };
+}
+
 export const getCurrent = query({
   args: {},
   handler: async (ctx) => {
@@ -132,75 +245,25 @@ export const startPlateauRun = mutation({
   args: {},
   handler: async (ctx) => {
     await requireAdmin(ctx);
-    const existing = await ctx.db
-      .query("plateauRuns")
-      .withIndex("by_status", (q) => q.eq("status", "open"))
-      .first();
-    if (existing) {
-      return { created: false, plateauRunId: existing._id };
-    }
+    return await createPlateauRun(ctx, Date.now(), { source: "admin" });
+  },
+});
 
+export const maybeStartScheduledPlateauRun = internalMutation({
+  args: {},
+  handler: async (ctx) => {
     const now = Date.now();
-    const activeCount = await activePlayerCount(ctx, now);
-    const randomShiftMagnitude = seededInt(
-      `${now}:plateau:difficulty:magnitude`,
-      PLATEAU_RUN_RULES.difficultyRandomMin,
-      PLATEAU_RUN_RULES.difficultyRandomMax,
-    );
-    const randomShiftSign =
-      seededInt(`${now}:plateau:difficulty:sign`, 0, 1) === 0 ? -1 : 1;
-    const difficulty = Math.max(
-      PLATEAU_RUN_RULES.minimumDifficulty,
-      activeCount * PLATEAU_RUN_RULES.difficultyPerActivePlayer +
-        randomShiftMagnitude * randomShiftSign,
-    );
-    const spherePool =
-      activeCount * PLATEAU_RUN_RULES.sphereRewardPerActivePlayer +
-      seededInt(
-        `${now}:plateau:spheres`,
-        PLATEAU_RUN_RULES.sphereRewardRandomMin,
-        PLATEAU_RUN_RULES.sphereRewardRandomMax,
-      );
-    const closesAt = now + PLATEAU_RUN_RULES.joinRealMs;
-
-    const plateauRunId = await ctx.db.insert("plateauRuns", {
-      status: "open",
-      opensAt: now,
-      closesAt,
-      resolvesAt: closesAt,
-      difficulty,
-      spherePool,
-      gemheartReward: PLATEAU_RUN_RULES.gemheartReward,
-    });
-
-    const players = await ctx.db.query("players").collect();
-    for (const player of players) {
-      await ctx.db.insert("messages", {
-        toPlayerId: player._id,
-        kind: "system",
-        subject: "Plateau Run Open",
-        body: `A Plateau Run has opened. Difficulty ${difficulty}, sphere pool ${spherePool}.`,
-        createdAt: now,
-      });
+    const slot = mountainScheduleSlot(now);
+    if (!slot) {
+      return { created: false, reason: "outside_schedule" };
     }
 
-    await ctx.db.insert("gameEvents", {
-      text: `A Plateau Run opened for ${activeCount} active warcamps. Difficulty ${difficulty}.`,
-      createdAt: now,
+    const result = await createPlateauRun(ctx, now, {
+      source: "schedule",
+      scheduleKey: slot.scheduleKey,
     });
 
-    await ctx.scheduler.runAt(closesAt, internal.plateauRuns.resolvePlateauRun, {
-      plateauRunId,
-    });
-
-    return {
-      created: true,
-      plateauRunId,
-      activeCount,
-      difficulty,
-      spherePool,
-      closesAt,
-    };
+    return { ...result, scheduleLabel: slot.label };
   },
 });
 

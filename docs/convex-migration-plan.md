@@ -45,6 +45,7 @@ That earlier scaffold was useful for learning and prototyping, but the current d
 13. Fold the temporary `My...` authenticated functions back into the original clean function names. Done.
 14. Add admin-only testing controls. First pass done with one admin email list.
 15. Retire the old local JSON server files once Convex owns the live game state. Done.
+16. Add World Alerts and scheduled twice-daily Plateau Runs. Done.
 
 ## Auth Migration
 
@@ -109,7 +110,8 @@ Use a hybrid lazy/scheduled model:
 - `economy.settlePlayer` can explicitly collect pending income for one player.
 - Existing test players without `lastEconomyAt` fall back to their `createdAt` timestamp the first time economy is checked.
 - Raids should use scheduled functions because they are specific future events.
-- Plateau Runs should use scheduled functions for open, close, and resolve events. First pass implemented.
+- Plateau Runs use scheduled functions for open, close, and resolve events.
+- Scheduled Plateau Runs are checked every five minutes and open during the noon and 8 PM Mountain time windows.
 - Later hourly-style ticks can be added for systems that benefit from a visible rhythm, but they should not be the default way to update every player.
 
 The goal is to keep the backend clean while preserving the feeling of a living real-time game.

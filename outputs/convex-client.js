@@ -268,6 +268,7 @@ function buildState(data) {
     unreadCount: data.inbox?.unreadCount || 0,
     isAdmin: Boolean(data.adminStatus?.isAdmin),
     adminEmail: data.adminStatus?.email || null,
+    alerts: [],
     log: data.events.map((event) => ({ text: event.text, at: event.createdAt })),
   };
 }
@@ -314,8 +315,83 @@ function render() {
   renderInbox();
   renderLog();
   renderOverview();
+  renderWorldAlerts();
   renderAdminAccess();
   showView(currentView);
+}
+
+function renderWorldAlerts() {
+  const alerts = buildWorldAlerts();
+  const container = $("world-alerts");
+  if (!container) return;
+  container.innerHTML = alerts.map((alert) => {
+    const action = alert.view
+      ? '<button type="button" data-alert-view="' + alert.view + '">' + escapeHtml(alert.action) + '</button>'
+      : "";
+    return '<article class="world-alert ' + alert.kind + '"><div><strong>' + escapeHtml(alert.title) + '</strong><span>' + escapeHtml(alert.text) + '</span></div>' + action + '</article>';
+  }).join("");
+  container.querySelectorAll("[data-alert-view]").forEach((button) => {
+    button.addEventListener("click", () => showView(button.dataset.alertView));
+  });
+}
+
+function buildWorldAlerts() {
+  const alerts = [];
+  const incoming = state.raids.filter((raid) => raid.targetId === state.me.id);
+  const outgoing = state.raids.filter((raid) => raid.attackerId === state.me.id);
+
+  if (state.plateauRun) {
+    const remaining = Math.max(0, Math.ceil((state.plateauRun.joinUntil - Date.now()) / 60000));
+    alerts.push({
+      kind: "critical",
+      title: "Plateau Run Open",
+      text: formatDuration(remaining) + " left to join. Difficulty " + number(state.plateauRun.difficultyPower) + ", reward " + number(state.plateauRun.gemheartReward) + " Gemheart.",
+      action: "Open Plateau",
+      view: "plateau",
+    });
+  } else {
+    alerts.push({
+      kind: "schedule",
+      title: "Plateau Runs",
+      text: "Scheduled daily at noon and 8 PM Mountain.",
+      action: "Plateau",
+      view: "plateau",
+    });
+  }
+
+  if (incoming.length) {
+    const soonest = incoming.reduce((next, raid) => Math.min(next, raid.arrivalAt), incoming[0].arrivalAt);
+    const remaining = Math.max(0, Math.ceil((soonest - Date.now()) / 60000));
+    alerts.push({
+      kind: "warning",
+      title: incoming.length + " Incoming Raid" + (incoming.length === 1 ? "" : "s"),
+      text: "Soonest arrival in " + formatDuration(remaining) + ".",
+      action: "Open Raids",
+      view: "raids",
+    });
+  }
+
+  if (state.unreadCount > 0) {
+    alerts.push({
+      kind: "info",
+      title: state.unreadCount + " Unread Message" + (state.unreadCount === 1 ? "" : "s"),
+      text: "New reports or player messages are waiting.",
+      action: "Open Inbox",
+      view: "inbox",
+    });
+  }
+
+  if (outgoing.length) {
+    alerts.push({
+      kind: "info",
+      title: outgoing.length + " Outgoing Raid" + (outgoing.length === 1 ? "" : "s"),
+      text: "Forces are committed away from your warcamp.",
+      action: "Open Raids",
+      view: "raids",
+    });
+  }
+
+  return alerts;
 }
 
 function renderAdminAccess() {

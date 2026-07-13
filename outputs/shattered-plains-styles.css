@@ -9,6 +9,7 @@
   --muted: #b8c7d8;
   --accent: #d8e5f5;
   --accent-2: #7fb7ff;
+  --silver: #d8e5f5;
   --glow: rgba(127, 183, 255, 0.45);
   --shadow: 0 22px 70px rgba(0, 0, 0, 0.38);
 }
@@ -90,6 +91,15 @@ h3 { font-size: 1rem; color: var(--accent); }
 .resource-strip article { min-height: 58px; border: 1px solid rgba(216, 229, 245, 0.14); border-radius: 6px; background: rgba(18, 36, 61, 0.82); padding: 9px 10px; }
 .resource-strip span { display: block; color: var(--muted); font-size: 0.72rem; font-weight: 850; }
 .resource-strip strong { display: block; margin-top: 5px; color: var(--text); font-size: 1.1rem; }
+.world-alerts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.world-alert { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; border: 1px solid rgba(216, 229, 245, 0.18); border-radius: 8px; background: rgba(7, 17, 31, 0.82); padding: 12px; }
+.world-alert strong, .world-alert span { display: block; }
+.world-alert strong { color: var(--accent); font-size: 0.95rem; }
+.world-alert span { margin-top: 4px; color: var(--muted); font-size: 0.82rem; line-height: 1.35; }
+.world-alert button { min-height: 34px; padding: 0 12px; font-size: 0.82rem; }
+.world-alert.critical { border-color: rgba(127, 183, 255, 0.66); box-shadow: 0 0 22px rgba(127, 183, 255, 0.20); }
+.world-alert.warning { border-color: rgba(255, 216, 138, 0.56); }
+.world-alert.schedule { opacity: 0.86; }
 .dashboard-header { display: flex; justify-content: space-between; gap: 16px; align-items: end; margin-bottom: 18px; }
 .player-chip { display: grid; gap: 3px; border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; background: rgba(7, 17, 31, 0.7); min-width: 170px; }
 .player-chip span { color: var(--muted); font-size: 0.8rem; font-weight: 700; }
@@ -162,5 +172,6 @@ h3 { font-size: 1rem; color: var(--accent); }
   .shell { width: min(100% - 18px, 1320px); padding: 12px 0; }
   .account-panel { grid-template-columns: 1fr; }
   .side-nav, .dashboard-stats, .resource-strip, .stats-grid, .unit-input-grid, .raid-form, .raid-preview { grid-template-columns: 1fr; }
+  .world-alert { grid-template-columns: 1fr; }
   .dashboard-header, .split-heading { display: grid; }
 }
