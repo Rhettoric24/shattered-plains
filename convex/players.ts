@@ -3,6 +3,13 @@ import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { getCurrentPlayer, requireAuthUserId } from "./ownership";
 import {
+  createNeutralPlateaus,
+  createStarterPlateaus,
+  neutralPlateaus,
+  ownedPlateaus,
+  plateauCountsForPlayer,
+} from "./plateauHelpers";
+import {
   calculateArmyStats,
   calculateBuildingStats,
   emptyBuildings,
@@ -92,6 +99,12 @@ async function createPlayerForAuth(
   };
 
   const playerId = await ctx.db.insert("players", newPlayer);
+  await createStarterPlateaus(ctx, playerId, now);
+  await createNeutralPlateaus(
+    ctx,
+    STARTING_RULES.neutralPlateausPerNewPlayer,
+    now,
+  );
 
   await ctx.db.patch(world._id, {
     openAcres: world.openAcres + STARTING_RULES.openAcresPerNewPlayer,
@@ -103,7 +116,7 @@ async function createPlayerForAuth(
     kind: "system",
     subject: "Welcome to the Shattered Plains",
     body:
-      "Your warcamp has been founded with 20 acres, 1,200 spheres, and 1 Gemheart. The open plains have expanded by 100 acres.",
+      "Your warcamp has been founded with 2 highground Sphere Plateaus, 1,200 spheres, and 1 Gemheart.",
     createdAt: now,
   });
 
@@ -172,6 +185,9 @@ export const getPlayerByName = query({
 
 async function buildDashboard(ctx: QueryCtx, player: any) {
   const world = await getMainWorld(ctx);
+  const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
+  const owned = await ownedPlateaus(ctx, player._id);
+  const neutral = await neutralPlateaus(ctx);
   const incomingRaids = await ctx.db
     .query("raids")
     .withIndex("by_target_player", (q) => q.eq("targetPlayerId", player._id))
@@ -187,15 +203,23 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
     .withIndex("by_to_player", (q) => q.eq("toPlayerId", player._id))
     .collect();
 
-  const pending = pendingEconomy(player, Date.now());
+  const pending = pendingEconomy({ ...player, plateauCounts }, Date.now());
 
   return {
     player,
     effectiveSpheres: player.spheres + pending.income,
     pendingIncome: pending.income,
     world,
+    plateauCounts,
+    ownedPlateauCount: owned.length,
+    neutralPlateauCount: neutral.filter((plateau) => !plateau.activeSiegeId)
+      .length,
     armyStats: calculateArmyStats(player.units),
-    buildingStats: calculateBuildingStats(player.acres, player.buildings),
+    buildingStats: calculateBuildingStats(
+      player.acres,
+      player.buildings,
+      plateauCounts,
+    ),
     incomingRaidCount: incomingRaids.length,
     outgoingRaidCount: outgoingRaids.length,
     unreadMessageCount: unreadMessages.filter((message) => !message.readAt)

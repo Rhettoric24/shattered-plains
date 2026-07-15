@@ -2,7 +2,11 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-const root = path.resolve(process.argv[2] || path.join(__dirname, ".."));
+const projectRoot = path.resolve(path.join(__dirname, ".."));
+const distRoot = path.join(projectRoot, "dist");
+const root = path.resolve(
+  process.argv[2] || (fs.existsSync(distRoot) ? distRoot : projectRoot),
+);
 const port = Number(process.env.PORT || 4180);
 const host = "127.0.0.1";
 
@@ -15,6 +19,12 @@ const contentTypes = {
 
 const server = http.createServer((request, response) => {
   const url = new URL(request.url || "/", `http://${host}:${port}`);
+  if (url.pathname === "/outputs/convex-client.html") {
+    response.writeHead(302, { Location: "/" });
+    response.end();
+    return;
+  }
+
   if (url.pathname === "/") {
     const indexPath = path.join(root, "index.html");
     if (fs.existsSync(indexPath)) {
@@ -29,8 +39,8 @@ const server = http.createServer((request, response) => {
       });
       return;
     }
-    response.writeHead(302, { Location: "/outputs/convex-client.html" });
-    response.end();
+    response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("Built site not found. Run `npm.cmd run build`, then restart the local server.");
     return;
   }
 

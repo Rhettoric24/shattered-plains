@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { settlePlayerEconomy } from "./economyHelpers";
 import { requireCurrentPlayer } from "./ownership";
+import { plateauCountsForPlayer } from "./plateauHelpers";
 import { incomePerGameDay, pendingEconomy, TIME_RULES, WORLD_KEY } from "./rules";
 
 export const getEconomyStatus = query({
@@ -16,22 +17,26 @@ export const getEconomyStatus = query({
     const elapsedMs = world ? Math.max(0, now - world.updatedAt) : 0;
     const elapsedGameDays = elapsedMs / TIME_RULES.realMsPerGameDay;
 
+    const rows = [];
+    for (const player of players) {
+      const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
+      const pending = pendingEconomy({ ...player, plateauCounts }, now);
+      rows.push({
+        playerId: player._id,
+        name: player.name,
+        spheres: player.spheres,
+        incomePerGameDay: incomePerGameDay({ ...player, plateauCounts }),
+        lastEconomyAt: pending.lastEconomyAt,
+        elapsedGameDays: pending.elapsedGameDays,
+        pendingIncome: pending.income,
+        effectiveSpheres: player.spheres + pending.income,
+      });
+    }
+
     return {
       world,
       elapsedGameDays,
-      players: players.map((player) => {
-        const pending = pendingEconomy(player, now);
-        return {
-          playerId: player._id,
-          name: player.name,
-          spheres: player.spheres,
-          incomePerGameDay: incomePerGameDay(player),
-          lastEconomyAt: pending.lastEconomyAt,
-          elapsedGameDays: pending.elapsedGameDays,
-          pendingIncome: pending.income,
-          effectiveSpheres: player.spheres + pending.income,
-        };
-      }),
+      players: rows,
     };
   },
 });

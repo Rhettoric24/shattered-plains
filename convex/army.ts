@@ -2,7 +2,13 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { settlePlayerEconomy } from "./economyHelpers";
 import { requireCurrentPlayer } from "./ownership";
-import { calculateArmyStats, pendingEconomy, UNIT_RULES } from "./rules";
+import { plateauCountsForPlayer } from "./plateauHelpers";
+import {
+  calculateArmyStats,
+  pendingEconomy,
+  trainingDiscount,
+  UNIT_RULES,
+} from "./rules";
 
 const unitKey = v.union(
   v.literal("bridgeman"),
@@ -16,7 +22,8 @@ export const getArmy = query({
   args: {},
   handler: async (ctx) => {
     const player = await requireCurrentPlayer(ctx);
-    const pending = pendingEconomy(player, Date.now());
+    const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
+    const pending = pendingEconomy({ ...player, plateauCounts }, Date.now());
 
     return {
       units: player.units,
@@ -27,6 +34,8 @@ export const getArmy = query({
       gemhearts: player.gemhearts,
       stats: calculateArmyStats(player.units),
       unitRules: UNIT_RULES,
+      plateauCounts,
+      trainingDiscount: trainingDiscount(plateauCounts),
     };
   },
 });
@@ -50,7 +59,9 @@ export const trainUnit = mutation({
       throw new Error(`${rule.name} requires Barracks level ${rule.barracksLevel}.`);
     }
 
-    const sphereCost = rule.cost * count;
+    const plateauCounts = await plateauCountsForPlayer(ctx, settledPlayer._id);
+    const discount = trainingDiscount(plateauCounts);
+    const sphereCost = Math.ceil(rule.cost * count * (1 - discount));
     const gemheartCost = (rule.gemheartCost ?? 0) * count;
 
     if (settledPlayer.spheres < sphereCost) {

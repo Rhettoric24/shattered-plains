@@ -10,6 +10,8 @@ export const TIME_RULES = {
 export const STARTING_RULES = {
   acres: 20,
   openAcresPerNewPlayer: 100,
+  startingPlateaus: 2,
+  neutralPlateausPerNewPlayer: 3,
   spheres: 1200,
   gemhearts: 1,
 } as const;
@@ -17,6 +19,29 @@ export const STARTING_RULES = {
 export const ECONOMY_RULES = {
   spheresPerAcrePerGameDay: 6,
   marketSpheresPerLevelPerGameDay: 250,
+} as const;
+
+export const PLATEAU_RULES = {
+  starterType: "sphere",
+  starterHighground: true,
+  sphereIncomePerGameDay: 150,
+  trainingDiscountPerPlateau: 0.1,
+  gemheartIntervalMs: 12 * 60 * 60 * 1000,
+  highgroundDefenseBonus: 0.2,
+  neutralDefenseMin: 35,
+  neutralDefenseMax: 80,
+  neutralHighgroundChancePercent: 12,
+  siegeFortifySpheresPerPercent: 50,
+  siegeFortifyMaxPercent: 100,
+  attackerRetreatLossRate: 0.18,
+  defenderRetreatLossRate: 0.12,
+  siegeWinAttackerLossRate: 0.22,
+  siegeLossAttackerLossRate: 0.55,
+  siegeWinDefenderLossRate: 0.18,
+  siegeLossDefenderLossRate: 0.08,
+  neutralWinLossRate: 0.15,
+  neutralLossLossRate: 0.45,
+  diminishingReturns: [1, 0.75, 0.5, 0.25],
 } as const;
 
 export const COMBAT_RULES = {
@@ -112,9 +137,11 @@ export const BUILDING_RULES = {
 
 export type UnitKey = keyof typeof UNIT_RULES;
 export type BuildingKey = keyof typeof BUILDING_RULES;
+export type PlateauType = "sphere" | "training" | "gemheart" | "ancient_ruins";
 
 export type UnitCounts = Record<UnitKey, number>;
 export type BuildingLevels = Record<BuildingKey, number>;
+export type PlateauCounts = Record<PlateauType, number>;
 
 export function emptyUnits(): UnitCounts {
   return {
@@ -136,6 +163,43 @@ export function emptyBuildings(): BuildingLevels {
 
 export function getBuildingCost(building: BuildingKey, currentLevel: number) {
   return BUILDING_RULES[building].baseCost * (currentLevel + 1);
+}
+
+export function emptyPlateauCounts(): PlateauCounts {
+  return {
+    sphere: 0,
+    training: 0,
+    gemheart: 0,
+    ancient_ruins: 0,
+  };
+}
+
+export function diminishingMultiplier(index: number) {
+  const values = PLATEAU_RULES.diminishingReturns;
+  return values[Math.min(index, values.length - 1)];
+}
+
+export function diminishingTotal(count: number) {
+  let total = 0;
+  for (let index = 0; index < count; index += 1) {
+    total += diminishingMultiplier(index);
+  }
+  return total;
+}
+
+export function plateauIncomePerGameDay(counts: PlateauCounts) {
+  return (
+    PLATEAU_RULES.sphereIncomePerGameDay *
+    diminishingTotal(counts.sphere)
+  );
+}
+
+export function trainingDiscount(counts: PlateauCounts) {
+  return Math.min(
+    0.75,
+    PLATEAU_RULES.trainingDiscountPerPlateau *
+      diminishingTotal(counts.training),
+  );
 }
 
 export function totalUnits(units: UnitCounts) {
@@ -177,9 +241,10 @@ export function calculateArmyStats(units: UnitCounts) {
 export function incomePerGameDay(player: {
   acres: number;
   buildings: { market: number };
+  plateauCounts?: PlateauCounts;
 }) {
   return (
-    player.acres * ECONOMY_RULES.spheresPerAcrePerGameDay +
+    plateauIncomePerGameDay(player.plateauCounts ?? emptyPlateauCounts()) +
     player.buildings.market * ECONOMY_RULES.marketSpheresPerLevelPerGameDay
   );
 }
@@ -191,6 +256,7 @@ export function roundResource(value: number) {
 export function pendingEconomy(player: {
   acres: number;
   buildings: { market: number };
+  plateauCounts?: PlateauCounts;
   lastEconomyAt?: number;
   createdAt: number;
 }, now: number) {
@@ -211,8 +277,9 @@ export function pendingEconomy(player: {
 export function calculateBuildingStats(
   acres: number,
   buildings: BuildingLevels,
+  plateauCounts: PlateauCounts = emptyPlateauCounts(),
 ) {
-  const acreIncomePerDay = acres * ECONOMY_RULES.spheresPerAcrePerGameDay;
+  const acreIncomePerDay = plateauIncomePerGameDay(plateauCounts);
   const marketIncomePerDay =
     buildings.market * ECONOMY_RULES.marketSpheresPerLevelPerGameDay;
   const watchtowerDefenseBonus =

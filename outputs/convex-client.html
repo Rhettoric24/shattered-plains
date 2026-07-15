@@ -52,7 +52,8 @@
             <button class="nav-button" type="button" data-view="buildings">Buildings</button>
             <button class="nav-button" type="button" data-view="army">Army</button>
             <button class="nav-button" type="button" data-view="raids">Raids</button>
-            <button class="nav-button" type="button" data-view="plateau">Plateau</button>
+            <button class="nav-button" type="button" data-view="plateaus">Plateaus</button>
+            <button class="nav-button" type="button" data-view="plateau">Plateau Runs</button>
             <button class="nav-button" type="button" data-view="inbox">Inbox <span id="inbox-badge" class="nav-badge hidden">0</span></button>
             <button class="nav-button hidden" type="button" data-view="testing" data-admin-only="true">Testing</button>
             <button class="nav-button" type="button" data-view="chronicle">Chronicle</button>
@@ -74,10 +75,10 @@
           </header>
 
           <section class="resource-strip" aria-label="Current resources">
-            <article><span>Acres</span><strong id="res-acres">0</strong></article>
+            <article><span>Plateaus</span><strong id="res-acres">0</strong></article>
             <article><span>Spheres</span><strong id="res-spheres">0</strong></article>
             <article><span>Gemhearts</span><strong id="res-gemhearts">0</strong></article>
-            <article><span>Open acres</span><strong id="res-open-acres">0</strong></article>
+            <article><span>Neutral</span><strong id="res-open-acres">0</strong></article>
             <article><span>Power</span><strong id="res-power">0</strong></article>
             <article><span>Available</span><strong id="res-available">0</strong></article>
           </section>
@@ -86,7 +87,7 @@
 
           <section class="view active" id="view-overview" data-title="Warcamp status" data-eyebrow="Overview">
             <div class="stats-grid dashboard-stats">
-              <article><span>Acres</span><strong id="acres">0</strong></article>
+              <article><span>Plateaus</span><strong id="acres">0</strong></article>
               <article><span>Spheres</span><strong id="spheres">0</strong></article>
               <article><span>Gemhearts</span><strong id="gemhearts">0</strong></article>
               <article><span>Income/day</span><strong id="income">0</strong></article>
@@ -95,7 +96,7 @@
               <article><span>Home Power</span><strong id="home-power">0</strong></article>
               <article><span>Available</span><strong id="available-total">0</strong></article>
               <article><span>Away</span><strong id="away-total">0</strong></article>
-              <article><span>Open acres</span><strong id="open-acres">0</strong></article>
+              <article><span>Neutral</span><strong id="open-acres">0</strong></article>
             </div>
             <div class="overview-grid">
               <section class="panel compact-panel">
@@ -145,20 +146,6 @@
 
           <section class="view" id="view-raids" data-title="Raid planning" data-eyebrow="Raids">
             <section class="panel full-panel">
-              <p class="eyebrow">Open plains</p>
-              <h2>Raid contested acres</h2>
-              <form id="open-form" class="raid-form contained-form">
-                <div class="form-wide">
-                  <label>Raid units</label>
-                  <div id="open-raid-units" class="unit-input-grid"></div>
-                </div>
-                <label>Acres</label>
-                <input id="open-raid-acres" type="number" min="1" value="3" />
-                <div id="open-raid-preview" class="raid-preview form-wide"></div>
-                <button>Launch open raid</button>
-              </form>
-            </section>
-            <section class="panel full-panel">
               <p class="eyebrow">Parshendi</p>
               <h2>Raid sphere stores</h2>
               <form id="sphere-form" class="raid-form contained-form">
@@ -168,22 +155,6 @@
                 </div>
                 <div id="sphere-raid-preview" class="raid-preview form-wide"></div>
                 <button>Launch sphere raid</button>
-              </form>
-            </section>
-            <section class="panel full-panel">
-              <p class="eyebrow">Rival</p>
-              <h2>Raid another account</h2>
-              <form id="player-form" class="raid-form contained-form">
-                <label>Target</label>
-                <select id="target"></select>
-                <div class="form-wide">
-                  <label>Raid units</label>
-                  <div id="player-raid-units" class="unit-input-grid"></div>
-                </div>
-                <label>Acres</label>
-                <input id="player-raid-acres" type="number" min="1" value="2" />
-                <div id="player-raid-preview" class="raid-preview form-wide"></div>
-                <button>Launch player raid</button>
               </form>
             </section>
             <section class="panel full-panel">
@@ -204,6 +175,47 @@
                 </div>
               </div>
               <div id="queue" class="list hidden"></div>
+            </section>
+          </section>
+
+          <section class="view" id="view-plateaus" data-title="Plateau control" data-eyebrow="Land">
+            <section class="panel full-panel">
+              <p class="eyebrow">Holdings</p>
+              <h2>Your plateaus</h2>
+              <div id="owned-plateaus" class="list"></div>
+            </section>
+            <section class="panel full-panel">
+              <p class="eyebrow">Neutral</p>
+              <h2>Claim a plateau</h2>
+              <form id="neutral-siege-form" class="raid-form contained-form">
+                <label>Target plateau</label>
+                <select id="neutral-plateau-target"></select>
+                <div class="form-wide">
+                  <label>Siege units</label>
+                  <div id="neutral-siege-units" class="unit-input-grid"></div>
+                </div>
+                <div id="neutral-siege-preview" class="raid-preview form-wide"></div>
+                <button>Launch expedition</button>
+              </form>
+            </section>
+            <section class="panel full-panel">
+              <p class="eyebrow">Rivals</p>
+              <h2>Siege a plateau</h2>
+              <form id="player-siege-form" class="raid-form contained-form">
+                <label>Target plateau</label>
+                <select id="player-plateau-target"></select>
+                <div class="form-wide">
+                  <label>Siege units</label>
+                  <div id="player-siege-units" class="unit-input-grid"></div>
+                </div>
+                <div id="player-siege-preview" class="raid-preview form-wide"></div>
+                <button>Start siege</button>
+              </form>
+            </section>
+            <section class="panel full-panel">
+              <p class="eyebrow">Sieges</p>
+              <h2>Active plateau sieges</h2>
+              <div id="active-sieges" class="list"></div>
             </section>
           </section>
 
@@ -264,8 +276,10 @@
               <h2>Move the prototype clock</h2>
               <div class="test-actions">
                 <button id="finish-raids" type="button">Finish pending raids</button>
+                <button id="finish-sieges" type="button">Finish plateau sieges</button>
                 <button id="start-plateau" type="button">Start plateau run</button>
                 <button id="finish-plateau" type="button">Finish plateau run</button>
+                <button id="backfill-plateaus" type="button">Backfill plateaus</button>
               </div>
               <p class="hint">These tools call Convex testing helpers. Economy is lazy-settled when you train, build, or open your dashboard.</p>
             </section>

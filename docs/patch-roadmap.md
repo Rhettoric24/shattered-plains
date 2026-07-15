@@ -11,7 +11,7 @@ Keep the game small enough to understand while testing the core multiplayer loop
 - Account creation and login.
 - Economy growth.
 - Training units.
-- Raiding open acres, Parshendi spheres, and other players.
+- Claiming and sieging plateaus, raiding Parshendi spheres, and contesting Plateau Runs.
 - Plateau Runs.
 - Inbox and World Alerts.
 - Admin-only testing tools.
@@ -36,12 +36,12 @@ Likely files for balance changes:
 
 Likely balance categories:
 
-- Starting acres, spheres, and gemhearts.
-- Acre income and market income.
+- Starting plateaus, spheres, and gemhearts.
+- Plateau income and market income.
 - Unit cost, power, speed, and unlock levels.
 - Watchtower defense bonus.
 - Raid travel timing and speed impact.
-- Open-acre and Parshendi sphere raid difficulty/rewards.
+- Neutral plateau defense, siege losses, fortification costs, and Parshendi sphere raid rewards.
 - Plateau Run difficulty, reward pools, losses, and join bonuses.
 
 ## Patch 2: Reports And Alerts

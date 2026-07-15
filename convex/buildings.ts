@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { settlePlayerEconomy } from "./economyHelpers";
 import { requireCurrentPlayer } from "./ownership";
+import { plateauCountsForPlayer } from "./plateauHelpers";
 import {
   BUILDING_RULES,
   calculateBuildingStats,
@@ -37,8 +38,13 @@ export const getBuildings = query({
   args: {},
   handler: async (ctx) => {
     const player = await requireCurrentPlayer(ctx);
-    const effects = calculateBuildingStats(player.acres, player.buildings);
-    const pending = pendingEconomy(player, Date.now());
+    const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
+    const effects = calculateBuildingStats(
+      player.acres,
+      player.buildings,
+      plateauCounts,
+    );
+    const pending = pendingEconomy({ ...player, plateauCounts }, Date.now());
 
     return {
       spheres: player.spheres,
@@ -47,6 +53,7 @@ export const getBuildings = query({
       buildings: decorateBuildings(player.buildings),
       effects: {
         marketIncomePerDay: effects.marketIncomePerDay,
+        plateauIncomePerDay: effects.acreIncomePerDay,
         watchtowerDefenseBonus: effects.watchtowerDefenseBonus,
         watchtowerDefensePercent: effects.watchtowerDefensePercent,
         barracksLevel: effects.barracksLevel,

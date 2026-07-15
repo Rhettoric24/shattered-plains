@@ -18,7 +18,7 @@ The old local JSON server prototype has been removed from the active project. Th
 
 There are two live halves:
 
-- Convex is the game world: accounts, player records, server-side game actions, raids, Plateau Runs, scheduled jobs, messages, admin checks, and database state.
+- Convex is the game world: accounts, player records, server-side game actions, plateaus, sieges, raids, Plateau Runs, scheduled jobs, messages, admin checks, and database state.
 - GitHub Pages is the browser shell: HTML, CSS, and JavaScript that players open. The browser calls Convex directly.
 
 The normal update flow is:
@@ -37,7 +37,8 @@ If a change touches both `convex/` and `outputs/`, do both halves.
 - `convex/players.ts`: account-owned player creation and dashboard data.
 - `convex/army.ts`: unit training.
 - `convex/buildings.ts`: building upgrades.
-- `convex/raids.ts`: raid launch and raid resolution.
+- `convex/raids.ts`: Parshendi sphere raid launch and legacy raid resolution.
+- `convex/plateaus.ts`: plateau listing, neutral expeditions, PvP sieges, fortification, retreat, and plateau backfill.
 - `convex/plateauRuns.ts`: Plateau Run creation, joining, rewards, and resolution.
 - `convex/crons.ts`: recurring scheduled jobs, including twice-daily Plateau Run checks.
 - `convex/messages.ts`: inbox and player/system messages.
@@ -53,10 +54,10 @@ If a change touches both `convex/` and `outputs/`, do both halves.
 Players can:
 
 - Create an account and warcamp.
-- Generate spheres through acres and markets.
+- Generate spheres through Sphere Plateaus and markets.
 - Train units.
 - Upgrade buildings.
-- Raid open acres.
+- Claim neutral plateaus and siege player-owned plateaus.
 - Raid neutral Parshendi sphere stores.
 - Raid other players.
 - Join Plateau Runs.

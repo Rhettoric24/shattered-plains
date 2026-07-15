@@ -16,6 +16,13 @@ const buildingLevels = v.object({
   barracks: v.number(),
 });
 
+const plateauType = v.union(
+  v.literal("sphere"),
+  v.literal("training"),
+  v.literal("gemheart"),
+  v.literal("ancient_ruins"),
+);
+
 export default defineSchema({
   ...authTables,
 
@@ -59,6 +66,48 @@ export default defineSchema({
     .index("by_attacker", ["attackerId"])
     .index("by_target_player", ["targetPlayerId"])
     .index("by_status_arrival", ["status", "arriveAt"]),
+
+  plateaus: defineTable({
+    name: v.string(),
+    type: plateauType,
+    status: v.union(v.literal("neutral"), v.literal("owned")),
+    ownerPlayerId: v.optional(v.id("players")),
+    highground: v.boolean(),
+    neutralDefenseInitial: v.number(),
+    neutralDefenseRemaining: v.number(),
+    heldSince: v.optional(v.number()),
+    lastGemheartAt: v.optional(v.number()),
+    activeSiegeId: v.optional(v.id("sieges")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_owner", ["ownerPlayerId"])
+    .index("by_active_siege", ["activeSiegeId"]),
+
+  sieges: defineTable({
+    plateauId: v.id("plateaus"),
+    attackerId: v.id("players"),
+    defenderId: v.optional(v.id("players")),
+    targetType: v.union(v.literal("neutral"), v.literal("player")),
+    attackerUnits: unitCounts,
+    attackerPower: v.number(),
+    attackerSpeed: v.number(),
+    fortifyPercent: v.number(),
+    departAt: v.number(),
+    resolveAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("resolved"),
+      v.literal("attacker_retreat"),
+      v.literal("defender_retreat"),
+    ),
+  })
+    .index("by_status_resolve", ["status", "resolveAt"])
+    .index("by_attacker", ["attackerId"])
+    .index("by_defender", ["defenderId"])
+    .index("by_plateau", ["plateauId"]),
 
   messages: defineTable({
     fromPlayerId: v.optional(v.id("players")),

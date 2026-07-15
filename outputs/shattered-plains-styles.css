@@ -141,6 +141,8 @@ h3 { font-size: 1rem; color: var(--accent); }
 .raid-queue-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
 .raid-queue-grid > div { display: grid; gap: 10px; }
 .test-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.inline-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+.inline-actions input { max-width: 110px; }
 .test-actions button { padding: 0 16px; }
 .list { display: grid; gap: 10px; }
 .list-item { border: 1px solid rgba(216, 229, 245, 0.16); border-radius: 6px; background: #09182a; padding: 12px; line-height: 1.45; }

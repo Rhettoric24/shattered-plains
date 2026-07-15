@@ -38,11 +38,17 @@ const refs = {
   listPlayers: "players:listPlayers",
   upgradeBuilding: "buildings:upgradeBuilding",
   trainUnit: "army:trainUnit",
-  launchOpenAcreRaid: "raids:launchOpenAcreRaid",
   launchSphereRaid: "raids:launchSphereRaid",
-  launchPlayerRaid: "raids:launchPlayerRaid",
   listVisibleRaids: "raids:listVisibleRaids",
   forceResolveRaid: "raids:forceResolveRaid",
+  listPlateaus: "plateaus:listPlateaus",
+  launchNeutralSiege: "plateaus:launchNeutralSiege",
+  launchPlayerSiege: "plateaus:launchPlayerSiege",
+  fortifySiege: "plateaus:fortifySiege",
+  retreatSiege: "plateaus:retreatSiege",
+  forceResolveSiege: "plateaus:forceResolveSiege",
+  forceResolveAllSieges: "plateaus:forceResolveAllSieges",
+  backfillPlateaus: "plateaus:backfillPlateaus",
   getCurrentPlateauRun: "plateauRuns:getCurrent",
   startPlateauRun: "plateauRuns:startPlateauRun",
   joinPlateauRun: "plateauRuns:joinPlateauRun",
@@ -174,8 +180,9 @@ async function load(options = {}) {
       return;
     }
 
-    const [raids, plateauRun, inbox] = await Promise.all([
+    const [raids, plateaus, plateauRun, inbox] = await Promise.all([
       client.query(refs.listVisibleRaids, {}),
+      client.query(refs.listPlateaus, {}),
       client.query(refs.getCurrentPlateauRun, {}),
       client.query(refs.listInbox, {}),
     ]);
@@ -185,6 +192,7 @@ async function load(options = {}) {
       dashboard,
       players,
       raids,
+      plateaus,
       plateauRun,
       inbox,
       events,
@@ -215,12 +223,17 @@ function buildState(data) {
     unlockedUnits: unlockedUnits(data.config.units, player.buildings),
   };
   const outgoingRaids = data.raids.filter((raid) => raid.attackerId === player._id);
+  const outgoingSieges = (data.plateaus?.sieges || []).filter((siege) => siege.attackerId === player._id);
   const plateauAway =
     data.plateauRun?.commitments.find((entry) => entry.playerId === player._id)
       ?.units || emptyUnits();
-  const unitsAway = addUnitObjects(
+  const raidAway = addUnitObjects(
     outgoingRaids.reduce((total, raid) => addUnitObjects(total, raid.units), emptyUnits()),
     plateauAway,
+  );
+  const unitsAway = outgoingSieges.reduce(
+    (total, siege) => addUnitObjects(total, siege.attackerUnits || emptyUnits()),
+    raidAway,
   );
   const totalUnitsAtHome = sumUnits(player.units);
   const totalUnitsOwned = totalUnitsAtHome + sumUnits(unitsAway);
@@ -240,7 +253,7 @@ function buildState(data) {
     me: {
       id: player._id,
       name: player.name,
-      acres: player.acres,
+      acres: data.dashboard.ownedPlateauCount || 0,
       spheres: data.dashboard.effectiveSpheres,
       gemhearts: player.gemhearts,
       units: player.units,
@@ -255,7 +268,8 @@ function buildState(data) {
     },
     players: playerRows,
     playerMap: Object.fromEntries(playerRows.map((entry) => [entry.id, entry])),
-    openAcres: data.dashboard.world?.openAcres || 0,
+    openAcres: data.dashboard.neutralPlateauCount || 0,
+    plateaus: decoratePlateaus(data.plateaus, playerRows, data.config.units),
     raids: decorateRaids(data.raids, playerRows, data.config.units),
     plateauRun: decoratePlateauRun(data.plateauRun, data.config.units),
     inbox: (data.inbox?.messages || []).map((message) => ({
@@ -305,13 +319,14 @@ function render() {
   renderUnits();
   renderSelects();
   renderInboxBadge();
-  renderRaidUnitInputs("open-raid-units");
   renderRaidUnitInputs("sphere-raid-units");
-  renderRaidUnitInputs("player-raid-units");
+  renderRaidUnitInputs("neutral-siege-units");
+  renderRaidUnitInputs("player-siege-units");
   renderRaidUnitInputs("plateau-run-units");
   attachPreviewListeners();
   renderRaidPreviews();
   renderRaids();
+  renderPlateaus();
   renderPlateau();
   renderInbox();
   renderLog();
@@ -340,6 +355,7 @@ function buildWorldAlerts() {
   const alerts = [];
   const incoming = state.raids.filter((raid) => raid.targetId === state.me.id);
   const outgoing = state.raids.filter((raid) => raid.attackerId === state.me.id);
+  const mySieges = state.plateaus.sieges.filter((siege) => siege.attackerId === state.me.id || siege.defenderId === state.me.id);
 
   if (state.plateauRun) {
     const remaining = Math.max(0, Math.ceil((state.plateauRun.joinUntil - Date.now()) / 60000));
@@ -369,6 +385,18 @@ function buildWorldAlerts() {
       text: "Soonest arrival in " + formatDuration(remaining) + ".",
       action: "Open Raids",
       view: "raids",
+    });
+  }
+
+  if (mySieges.length) {
+    const soonest = mySieges.reduce((next, siege) => Math.min(next, siege.resolveAt), mySieges[0].resolveAt);
+    const remaining = Math.max(0, Math.ceil((soonest - Date.now()) / 60000));
+    alerts.push({
+      kind: "warning",
+      title: mySieges.length + " Active Siege" + (mySieges.length === 1 ? "" : "s"),
+      text: "Soonest plateau siege resolves in " + formatDuration(remaining) + ".",
+      action: "Open Plateaus",
+      view: "plateaus",
     });
   }
 
@@ -417,6 +445,8 @@ function renderAdminAccess() {
 function captureSelections() {
   if ($("train-unit")) lastSelections.trainUnit = $("train-unit").value;
   if ($("target")) lastSelections.target = $("target").value;
+  if ($("neutral-plateau-target")) lastSelections.neutralPlateau = $("neutral-plateau-target").value;
+  if ($("player-plateau-target")) lastSelections.playerPlateau = $("player-plateau-target").value;
 }
 
 function showView(view) {
@@ -465,14 +495,22 @@ function renderSelects() {
   if (lastSelections.trainUnit && state.config.unlockedUnits[lastSelections.trainUnit]) $("train-unit").value = lastSelections.trainUnit;
 
   const targets = state.players.filter((player) => player.id !== state.me.id);
-  $("target").innerHTML = targets.map((player) => {
-    return '<option value="' + player.id + '">' + escapeHtml(player.name) + '</option>';
-  }).join("");
-  if (lastSelections.target && targets.some((player) => player.id === lastSelections.target)) $("target").value = lastSelections.target;
   if ($("message-target")) {
     $("message-target").innerHTML = targets.map((player) => {
       return '<option value="' + player.id + '">' + escapeHtml(player.name) + '</option>';
     }).join("");
+  }
+  if ($("neutral-plateau-target")) {
+    $("neutral-plateau-target").innerHTML = state.plateaus.neutral.map((plateau) => {
+      return '<option value="' + plateau.id + '">' + escapeHtml(plateau.label) + '</option>';
+    }).join("");
+    if (lastSelections.neutralPlateau && state.plateaus.neutral.some((plateau) => plateau.id === lastSelections.neutralPlateau)) $("neutral-plateau-target").value = lastSelections.neutralPlateau;
+  }
+  if ($("player-plateau-target")) {
+    $("player-plateau-target").innerHTML = state.plateaus.rivals.map((plateau) => {
+      return '<option value="' + plateau.id + '">' + escapeHtml(plateau.ownerName + " - " + plateau.name) + '</option>';
+    }).join("");
+    if (lastSelections.playerPlateau && state.plateaus.rivals.some((plateau) => plateau.id === lastSelections.playerPlateau)) $("player-plateau-target").value = lastSelections.playerPlateau;
   }
 }
 
@@ -501,10 +539,10 @@ function readRaidUnits(containerId) {
 
 function attachPreviewListeners() {
   if (previewListenersReady) return;
-  ["open-raid-units", "sphere-raid-units", "player-raid-units", "plateau-run-units"].forEach((containerId) => {
-    $(containerId).addEventListener("input", renderRaidPreviews);
+  ["sphere-raid-units", "neutral-siege-units", "player-siege-units", "plateau-run-units"].forEach((containerId) => {
+    if ($(containerId)) $(containerId).addEventListener("input", renderRaidPreviews);
   });
-  ["open-raid-acres", "player-raid-acres", "target"].forEach((id) => {
+  ["neutral-plateau-target", "player-plateau-target"].forEach((id) => {
     if (!$(id)) return;
     $(id).addEventListener("input", renderRaidPreviews);
     $(id).addEventListener("change", renderRaidPreviews);
@@ -514,9 +552,9 @@ function attachPreviewListeners() {
 
 function renderRaidPreviews() {
   if (!state) return;
-  $("open-raid-preview").innerHTML = previewMarkup(readRaidUnits("open-raid-units"), num("open-raid-acres"), "open");
   $("sphere-raid-preview").innerHTML = previewMarkup(readRaidUnits("sphere-raid-units"), 0, "spheres");
-  $("player-raid-preview").innerHTML = previewMarkup(readRaidUnits("player-raid-units"), num("player-raid-acres"), "player");
+  $("neutral-siege-preview").innerHTML = previewMarkup(readRaidUnits("neutral-siege-units"), 0, "neutralSiege");
+  $("player-siege-preview").innerHTML = previewMarkup(readRaidUnits("player-siege-units"), 0, "playerSiege");
   $("plateau-run-preview").innerHTML = previewMarkup(readRaidUnits("plateau-run-units"), 0, "plateau");
 }
 
@@ -524,17 +562,12 @@ function previewMarkup(units, acres, type) {
   const stats = raidStats(units);
   const travel = travelMinutes(stats.speed);
   const arrival = new Date(Date.now() + travel * 60000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  const target = type === "open" ? openTargetPreview(acres) : type === "spheres" ? sphereTargetPreview() : type === "plateau" ? plateauTargetPreview(stats) : playerTargetPreview(acres);
+  const target = type === "spheres" ? sphereTargetPreview() : type === "plateau" ? plateauTargetPreview(stats) : type === "neutralSiege" ? neutralSiegePreview(stats) : type === "playerSiege" ? playerSiegePreview(stats) : "Choose a target";
   return '<div><span>Power</span><strong>' + formatStat(stats.power) + '</strong></div>' +
     '<div><span>Speed</span><strong>' + formatStat(stats.speed) + '</strong></div>' +
     '<div><span>Travel</span><strong>' + formatDuration(travel) + '</strong></div>' +
     '<div><span>Arrival</span><strong>' + arrival + '</strong></div>' +
     '<div class="preview-wide"><span>Target check</span><strong>' + escapeHtml(target) + '</strong></div>';
-}
-
-function openTargetPreview(acres) {
-  const defense = configValue("openDefenseBase", 3) + acres * configValue("openDefensePerAcre", 0.9);
-  return "Open defense about " + Math.ceil(defense) + " power";
 }
 
 function sphereTargetPreview() {
@@ -549,11 +582,17 @@ function plateauTargetPreview(stats) {
   return "Difficulty " + number(state.plateauRun.difficultyPower) + ", your speed score " + formatStat(speedScore) + " with " + Math.round(bonus * 100) + "% join bonus";
 }
 
-function playerTargetPreview(acres) {
-  const target = state.players.find((player) => player.id === $("target").value);
-  if (!target) return "Choose a rival account";
-  const possibleAcres = Math.min(acres, Math.max(0, target.acres - 1));
-  return target.name + " can lose up to " + number(possibleAcres) + " acres";
+function neutralSiegePreview(stats) {
+  const target = state.plateaus.neutral.find((plateau) => plateau.id === $("neutral-plateau-target").value);
+  if (!target) return "Choose a neutral plateau";
+  return "Known Parshendi defense " + formatStat(target.neutralDefenseRemaining) + ". Your power " + formatStat(stats.power) + ".";
+}
+
+function playerSiegePreview(stats) {
+  const target = state.plateaus.rivals.find((plateau) => plateau.id === $("player-plateau-target").value);
+  if (!target) return "Choose an enemy plateau";
+  const highground = target.highground ? " Highground adds +20% defense." : "";
+  return target.ownerName + " defends " + target.name + "." + highground + " Your power " + formatStat(stats.power) + ".";
 }
 
 function renderRaids() {
@@ -564,6 +603,43 @@ function renderRaids() {
   $("incoming-queue").innerHTML = raidListMarkup(incoming, "No incoming raids.");
   $("world-queue").innerHTML = raidListMarkup(world, "No other visible raids.");
   $("queue").innerHTML = raidListMarkup(state.raids, "No visible pending raids.");
+}
+
+function renderPlateaus() {
+  if (!$("owned-plateaus")) return;
+  $("owned-plateaus").innerHTML = state.plateaus.mine.length ? state.plateaus.mine.map(plateauCard).join("") : '<div class="empty">No owned plateaus yet.</div>';
+  renderRaidPreviews();
+  $("active-sieges").innerHTML = state.plateaus.sieges.length ? state.plateaus.sieges.map(siegeCard).join("") : '<div class="empty">No active plateau sieges.</div>';
+
+  document.querySelectorAll("[data-retreat-siege]").forEach((button) => {
+    button.addEventListener("click", () => action(() => client.mutation(refs.retreatSiege, { siegeId: button.dataset.retreatSiege })));
+  });
+  document.querySelectorAll("[data-fortify-siege]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const input = document.querySelector('[data-fortify-input="' + button.dataset.fortifySiege + '"]');
+      const percent = Math.max(1, Math.floor(Number(input?.value) || 1));
+      action(() => client.mutation(refs.fortifySiege, { siegeId: button.dataset.fortifySiege, percent }));
+    });
+  });
+}
+
+function plateauCard(plateau) {
+  const trait = plateau.highground ? "Highground, +20% defense" : "No special trait";
+  return '<article class="list-item"><strong>' + escapeHtml(plateau.name) + '</strong><span>' + escapeHtml(plateau.typeName) + '</span><small>' + escapeHtml(trait) + '</small></article>';
+}
+
+function siegeCard(siege) {
+  const plateau = state.plateaus.byId[siege.plateauId];
+  const remaining = Math.max(0, Math.ceil((siege.resolveAt - Date.now()) / 60000));
+  const isAttacker = siege.attackerId === state.me.id;
+  const isDefender = siege.defenderId === state.me.id;
+  const fortify = isDefender && siege.targetType === "player"
+    ? '<div class="inline-actions"><input data-fortify-input="' + siege.id + '" type="number" min="1" max="100" value="5" /><button type="button" data-fortify-siege="' + siege.id + '">Fortify</button></div>'
+    : "";
+  const retreat = isAttacker || isDefender
+    ? '<button type="button" class="secondary" data-retreat-siege="' + siege.id + '">Retreat</button>'
+    : "";
+  return '<article class="list-item raid-item"><strong>' + escapeHtml(siege.attackerName) + ' vs ' + escapeHtml(siege.defenderName) + '</strong><span>' + escapeHtml(plateau?.name || "Unknown plateau") + '</span><small>Attacker power ' + formatStat(siege.attackerPower) + ', fortification +' + number(siege.fortifyPercent) + '%, resolves in ' + formatDuration(remaining) + '.</small>' + fortify + retreat + '</article>';
 }
 
 function raidListMarkup(raids, emptyText) {
@@ -678,6 +754,58 @@ function decorateRaids(raids, players, unitsConfig) {
     arrivalAt: raid.arriveAt,
     travelMinutes: Math.max(1, Math.round((raid.arriveAt - raid.departAt) / 60000)),
   }));
+}
+
+function decoratePlateaus(plateaus, players, unitsConfig) {
+  const typeNames = {
+    sphere: "Sphere Plateau",
+    training: "Training Plateau",
+    gemheart: "Gemheart Plateau",
+    ancient_ruins: "Ancient Ruins",
+  };
+  const decorate = (plateau, visible = true) => ({
+    id: plateau._id,
+    name: visible ? plateau.name : "Unclaimed Plateau",
+    type: visible ? plateau.type : "unknown",
+    typeName: visible ? (typeNames[plateau.type] || plateau.type) : "Unknown reward",
+    ownerName: plateau.ownerName || "Neutral",
+    ownerPlayerId: plateau.ownerPlayerId || null,
+    highground: Boolean(plateau.highground),
+    neutralDefenseRemaining: plateau.neutralDefenseRemaining || 0,
+    activeSiegeId: plateau.activeSiegeId || null,
+  });
+  const mine = (plateaus?.mine || []).map((plateau) => decorate(plateau, true));
+  const neutral = (plateaus?.neutral || []).map((plateau, index) => ({
+    ...decorate(plateau, false),
+    label: "Neutral Plateau " + (index + 1) + " - defense " + formatStat(plateau.neutralDefenseRemaining || 0),
+    neutralDefenseRemaining: plateau.neutralDefenseRemaining || 0,
+  }));
+  const rivals = (plateaus?.rivals || []).map((plateau) => decorate(plateau, true));
+  const all = [...mine, ...neutral, ...rivals];
+  const byId = Object.fromEntries(all.map((plateau) => [plateau.id, plateau]));
+
+  return {
+    counts: plateaus?.counts || {},
+    mine,
+    neutral,
+    rivals,
+    byId,
+    sieges: (plateaus?.sieges || []).map((siege) => ({
+      id: siege._id,
+      plateauId: siege.plateauId,
+      attackerId: siege.attackerId,
+      defenderId: siege.defenderId || null,
+      targetType: siege.targetType,
+      attackerName: siege.attackerName,
+      defenderName: siege.defenderName,
+      attackerUnits: siege.attackerUnits,
+      unitSummary: unitSummary(siege.attackerUnits, unitsConfig),
+      attackerPower: siege.attackerPower,
+      attackerSpeed: siege.attackerSpeed,
+      fortifyPercent: siege.fortifyPercent,
+      resolveAt: siege.resolveAt,
+    })),
+  };
 }
 
 function decoratePlateauRun(plateauRun, unitsConfig) {
@@ -804,17 +932,19 @@ $("train-form").addEventListener("submit", (event) => {
   event.preventDefault();
   action(() => client.mutation(refs.trainUnit, { unit: $("train-unit").value, count: num("train-count") }));
 });
-$("open-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  action(() => client.mutation(refs.launchOpenAcreRaid, { units: readRaidUnits("open-raid-units"), acres: num("open-raid-acres") }));
-});
 $("sphere-form").addEventListener("submit", (event) => {
   event.preventDefault();
   action(() => client.mutation(refs.launchSphereRaid, { units: readRaidUnits("sphere-raid-units") }));
 });
-$("player-form").addEventListener("submit", (event) => {
+$("neutral-siege-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  action(() => client.mutation(refs.launchPlayerRaid, { targetPlayerId: $("target").value, units: readRaidUnits("player-raid-units"), acres: num("player-raid-acres") }));
+  if (!$("neutral-plateau-target").value) return alert("Choose a neutral plateau.");
+  action(() => client.mutation(refs.launchNeutralSiege, { plateauId: $("neutral-plateau-target").value, units: readRaidUnits("neutral-siege-units") }));
+});
+$("player-siege-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!$("player-plateau-target").value) return alert("Choose an enemy plateau.");
+  action(() => client.mutation(refs.launchPlayerSiege, { plateauId: $("player-plateau-target").value, units: readRaidUnits("player-siege-units") }));
 });
 $("plateau-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -842,11 +972,18 @@ $("finish-raids").addEventListener("click", () => {
     }
   });
 });
+$("finish-sieges").addEventListener("click", () => {
+  action(async () => {
+    const result = await client.mutation(refs.forceResolveAllSieges, {});
+    if (!result.scheduled) alert("No active plateau sieges to finish.");
+  });
+});
 $("start-plateau").addEventListener("click", () => action(() => client.mutation(refs.startPlateauRun, {})));
 $("finish-plateau").addEventListener("click", () => {
   if (!state.plateauRun) return alert("No Plateau Run is open.");
   action(() => client.mutation(refs.forceResolvePlateauRun, { plateauRunId: state.plateauRun.id }));
 });
+$("backfill-plateaus").addEventListener("click", () => action(() => client.mutation(refs.backfillPlateaus, {})));
 document.querySelectorAll(".nav-button").forEach((button) => {
   button.addEventListener("click", () => {
     if (button.dataset.adminOnly === "true" && !state?.isAdmin) return;
