@@ -23,7 +23,10 @@ export const getGameConfig = query({
       realMsPerGameDay: TIME_RULES.realMsPerGameDay,
       raidTravelGameDays: TIME_RULES.raidTravelGameDays,
       speedReductionPerPoint: TIME_RULES.speedReductionPerPoint,
+      speedQuantityFactor: TIME_RULES.speedQuantityFactor,
+      speedNeutralPoint: TIME_RULES.speedNeutralPoint,
       maxTravelReductionPercent: TIME_RULES.maxTravelReductionPercent,
+      maxTravelPenaltyPercent: TIME_RULES.maxTravelPenaltyPercent,
       spheresPerAcrePerGameDay: ECONOMY_RULES.spheresPerAcrePerGameDay,
       plateauRules: PLATEAU_RULES,
       marketSpheresPerLevelPerGameDay:

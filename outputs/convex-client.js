@@ -791,9 +791,10 @@ function operationPowerLabel(power) {
 }
 
 function operationSpeedLabel(speed) {
-  if (speed <= 2) return "slow";
-  if (speed <= 5) return "steady";
-  if (speed <= 8) return "fast";
+  if (speed <= 0) return "burdened";
+  if (speed <= 8) return "slow";
+  if (speed <= 18) return "steady";
+  if (speed <= 35) return "fast";
   return "swift";
 }
 
@@ -945,14 +946,15 @@ function raidStats(units) {
     if (!unit) return total;
     total.power += count * unit.power;
     total.weightedSpeed += count * unit.speed;
+    total.quantityPressure += count * (unit.speed - configValue("speedNeutralPoint", 4)) * configValue("speedQuantityFactor", 1 / 60);
     total.plunder += count * (unit.plunder || 0);
     total.total += count;
     if (count > 0) {
       total.included.push({ key, unit });
     }
     return total;
-  }, { power: 0, weightedSpeed: 0, speed: 0, plunder: 0, total: 0, included: [] });
-  stats.speed = stats.total ? stats.weightedSpeed / stats.total : 0;
+  }, { power: 0, weightedSpeed: 0, quantityPressure: 0, speed: 0, plunder: 0, total: 0, included: [] });
+  stats.speed = stats.total ? stats.weightedSpeed / stats.total + stats.quantityPressure : 0;
   if ((units.shardbearer || 0) > 0) stats.power *= 2;
   const survival = survivalProfile(stats.included);
   stats.survivalLabel = survival.label;
@@ -962,8 +964,14 @@ function raidStats(units) {
 
 function travelMinutes(speed) {
   const base = configValue("raidTravelGameDays", 1) * configValue("realMsPerGameDay", 3600000);
-  const effectiveSpeed = Math.min(Math.max(0, speed), configValue("maxTravelReductionPercent", 50));
-  return Math.ceil((base * (1 - effectiveSpeed / 100)) / 60000);
+  const effectiveSpeed = Math.max(
+    -configValue("maxTravelPenaltyPercent", 50),
+    Math.min(speed, configValue("maxTravelReductionPercent", 50)),
+  );
+  const multiplier = effectiveSpeed >= 0
+    ? 1 - effectiveSpeed / 100
+    : 1 + Math.abs(effectiveSpeed) / 100;
+  return Math.ceil((base * multiplier) / 60000);
 }
 
 function playerName(id) {
@@ -1034,7 +1042,7 @@ function survivalProfile(included) {
 function statTooltip(stat) {
   const tips = {
     power: "Power determines the winner of combat. Armies with at least one Shardbearer have total Power doubled once.",
-    speed: "Speed reduces travel time. Army Speed is the average Speed of all units sent, capped at 50% travel reduction.",
+    speed: "Speed changes travel time. Army Speed uses average unit speed plus quantity pressure: many fast units speed travel up, while many slow units can slow it down. Travel reduction and penalty are capped.",
     plunder: "Plunder is the maximum number of spheres this army can recover from sphere rewards.",
     survival: "Survival is a unit's chance to survive when exposed to casualties. Power decides victory; Survival decides cost.",
   };

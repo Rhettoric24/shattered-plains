@@ -5,7 +5,10 @@ export const TIME_RULES = {
   gameHoursPerDay: 24,
   raidTravelGameDays: 1,
   speedReductionPerPoint: 0.01,
+  speedQuantityFactor: 1 / 60,
+  speedNeutralPoint: 4,
   maxTravelReductionPercent: 50,
+  maxTravelPenaltyPercent: 50,
 } as const;
 
 export const STARTING_RULES = {
@@ -271,7 +274,16 @@ export function unitSpeed(units: Partial<UnitCounts>) {
     (sum, key) => sum + normalized[key] * UNIT_RULES[key].speed,
     0,
   );
-  return weightedSpeed / total;
+  const averageSpeed = weightedSpeed / total;
+  const quantityPressure = unitKeys().reduce(
+    (sum, key) =>
+      sum +
+      normalized[key] *
+        (UNIT_RULES[key].speed - TIME_RULES.speedNeutralPoint) *
+        TIME_RULES.speedQuantityFactor,
+    0,
+  );
+  return averageSpeed + quantityPressure;
 }
 
 export function basePower(units: Partial<UnitCounts>) {
@@ -301,11 +313,15 @@ export function unitPlunder(units: Partial<UnitCounts>) {
 
 export function travelMsForUnits(units: Partial<UnitCounts>) {
   const baseMs = TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
-  const speed = Math.max(0, unitSpeed(units));
-  const effectiveSpeed = Math.min(speed, TIME_RULES.maxTravelReductionPercent);
+  const speed = Math.max(
+    -TIME_RULES.maxTravelPenaltyPercent,
+    Math.min(unitSpeed(units), TIME_RULES.maxTravelReductionPercent),
+  );
+  const travelMultiplier =
+    speed >= 0 ? 1 - speed / 100 : 1 + Math.abs(speed) / 100;
   return Math.max(
     60 * 1000,
-    Math.round(baseMs * (1 - effectiveSpeed / 100)),
+    Math.round(baseMs * travelMultiplier),
   );
 }
 
