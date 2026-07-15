@@ -5,6 +5,7 @@ export const TIME_RULES = {
   gameHoursPerDay: 24,
   raidTravelGameDays: 1,
   speedReductionPerPoint: 0.01,
+  maxTravelReductionPercent: 50,
 } as const;
 
 export const STARTING_RULES = {
@@ -75,43 +76,81 @@ export const PLATEAU_RUN_RULES = {
 export const UNIT_RULES = {
   bridgeman: {
     name: "Bridgeman",
-    power: 0.25,
-    speed: 1,
+    role: "Fast - Fragile",
+    active: true,
+    power: 1,
+    speed: 10,
+    plunder: 2,
+    survival: 0.75,
     cost: 5,
     gemheartCost: 0,
     barracksLevel: 0,
+    trainingTime: "Instant",
   },
   spearman: {
     name: "Spearman",
-    power: 2,
-    speed: 0,
+    role: "Powerful - Reliable",
+    active: true,
+    power: 5,
+    speed: 4,
+    plunder: 2,
+    survival: 0.95,
     cost: 18,
     gemheartCost: 0,
     barracksLevel: 0,
+    trainingTime: "Instant",
+  },
+  chull: {
+    name: "Chull",
+    role: "High Plunder - Very Slow",
+    active: true,
+    power: 0,
+    speed: 1,
+    plunder: 20,
+    survival: 0.99,
+    cost: 45,
+    gemheartCost: 0,
+    barracksLevel: 0,
+    trainingTime: "Instant",
   },
   scout: {
     name: "Scout",
+    role: "Legacy intelligence unit",
+    active: false,
     power: 1.5,
     speed: 1,
+    plunder: 1,
+    survival: 0.9,
     cost: 18,
     gemheartCost: 0,
     barracksLevel: 2,
+    trainingTime: "Instant",
   },
   heavy: {
     name: "Heavy Infantry",
+    role: "Legacy defensive unit",
+    active: false,
     power: 4,
     speed: -0.5,
+    plunder: 1,
+    survival: 0.96,
     cost: 35,
     gemheartCost: 0,
     barracksLevel: 3,
+    trainingTime: "Instant",
   },
   shardbearer: {
     name: "Shardbearer",
-    power: 8,
-    speed: 0,
+    role: "Legendary Power - Extremely Rare",
+    active: true,
+    power: 20,
+    speed: 3,
+    plunder: 5,
+    survival: 0.999,
     cost: 0,
     gemheartCost: 1,
     barracksLevel: 0,
+    trainingTime: "Instant",
     description:
       "Doubles the power of raids it joins and home defenses while available.",
   },
@@ -147,10 +186,27 @@ export function emptyUnits(): UnitCounts {
   return {
     bridgeman: 0,
     spearman: 0,
+    chull: 0,
     scout: 0,
     heavy: 0,
     shardbearer: 0,
   };
+}
+
+export function unitKeys() {
+  return Object.keys(UNIT_RULES) as UnitKey[];
+}
+
+export function activeUnitKeys() {
+  return unitKeys().filter((key) => UNIT_RULES[key].active);
+}
+
+export function normalizeUnits(units: Partial<UnitCounts>): UnitCounts {
+  const normalized = emptyUnits();
+  for (const key of unitKeys()) {
+    normalized[key] = Math.max(0, Math.floor(units[key] ?? 0));
+  }
+  return normalized;
 }
 
 export function emptyBuildings(): BuildingLevels {
@@ -202,39 +258,154 @@ export function trainingDiscount(counts: PlateauCounts) {
   );
 }
 
-export function totalUnits(units: UnitCounts) {
-  return Object.values(units).reduce((sum, count) => sum + count, 0);
+export function totalUnits(units: Partial<UnitCounts>) {
+  const normalized = normalizeUnits(units);
+  return unitKeys().reduce((sum, key) => sum + normalized[key], 0);
 }
 
-export function unitSpeed(units: UnitCounts) {
-  return (Object.keys(UNIT_RULES) as UnitKey[]).reduce(
-    (sum, key) => sum + units[key] * UNIT_RULES[key].speed,
+export function unitSpeed(units: Partial<UnitCounts>) {
+  const normalized = normalizeUnits(units);
+  const total = totalUnits(normalized);
+  if (total === 0) return 0;
+  const weightedSpeed = unitKeys().reduce(
+    (sum, key) => sum + normalized[key] * UNIT_RULES[key].speed,
+    0,
+  );
+  return weightedSpeed / total;
+}
+
+export function basePower(units: Partial<UnitCounts>) {
+  const normalized = normalizeUnits(units);
+  return unitKeys().reduce(
+    (sum, key) => sum + normalized[key] * UNIT_RULES[key].power,
     0,
   );
 }
 
-export function effectivePower(units: UnitCounts) {
-  const basePower = (Object.keys(UNIT_RULES) as UnitKey[]).reduce(
-    (sum, key) => sum + units[key] * UNIT_RULES[key].power,
-    0,
-  );
-  return units.shardbearer > 0 ? basePower * 2 : basePower;
+export function shardbearerMultiplier(units: Partial<UnitCounts>) {
+  return normalizeUnits(units).shardbearer > 0 ? 2 : 1;
 }
 
-export function calculateArmyStats(units: UnitCounts) {
-  const basePower = (Object.keys(UNIT_RULES) as UnitKey[]).reduce(
-    (sum, key) => sum + units[key] * UNIT_RULES[key].power,
+export function effectivePower(units: Partial<UnitCounts>) {
+  const normalized = normalizeUnits(units);
+  return basePower(normalized) * shardbearerMultiplier(normalized);
+}
+
+export function unitPlunder(units: Partial<UnitCounts>) {
+  const normalized = normalizeUnits(units);
+  return unitKeys().reduce(
+    (sum, key) => sum + normalized[key] * UNIT_RULES[key].plunder,
     0,
   );
-  const speed = unitSpeed(units);
-  const shardbearerMultiplier = units.shardbearer > 0 ? 2 : 1;
+}
+
+export function travelMsForUnits(units: Partial<UnitCounts>) {
+  const baseMs = TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
+  const speed = Math.max(0, unitSpeed(units));
+  const effectiveSpeed = Math.min(speed, TIME_RULES.maxTravelReductionPercent);
+  return Math.max(
+    60 * 1000,
+    Math.round(baseMs * (1 - effectiveSpeed / 100)),
+  );
+}
+
+function seededUnitRoll(seed: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967296;
+}
+
+export function applySurvivalLosses(
+  units: Partial<UnitCounts>,
+  exposedCount: number,
+  seed: string,
+) {
+  const normalized = normalizeUnits(units);
+  const survivors = { ...normalized };
+  const casualties = emptyUnits();
+  const unitPool: UnitKey[] = [];
+
+  for (const key of unitKeys()) {
+    for (let index = 0; index < normalized[key]; index += 1) {
+      unitPool.push(key);
+    }
+  }
+
+  const exposed = unitPool
+    .map((key, index) => ({
+      key,
+      order: seededUnitRoll(`${seed}:exposed:${key}:${index}`),
+      index,
+    }))
+    .sort((left, right) => left.order - right.order)
+    .slice(0, Math.min(Math.max(0, exposedCount), unitPool.length));
+
+  for (const entry of exposed) {
+    const roll = seededUnitRoll(`${seed}:survival:${entry.key}:${entry.index}`);
+    if (roll > UNIT_RULES[entry.key].survival) {
+      survivors[entry.key] -= 1;
+      casualties[entry.key] += 1;
+    }
+  }
 
   return {
-    totalUnits: totalUnits(units),
-    basePower,
+    survivors,
+    casualties,
+    exposed: exposed.length,
+  };
+}
+
+export function casualtySummary(casualties: Partial<UnitCounts>) {
+  const normalized = normalizeUnits(casualties);
+  const parts = unitKeys()
+    .filter((key) => normalized[key] > 0)
+    .map((key) => `${normalized[key]} ${UNIT_RULES[key].name}`);
+  return parts.length ? parts.join(", ") : "none";
+}
+
+export function survivalProfile(units: Partial<UnitCounts>) {
+  const normalized = normalizeUnits(units);
+  const included = unitKeys().filter((key) => normalized[key] > 0);
+  if (!included.length) return { label: "None", details: "No units selected." };
+  const lowest = Math.min(...included.map((key) => UNIT_RULES[key].survival));
+  const label =
+    lowest >= 0.995
+      ? "Exceptional"
+      : lowest >= 0.97
+        ? "Durable"
+        : lowest >= 0.93
+          ? "Steady"
+          : lowest >= 0.8
+            ? "Risky"
+            : "Fragile";
+  const details = included
+    .map(
+      (key) =>
+        `${UNIT_RULES[key].name}: ${Math.round(UNIT_RULES[key].survival * 1000) / 10}%`,
+    )
+    .join(", ");
+  return { label, details };
+}
+
+export function calculateArmyStats(units: Partial<UnitCounts>) {
+  const normalized = normalizeUnits(units);
+  const base = basePower(normalized);
+  const speed = unitSpeed(normalized);
+  const multiplier = shardbearerMultiplier(normalized);
+  const survival = survivalProfile(normalized);
+
+  return {
+    totalUnits: totalUnits(normalized),
+    basePower: base,
     speed,
-    power: basePower * shardbearerMultiplier,
-    shardbearerMultiplier,
+    power: base * multiplier,
+    plunder: unitPlunder(normalized),
+    survivalLabel: survival.label,
+    survivalDetails: survival.details,
+    shardbearerMultiplier: multiplier,
   };
 }
 

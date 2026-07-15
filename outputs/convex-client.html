@@ -47,7 +47,8 @@
             <h1>Shattered Plains</h1>
             <span id="game-date">Not signed in</span>
           </div>
-          <nav class="side-nav" aria-label="Dashboard sections">
+          <button id="mobile-menu-toggle" class="secondary mobile-menu-toggle" type="button" aria-expanded="false" aria-controls="dashboard-nav">Menu</button>
+          <nav id="dashboard-nav" class="side-nav" aria-label="Dashboard sections">
             <button class="nav-button active" type="button" data-view="overview">Overview</button>
             <button class="nav-button" type="button" data-view="buildings">Buildings</button>
             <button class="nav-button" type="button" data-view="army">Army</button>
@@ -75,28 +76,28 @@
           </header>
 
           <section class="resource-strip" aria-label="Current resources">
-            <article><span>Plateaus</span><strong id="res-acres">0</strong></article>
-            <article><span>Spheres</span><strong id="res-spheres">0</strong></article>
-            <article><span>Gemhearts</span><strong id="res-gemhearts">0</strong></article>
-            <article><span>Neutral</span><strong id="res-open-acres">0</strong></article>
-            <article><span>Power</span><strong id="res-power">0</strong></article>
-            <article><span>Available</span><strong id="res-available">0</strong></article>
+            <article data-view-link="plateaus"><span>Plateaus</span><strong id="res-acres">0</strong></article>
+            <article data-view-link="buildings"><span>Spheres</span><strong id="res-spheres">0</strong></article>
+            <article data-view-link="buildings"><span>Gemhearts</span><strong id="res-gemhearts">0</strong></article>
+            <article data-view-link="plateaus"><span>Neutral</span><strong id="res-open-acres">0</strong></article>
+            <article data-view-link="army"><span>Power</span><strong id="res-power">0</strong></article>
+            <article data-view-link="army"><span>Available</span><strong id="res-available">0</strong></article>
           </section>
 
           <section id="world-alerts" class="world-alerts" aria-label="World alerts"></section>
 
           <section class="view active" id="view-overview" data-title="Warcamp status" data-eyebrow="Overview">
             <div class="stats-grid dashboard-stats">
-              <article><span>Plateaus</span><strong id="acres">0</strong></article>
-              <article><span>Spheres</span><strong id="spheres">0</strong></article>
-              <article><span>Gemhearts</span><strong id="gemhearts">0</strong></article>
-              <article><span>Income/day</span><strong id="income">0</strong></article>
-              <article><span>Units</span><strong id="units-total">0</strong></article>
-              <article><span>Power</span><strong id="power">0</strong></article>
-              <article><span>Home Power</span><strong id="home-power">0</strong></article>
-              <article><span>Available</span><strong id="available-total">0</strong></article>
-              <article><span>Away</span><strong id="away-total">0</strong></article>
-              <article><span>Neutral</span><strong id="open-acres">0</strong></article>
+              <article data-view-link="plateaus"><span>Plateaus</span><strong id="acres">0</strong></article>
+              <article data-view-link="buildings"><span>Spheres</span><strong id="spheres">0</strong></article>
+              <article data-view-link="buildings"><span>Gemhearts</span><strong id="gemhearts">0</strong></article>
+              <article data-view-link="buildings" id="income-card"><span>Income/day</span><strong id="income">0</strong></article>
+              <article data-view-link="army"><span>Units</span><strong id="units-total">0</strong></article>
+              <article data-view-link="army"><span>Power</span><strong id="power">0</strong></article>
+              <article data-view-link="army"><span>Home Power</span><strong id="home-power">0</strong></article>
+              <article data-view-link="army"><span>Available</span><strong id="available-total">0</strong></article>
+              <article data-view-link="army"><span>Away</span><strong id="away-total">0</strong></article>
+              <article data-view-link="plateaus"><span>Neutral</span><strong id="open-acres">0</strong></article>
             </div>
             <div class="overview-grid">
               <section class="panel compact-panel">
@@ -128,19 +129,8 @@
           <section class="view" id="view-army" data-title="Recruit and inspect units" data-eyebrow="Army">
             <section class="panel full-panel">
               <p class="eyebrow">Roster</p>
-              <h2>Units and unlocks</h2>
+              <h2>Recruit units</h2>
               <div id="unit-roster" class="building-grid"></div>
-            </section>
-            <section class="panel full-panel">
-              <p class="eyebrow">Recruiting</p>
-              <h2>Raise units</h2>
-              <form id="train-form" class="action-row contained-form">
-                <label>Unit type</label>
-                <select id="train-unit"></select>
-                <label>Amount</label>
-                <input id="train-count" type="number" min="1" value="5" />
-                <button>Train</button>
-              </form>
             </section>
           </section>
 
@@ -295,6 +285,7 @@
         </section>
       </section>
     </main>
+    <div id="tap-tooltip" class="tap-tooltip hidden" role="status"></div>
     <script type="module" src="convex-client.js"></script>
   </body>
 </html>

@@ -4,12 +4,15 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { requireCurrentPlayer } from "./ownership";
 import {
+  applySurvivalLosses,
+  casualtySummary,
   COMBAT_RULES,
   effectivePower,
-  emptyUnits,
-  TIME_RULES,
+  normalizeUnits,
   totalUnits,
+  travelMsForUnits,
   UNIT_RULES,
+  unitPlunder,
   unitSpeed,
   WORLD_KEY,
   type UnitCounts,
@@ -19,24 +22,14 @@ import {
 const unitCounts = v.object({
   bridgeman: v.number(),
   spearman: v.number(),
+  chull: v.optional(v.number()),
   scout: v.number(),
   heavy: v.number(),
   shardbearer: v.number(),
 });
 
 function cleanUnits(units: UnitCounts) {
-  const cleaned = emptyUnits();
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    cleaned[key] = Math.max(0, Math.floor(units[key] ?? 0));
-  }
-  return cleaned;
-}
-
-function travelMs(units: UnitCounts) {
-  const baseMs = TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
-  const divisor =
-    1 + Math.max(0, unitSpeed(units)) * TIME_RULES.speedReductionPerPoint;
-  return Math.max(60 * 1000, Math.round(baseMs / divisor));
+  return normalizeUnits(units);
 }
 
 function seededInt(seed: string, min: number, max: number) {
@@ -48,43 +41,35 @@ function seededInt(seed: string, min: number, max: number) {
 }
 
 function subtractUnits(available: UnitCounts, requested: UnitCounts) {
+  const normalizedAvailable = normalizeUnits(available);
+  const normalizedRequested = normalizeUnits(requested);
   for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    if (requested[key] > available[key]) {
+    if (normalizedRequested[key] > normalizedAvailable[key]) {
       throw new Error(`Not enough ${UNIT_RULES[key].name}s available.`);
     }
   }
 
-  const remaining = { ...available };
+  const remaining = { ...normalizedAvailable };
   for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    remaining[key] -= requested[key];
+    remaining[key] -= normalizedRequested[key];
   }
   return remaining;
 }
 
 function addUnits(current: UnitCounts, returned: UnitCounts) {
-  const next = { ...current };
+  const next = normalizeUnits(current);
+  const normalizedReturned = normalizeUnits(returned);
   for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    next[key] += returned[key];
+    next[key] += normalizedReturned[key];
   }
   return next;
 }
 
-function applyLosses(units: UnitCounts, losses: number) {
-  const survivors = { ...units };
-  let remainingLosses = Math.min(Math.max(0, losses), totalUnits(survivors));
-
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    if (remainingLosses <= 0) break;
-    const lost = Math.min(survivors[key], remainingLosses);
-    survivors[key] -= lost;
-    remainingLosses -= lost;
-  }
-
-  return survivors;
-}
-
 function validateUnlockedUnits(buildings: { barracks: number }, units: UnitCounts) {
   for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
+    if (units[key] > 0 && !UNIT_RULES[key].active) {
+      throw new Error(`${UNIT_RULES[key].name} is inactive for new actions.`);
+    }
     if (units[key] > 0 && buildings.barracks < UNIT_RULES[key].barracksLevel) {
       throw new Error(
         `${UNIT_RULES[key].name} requires Barracks level ${UNIT_RULES[key].barracksLevel}.`,
@@ -131,7 +116,7 @@ async function createRaid(
 
   const now = Date.now();
   const departAt = now;
-  const arriveAt = now + travelMs(units);
+  const arriveAt = now + travelMsForUnits(units);
   const power = effectivePower(units);
   const speed = unitSpeed(units);
   const remainingUnits = subtractUnits(attacker.units, units);
@@ -292,6 +277,25 @@ export const forceResolveRaid = mutation({
   },
 });
 
+export const forceResolveAllRaids = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const pending = await ctx.db
+      .query("raids")
+      .withIndex("by_status_arrival", (q) => q.eq("status", "pending"))
+      .take(100);
+
+    for (const raid of pending) {
+      await ctx.scheduler.runAfter(0, internal.raids.resolveRaid, {
+        raidId: raid._id,
+      });
+    }
+
+    return { scheduled: pending.length };
+  },
+});
+
 export const resolveRaid = internalMutation({
   args: {
     raidId: v.id("raids"),
@@ -328,7 +332,12 @@ export const resolveRaid = internalMutation({
       const losses = won
         ? Math.ceil(totalUnits(raid.units) * 0.15)
         : Math.ceil(totalUnits(raid.units) * 0.45);
-      survivors = applyLosses(raid.units, losses);
+      const lossResult = applySurvivalLosses(
+        normalizeUnits(raid.units),
+        losses,
+        `${raid._id}:open:${now}`,
+      );
+      survivors = lossResult.survivors;
 
       if (won && world) {
         await ctx.db.patch(world._id, { openAcres: world.openAcres - acres });
@@ -356,16 +365,24 @@ export const resolveRaid = internalMutation({
       const losses = won
         ? Math.ceil(totalUnits(raid.units) * 0.08)
         : Math.ceil(totalUnits(raid.units) * 0.25);
-      survivors = applyLosses(raid.units, losses);
+      const lossResult = applySurvivalLosses(
+        normalizeUnits(raid.units),
+        losses,
+        `${raid._id}:spheres:${now}`,
+      );
+      survivors = lossResult.survivors;
+      const plunder = unitPlunder(normalizeUnits(raid.units));
+      const recovered = won ? Math.min(reward, plunder) : 0;
+      const leftBehind = won ? Math.max(0, reward - recovered) : 0;
 
       await ctx.db.patch(attacker._id, {
-        spheres: attacker.spheres + (won ? reward : 0),
+        spheres: attacker.spheres + recovered,
         units: addUnits(attacker.units, survivors),
         lastActiveAt: now,
       });
       resultText = won
-        ? `${attacker.name} raided Parshendi spheres and gained ${reward} spheres.`
-        : `${attacker.name} failed a Parshendi sphere raid.`;
+        ? `${attacker.name} raided Parshendi spheres. Attack Power ${raid.power}, Defense Power ${defense}. Available ${reward}, plunder ${plunder}, recovered ${recovered}, left behind ${leftBehind}. Casualties: ${casualtySummary(lossResult.casualties)}.`
+        : `${attacker.name} failed a Parshendi sphere raid. Attack Power ${raid.power}, Defense Power ${defense}. Casualties: ${casualtySummary(lossResult.casualties)}.`;
     }
 
     if (raid.targetType === "player") {
@@ -391,7 +408,17 @@ export const resolveRaid = internalMutation({
         const defenderLosses = won
           ? Math.ceil(totalUnits(defender.units) * 0.18)
           : Math.ceil(totalUnits(defender.units) * 0.08);
-        survivors = applyLosses(raid.units, attackerLosses);
+        const attackerLossResult = applySurvivalLosses(
+          normalizeUnits(raid.units),
+          attackerLosses,
+          `${raid._id}:player:attacker:${now}`,
+        );
+        survivors = attackerLossResult.survivors;
+        const defenderLossResult = applySurvivalLosses(
+          normalizeUnits(defender.units),
+          defenderLosses,
+          `${raid._id}:player:defender:${now}`,
+        );
 
         await ctx.db.patch(attacker._id, {
           acres: attacker.acres + (won ? acres : 0),
@@ -400,7 +427,7 @@ export const resolveRaid = internalMutation({
         });
         await ctx.db.patch(defender._id, {
           acres: defender.acres - (won ? acres : 0),
-          units: applyLosses(defender.units, defenderLosses),
+          units: defenderLossResult.survivors,
           lastActiveAt: now,
         });
 
@@ -408,14 +435,12 @@ export const resolveRaid = internalMutation({
           toPlayerId: defender._id,
           kind: "system",
           subject: won ? "Raid Lost" : "Defense Held",
-          body: won
-            ? `${attacker.name} seized ${acres} acres from your warcamp.`
-            : `Your warcamp held against ${attacker.name}.`,
+          body: `${won ? `${attacker.name} seized ${acres} acres from your warcamp.` : `Your warcamp held against ${attacker.name}.`} Attack Power ${raid.power}, Defense Power ${homePower}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`,
           createdAt: now,
         });
         resultText = won
-          ? `${attacker.name} seized ${acres} acres from ${defender.name}.`
-          : `${defender.name} held against ${attacker.name}.`;
+          ? `${attacker.name} seized ${acres} acres from ${defender.name}. Attack Power ${raid.power}, Defense Power ${homePower}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`
+          : `${defender.name} held against ${attacker.name}. Attack Power ${raid.power}, Defense Power ${homePower}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
       }
     }
 

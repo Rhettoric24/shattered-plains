@@ -5,6 +5,7 @@ import { requireCurrentPlayer } from "./ownership";
 import { plateauCountsForPlayer } from "./plateauHelpers";
 import {
   calculateArmyStats,
+  normalizeUnits,
   pendingEconomy,
   trainingDiscount,
   UNIT_RULES,
@@ -13,6 +14,7 @@ import {
 const unitKey = v.union(
   v.literal("bridgeman"),
   v.literal("spearman"),
+  v.literal("chull"),
   v.literal("scout"),
   v.literal("heavy"),
   v.literal("shardbearer"),
@@ -54,6 +56,9 @@ export const trainUnit = mutation({
     }
 
     const rule = UNIT_RULES[args.unit];
+    if (!rule.active) {
+      throw new Error(`${rule.name} is a legacy unit and cannot be trained right now.`);
+    }
     const barracksLevel = settledPlayer.buildings.barracks ?? 0;
     if (barracksLevel < rule.barracksLevel) {
       throw new Error(`${rule.name} requires Barracks level ${rule.barracksLevel}.`);
@@ -72,10 +77,8 @@ export const trainUnit = mutation({
       throw new Error(`Not enough gemhearts. Need ${gemheartCost}.`);
     }
 
-    const units = {
-      ...settledPlayer.units,
-      [args.unit]: settledPlayer.units[args.unit] + count,
-    };
+    const units = normalizeUnits(settledPlayer.units);
+    units[args.unit] += count;
     const now = Date.now();
 
     await ctx.db.patch(settledPlayer._id, {

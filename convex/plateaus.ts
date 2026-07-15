@@ -13,13 +13,15 @@ import {
   plateauTypes,
 } from "./plateauHelpers";
 import {
+  applySurvivalLosses,
+  casualtySummary,
   COMBAT_RULES,
   effectivePower,
-  emptyUnits,
+  normalizeUnits,
   PLATEAU_RULES,
   STARTING_RULES,
-  TIME_RULES,
   totalUnits,
+  travelMsForUnits,
   UNIT_RULES,
   unitSpeed,
   type UnitCounts,
@@ -29,64 +31,54 @@ import {
 const unitCounts = v.object({
   bridgeman: v.number(),
   spearman: v.number(),
+  chull: v.optional(v.number()),
   scout: v.number(),
   heavy: v.number(),
   shardbearer: v.number(),
 });
 
 function cleanUnits(units: UnitCounts) {
-  const cleaned = emptyUnits();
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    cleaned[key] = Math.max(0, Math.floor(units[key] ?? 0));
-  }
-  return cleaned;
-}
-
-function travelMs(units: UnitCounts) {
-  const baseMs = TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
-  const divisor =
-    1 + Math.max(0, unitSpeed(units)) * TIME_RULES.speedReductionPerPoint;
-  return Math.max(60 * 1000, Math.round(baseMs / divisor));
+  return normalizeUnits(units);
 }
 
 function subtractUnits(available: UnitCounts, requested: UnitCounts) {
+  const normalizedAvailable = normalizeUnits(available);
+  const normalizedRequested = normalizeUnits(requested);
   for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    if (requested[key] > available[key]) {
+    if (normalizedRequested[key] > normalizedAvailable[key]) {
       throw new Error(`Not enough ${UNIT_RULES[key].name}s available.`);
     }
   }
 
-  const remaining = { ...available };
+  const remaining = { ...normalizedAvailable };
   for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    remaining[key] -= requested[key];
+    remaining[key] -= normalizedRequested[key];
   }
   return remaining;
 }
 
 function addUnits(current: UnitCounts, returned: UnitCounts) {
-  const next = { ...current };
+  const next = normalizeUnits(current);
+  const normalizedReturned = normalizeUnits(returned);
   for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    next[key] += returned[key];
+    next[key] += normalizedReturned[key];
   }
   return next;
 }
 
-function applyLosses(units: UnitCounts, lossRate: number) {
-  const survivors = { ...units };
-  let losses = Math.ceil(totalUnits(survivors) * lossRate);
-
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    if (losses <= 0) break;
-    const lost = Math.min(survivors[key], losses);
-    survivors[key] -= lost;
-    losses -= lost;
-  }
-
-  return survivors;
+function applyLossRate(units: UnitCounts, lossRate: number, seed: string) {
+  return applySurvivalLosses(
+    normalizeUnits(units),
+    Math.ceil(totalUnits(units) * lossRate),
+    seed,
+  );
 }
 
 function validateUnlockedUnits(buildings: { barracks: number }, units: UnitCounts) {
   for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
+    if (units[key] > 0 && !UNIT_RULES[key].active) {
+      throw new Error(`${UNIT_RULES[key].name} is inactive for new actions.`);
+    }
     if (units[key] > 0 && buildings.barracks < UNIT_RULES[key].barracksLevel) {
       throw new Error(
         `${UNIT_RULES[key].name} requires Barracks level ${UNIT_RULES[key].barracksLevel}.`,
@@ -168,7 +160,7 @@ export const launchNeutralSiege = mutation({
     validateUnlockedUnits(attacker.buildings, units);
 
     const now = Date.now();
-    const resolveAt = now + travelMs(units);
+    const resolveAt = now + travelMsForUnits(units);
     const remainingUnits = subtractUnits(attacker.units, units);
     const siegeId = await ctx.db.insert("sieges", {
       plateauId: plateau._id,
@@ -229,7 +221,7 @@ export const launchPlayerSiege = mutation({
     validateUnlockedUnits(attacker.buildings, units);
 
     const now = Date.now();
-    const resolveAt = now + travelMs(units);
+    const resolveAt = now + travelMsForUnits(units);
     const remainingUnits = subtractUnits(attacker.units, units);
     const siegeId = await ctx.db.insert("sieges", {
       plateauId: plateau._id,
@@ -364,12 +356,13 @@ export const retreatSiege = mutation({
     if (!attacker) throw new Error("Attacker not found.");
 
     if (player._id === siege.attackerId) {
-      const survivors = applyLosses(
+      const lossResult = applyLossRate(
         siege.attackerUnits,
         PLATEAU_RULES.attackerRetreatLossRate,
+        `${siege._id}:attacker-retreat:${now}`,
       );
       await ctx.db.patch(attacker._id, {
-        units: addUnits(attacker.units, survivors),
+        units: addUnits(attacker.units, lossResult.survivors),
         lastActiveAt: now,
       });
       await ctx.db.patch(siege._id, {
@@ -390,16 +383,22 @@ export const retreatSiege = mutation({
     if (siege.defenderId && player._id === siege.defenderId) {
       const defender = await ctx.db.get(siege.defenderId);
       if (!defender) throw new Error("Defender not found.");
-      const survivors = applyLosses(
+      const attackerLossResult = applyLossRate(
         siege.attackerUnits,
         PLATEAU_RULES.siegeWinAttackerLossRate,
+        `${siege._id}:defender-retreat:attacker:${now}`,
       );
       await ctx.db.patch(attacker._id, {
-        units: addUnits(attacker.units, survivors),
+        units: addUnits(attacker.units, attackerLossResult.survivors),
         lastActiveAt: now,
       });
+      const defenderLossResult = applyLossRate(
+        defender.units,
+        PLATEAU_RULES.defenderRetreatLossRate,
+        `${siege._id}:defender-retreat:defender:${now}`,
+      );
       await ctx.db.patch(defender._id, {
-        units: applyLosses(defender.units, PLATEAU_RULES.defenderRetreatLossRate),
+        units: defenderLossResult.survivors,
         lastActiveAt: now,
       });
       await ctx.db.patch(plateau._id, {
@@ -477,10 +476,12 @@ export const resolveSiege = internalMutation({
 
     if (siege.targetType === "neutral") {
       won = siege.attackerPower >= plateau.neutralDefenseRemaining;
-      survivors = applyLosses(
+      const lossResult = applyLossRate(
         siege.attackerUnits,
         won ? PLATEAU_RULES.neutralWinLossRate : PLATEAU_RULES.neutralLossLossRate,
+        `${siege._id}:neutral:${now}`,
       );
+      survivors = lossResult.survivors;
 
       if (won) {
         await ctx.db.patch(plateau._id, {
@@ -492,7 +493,7 @@ export const resolveSiege = internalMutation({
           activeSiegeId: undefined,
           updatedAt: now,
         });
-        resultText = `${attacker.name} claimed ${plateauTypeName(plateau.type)}.`;
+        resultText = `${attacker.name} claimed ${plateauTypeName(plateau.type)}. Attack Power ${siege.attackerPower}, Defense Power ${plateau.neutralDefenseRemaining}. Casualties: ${casualtySummary(lossResult.casualties)}.`;
       } else {
         await ctx.db.patch(plateau._id, {
           neutralDefenseRemaining: Math.max(
@@ -502,7 +503,7 @@ export const resolveSiege = internalMutation({
           activeSiegeId: undefined,
           updatedAt: now,
         });
-        resultText = `${attacker.name} weakened the Parshendi defense on a neutral plateau.`;
+        resultText = `${attacker.name} weakened the Parshendi defense on a neutral plateau. Attack Power ${siege.attackerPower}, Defense Power ${plateau.neutralDefenseRemaining}. Casualties: ${casualtySummary(lossResult.casualties)}.`;
       }
 
       await ctx.db.patch(attacker._id, {
@@ -526,11 +527,20 @@ export const resolveSiege = internalMutation({
           siege.fortifyPercent,
         );
         won = siege.attackerPower > defenderPower;
-        survivors = applyLosses(
+        const attackerLossResult = applyLossRate(
           siege.attackerUnits,
           won
             ? PLATEAU_RULES.siegeWinAttackerLossRate
             : PLATEAU_RULES.siegeLossAttackerLossRate,
+          `${siege._id}:player:attacker:${now}`,
+        );
+        survivors = attackerLossResult.survivors;
+        const defenderLossResult = applyLossRate(
+          defender.units,
+          won
+            ? PLATEAU_RULES.siegeWinDefenderLossRate
+            : PLATEAU_RULES.siegeLossDefenderLossRate,
+          `${siege._id}:player:defender:${now}`,
         );
 
         await ctx.db.patch(attacker._id, {
@@ -538,12 +548,7 @@ export const resolveSiege = internalMutation({
           lastActiveAt: now,
         });
         await ctx.db.patch(defender._id, {
-          units: applyLosses(
-            defender.units,
-            won
-              ? PLATEAU_RULES.siegeWinDefenderLossRate
-              : PLATEAU_RULES.siegeLossDefenderLossRate,
-          ),
+          units: defenderLossResult.survivors,
           lastActiveAt: now,
         });
 
@@ -555,13 +560,13 @@ export const resolveSiege = internalMutation({
             activeSiegeId: undefined,
             updatedAt: now,
           });
-          resultText = `${attacker.name} captured ${plateau.name} from ${defender.name}.`;
+          resultText = `${attacker.name} captured ${plateau.name} from ${defender.name}. Attack Power ${siege.attackerPower}, Defense Power ${defenderPower}. Fortification +${siege.fortifyPercent}%. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
         } else {
           await ctx.db.patch(plateau._id, {
             activeSiegeId: undefined,
             updatedAt: now,
           });
-          resultText = `${defender.name} held ${plateau.name} against ${attacker.name}.`;
+          resultText = `${defender.name} held ${plateau.name} against ${attacker.name}. Attack Power ${siege.attackerPower}, Defense Power ${defenderPower}. Fortification +${siege.fortifyPercent}%. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
         }
 
         await ctx.db.insert("messages", {

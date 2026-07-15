@@ -4,11 +4,14 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { requireCurrentPlayer } from "./ownership";
 import {
+  applySurvivalLosses,
+  casualtySummary,
   effectivePower,
-  emptyUnits,
+  normalizeUnits,
   PLATEAU_RUN_RULES,
   totalUnits,
   UNIT_RULES,
+  unitPlunder,
   unitSpeed,
   type UnitCounts,
   type UnitKey,
@@ -17,6 +20,7 @@ import {
 const unitCounts = v.object({
   bridgeman: v.number(),
   spearman: v.number(),
+  chull: v.optional(v.number()),
   scout: v.number(),
   heavy: v.number(),
   shardbearer: v.number(),
@@ -31,51 +35,39 @@ function seededInt(seed: string, min: number, max: number) {
 }
 
 function cleanUnits(units: UnitCounts) {
-  const cleaned = emptyUnits();
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    cleaned[key] = Math.max(0, Math.floor(units[key] ?? 0));
-  }
-  return cleaned;
+  return normalizeUnits(units);
 }
 
 function subtractUnits(available: UnitCounts, requested: UnitCounts) {
+  const normalizedAvailable = normalizeUnits(available);
+  const normalizedRequested = normalizeUnits(requested);
   for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    if (requested[key] > available[key]) {
+    if (normalizedRequested[key] > normalizedAvailable[key]) {
       throw new Error(`Not enough ${UNIT_RULES[key].name}s available.`);
     }
   }
 
-  const remaining = { ...available };
+  const remaining = { ...normalizedAvailable };
   for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    remaining[key] -= requested[key];
+    remaining[key] -= normalizedRequested[key];
   }
   return remaining;
 }
 
 function addUnits(current: UnitCounts, returned: UnitCounts) {
-  const next = { ...current };
+  const next = normalizeUnits(current);
+  const normalizedReturned = normalizeUnits(returned);
   for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    next[key] += returned[key];
+    next[key] += normalizedReturned[key];
   }
   return next;
 }
 
-function applyLosses(units: UnitCounts, losses: number) {
-  const survivors = { ...units };
-  let remainingLosses = Math.min(Math.max(0, losses), totalUnits(survivors));
-
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    if (remainingLosses <= 0) break;
-    const lost = Math.min(survivors[key], remainingLosses);
-    survivors[key] -= lost;
-    remainingLosses -= lost;
-  }
-
-  return survivors;
-}
-
 function validateUnlockedUnits(buildings: { barracks: number }, units: UnitCounts) {
   for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
+    if (units[key] > 0 && !UNIT_RULES[key].active) {
+      throw new Error(`${UNIT_RULES[key].name} is inactive for new actions.`);
+    }
     if (units[key] > 0 && buildings.barracks < UNIT_RULES[key].barracksLevel) {
       throw new Error(
         `${UNIT_RULES[key].name} requires Barracks level ${UNIT_RULES[key].barracksLevel}.`,
@@ -402,19 +394,20 @@ export const resolvePlateauRun = internalMutation({
       for (const entry of finalEntries) {
         const player = await ctx.db.get(entry.playerId);
         if (!player) continue;
-        const survivors = applyLosses(
+        const lossResult = applySurvivalLosses(
           entry.units,
           Math.ceil(totalUnits(entry.units) * PLATEAU_RUN_RULES.failedRunLossRate),
+          `${run._id}:${entry._id}:failed:${now}`,
         );
         await ctx.db.patch(player._id, {
-          units: addUnits(player.units, survivors),
+          units: addUnits(player.units, lossResult.survivors),
           lastActiveAt: now,
         });
         await ctx.db.insert("messages", {
           toPlayerId: player._id,
           kind: "system",
           subject: "Plateau Run Failed",
-          body: `The combined force reached ${combinedPower.toFixed(2)} power and failed against difficulty ${run.difficulty}. Heavy losses followed.`,
+          body: `The combined force reached ${combinedPower.toFixed(2)} power and failed against difficulty ${run.difficulty}. Casualties: ${casualtySummary(lossResult.casualties)}.`,
           createdAt: now,
         });
       }
@@ -443,20 +436,24 @@ export const resolvePlateauRun = internalMutation({
       const player = await ctx.db.get(entry.playerId);
       if (!player) continue;
 
-      const survivors = applyLosses(
+      const lossResult = applySurvivalLosses(
         entry.units,
         Math.ceil(totalUnits(entry.units) * PLATEAU_RUN_RULES.successfulRunLossRate),
+        `${run._id}:${entry._id}:success:${now}`,
       );
       const isWinner = entry._id === winner._id;
-      const sphereShare =
+      const availableSphereShare =
         !isWinner && nonWinnerPower > 0
           ? Math.floor(run.spherePool * (entry.effectivePower / nonWinnerPower))
           : finalEntries.length === 1
             ? run.spherePool
             : 0;
+      const plunder = unitPlunder(entry.units);
+      const sphereShare = Math.min(availableSphereShare, plunder);
+      const leftBehind = Math.max(0, availableSphereShare - sphereShare);
 
       await ctx.db.patch(player._id, {
-        units: addUnits(player.units, survivors),
+        units: addUnits(player.units, lossResult.survivors),
         spheres: player.spheres + sphereShare,
         gemhearts: player.gemhearts + (isWinner ? run.gemheartReward : 0),
         lastActiveAt: now,
@@ -466,8 +463,8 @@ export const resolvePlateauRun = internalMutation({
         kind: "system",
         subject: isWinner ? "Gemheart Claimed" : "Plateau Run Reward",
         body: isWinner
-          ? `Your warcamp claimed ${run.gemheartReward} Gemheart from the Plateau Run.`
-          : `Your warcamp received ${sphereShare} spheres from the Plateau Run.`,
+          ? `Your warcamp claimed ${run.gemheartReward} Gemheart from the Plateau Run. Casualties: ${casualtySummary(lossResult.casualties)}.`
+          : `Your warcamp recovered ${sphereShare} spheres from the Plateau Run. Available ${availableSphereShare}, plunder ${plunder}, left behind ${leftBehind}. Casualties: ${casualtySummary(lossResult.casualties)}.`,
         createdAt: now,
       });
     }

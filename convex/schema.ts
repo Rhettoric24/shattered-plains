@@ -5,6 +5,7 @@ import { authTables } from "@convex-dev/auth/server";
 const unitCounts = v.object({
   bridgeman: v.number(),
   spearman: v.number(),
+  chull: v.optional(v.number()),
   scout: v.number(),
   heavy: v.number(),
   shardbearer: v.number(),
