@@ -37,6 +37,9 @@ export const PLATEAU_RULES = {
   neutralHighgroundChancePercent: 12,
   siegeFortifySpheresPerPercent: 50,
   siegeFortifyMaxPercent: 100,
+  emergencyDefenseMaxPercent: 100,
+  emergencyDefenseMaxCost: 12000,
+  emergencyDefenseCostExponent: 2,
   attackerRetreatLossRate: 0.18,
   defenderRetreatLossRate: 0.12,
   siegeWinAttackerLossRate: 0.22,
@@ -308,6 +311,18 @@ export function unitPlunder(units: Partial<UnitCounts>) {
   return unitKeys().reduce(
     (sum, key) => sum + normalized[key] * UNIT_RULES[key].plunder,
     0,
+  );
+}
+
+export function emergencyDefenseCost(percent: number) {
+  const cappedPercent = Math.max(
+    0,
+    Math.min(PLATEAU_RULES.emergencyDefenseMaxPercent, Math.floor(percent)),
+  );
+  return Math.round(
+    PLATEAU_RULES.emergencyDefenseMaxCost *
+      (cappedPercent / PLATEAU_RULES.emergencyDefenseMaxPercent) **
+        PLATEAU_RULES.emergencyDefenseCostExponent,
   );
 }
 

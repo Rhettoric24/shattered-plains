@@ -46,6 +46,8 @@ const refs = {
   listPlateaus: "plateaus:listPlateaus",
   launchNeutralSiege: "plateaus:launchNeutralSiege",
   launchPlayerSiege: "plateaus:launchPlayerSiege",
+  commitSiegeDefenders: "plateaus:commitSiegeDefenders",
+  setEmergencyDefense: "plateaus:setEmergencyDefense",
   fortifySiege: "plateaus:fortifySiege",
   retreatSiege: "plateaus:retreatSiege",
   forceResolveSiege: "plateaus:forceResolveSiege",
@@ -451,6 +453,14 @@ function captureSelections() {
   if ($("target")) lastSelections.target = $("target").value;
   if ($("neutral-plateau-target")) lastSelections.neutralPlateau = $("neutral-plateau-target").value;
   if ($("player-plateau-target")) lastSelections.playerPlateau = $("player-plateau-target").value;
+  lastSelections.siegeDefenders = lastSelections.siegeDefenders || {};
+  document.querySelectorAll("[data-siege-defense-unit]").forEach((input) => {
+    lastSelections.siegeDefenders[input.dataset.siegeId + ":" + input.dataset.unit] = input.value;
+  });
+  lastSelections.emergencyDefense = lastSelections.emergencyDefense || {};
+  document.querySelectorAll("[data-emergency-defense-range]").forEach((input) => {
+    lastSelections.emergencyDefense[input.dataset.siegeId] = input.value;
+  });
 }
 
 function showView(view) {
@@ -568,11 +578,13 @@ function renderRaidPreviews() {
 
 function previewMarkup(units, acres, type) {
   const stats = raidStats(units);
-  const travel = travelMinutes(stats.speed);
+  const isSiege = type === "neutralSiege" || type === "playerSiege";
+  const travel = isSiege ? fixedSiegeTravelMinutes() : travelMinutes(stats.speed);
   const arrival = new Date(Date.now() + travel * 60000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const target = type === "spheres" ? sphereTargetPreview() : type === "plateau" ? plateauTargetPreview(stats) : type === "neutralSiege" ? neutralSiegePreview(stats) : type === "playerSiege" ? playerSiegePreview(stats) : "Choose a target";
+  const speedLabel = isSiege ? "Future siege stat" : "Army Speed";
   return '<div title="' + statTooltip("power") + '"><span>Power</span><strong>' + formatStat(stats.power) + '</strong></div>' +
-    '<div title="' + statTooltip("speed") + '"><span>Army Speed</span><strong>' + formatStat(stats.speed) + '</strong></div>' +
+    '<div title="' + statTooltip("speed") + '"><span>' + speedLabel + '</span><strong>' + formatStat(stats.speed) + '</strong></div>' +
     '<div><span>Travel</span><strong>' + formatDuration(travel) + '</strong></div>' +
     '<div><span>Arrival</span><strong>' + arrival + '</strong></div>' +
     '<div title="' + statTooltip("plunder") + '"><span>Max Plunder</span><strong>' + number(stats.plunder) + '</strong></div>' +
@@ -623,15 +635,26 @@ function renderPlateaus() {
   renderRaidPreviews();
   $("active-sieges").innerHTML = state.plateaus.sieges.length ? state.plateaus.sieges.map(siegeCard).join("") : '<div class="empty">No active plateau sieges.</div>';
 
-  document.querySelectorAll("[data-retreat-siege]").forEach((button) => {
-    button.addEventListener("click", () => action(() => client.mutation(refs.retreatSiege, { siegeId: button.dataset.retreatSiege })));
-  });
-  document.querySelectorAll("[data-fortify-siege]").forEach((button) => {
+  document.querySelectorAll("[data-commit-siege-defenders]").forEach((button) => {
     button.addEventListener("click", () => {
-      const input = document.querySelector('[data-fortify-input="' + button.dataset.fortifySiege + '"]');
-      const percent = Math.max(1, Math.floor(Number(input?.value) || 1));
-      action(() => client.mutation(refs.fortifySiege, { siegeId: button.dataset.fortifySiege, percent }));
+      const siegeId = button.dataset.commitSiegeDefenders;
+      action(() => client.mutation(refs.commitSiegeDefenders, {
+        siegeId,
+        units: readSiegeDefenderUnits(siegeId),
+      }));
     });
+  });
+  document.querySelectorAll("[data-set-emergency-defense]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const siegeId = button.dataset.setEmergencyDefense;
+      const input = document.querySelector('[data-emergency-defense-range="' + siegeId + '"]');
+      const percent = Math.max(0, Math.floor(Number(input?.value) || 0));
+      action(() => client.mutation(refs.setEmergencyDefense, { siegeId, percent }));
+    });
+  });
+  document.querySelectorAll("[data-emergency-defense-range]").forEach((input) => {
+    input.addEventListener("input", () => renderEmergencyDefensePreview(input.dataset.siegeId));
+    renderEmergencyDefensePreview(input.dataset.siegeId);
   });
 }
 
@@ -645,19 +668,86 @@ function siegeCard(siege) {
   const remaining = Math.max(0, Math.ceil((siege.resolveAt - Date.now()) / 60000));
   const isAttacker = siege.attackerId === state.me.id;
   const isDefender = siege.defenderId === state.me.id;
-  const powerText = isAttacker
-    ? "Attacker power " + formatStat(siege.attackerPower)
+  const title = siege.targetType === "player"
+    ? escapeHtml(siege.attackerName) + " vs " + escapeHtml(siege.defenderName)
+    : escapeHtml(siege.attackerName) + " vs Parshendi";
+  const attackerText = isAttacker
+    ? "Your attack power " + formatStat(siege.attackerPower)
     : "Attacker force " + operationPowerLabel(siege.attackerPower);
-  const fortifyText = isDefender || isAttacker
-    ? ", fortification +" + number(siege.fortifyPercent) + "%"
-    : ", defenses " + neutralDefenseLabel(siege.fortifyPercent + 25);
-  const fortify = isDefender && siege.targetType === "player"
-    ? '<div class="inline-actions"><input data-fortify-input="' + siege.id + '" type="number" min="1" max="100" value="5" /><button type="button" data-fortify-siege="' + siege.id + '">Fortify</button></div>'
-    : "";
-  const retreat = isAttacker || isDefender
-    ? '<button type="button" class="secondary" data-retreat-siege="' + siege.id + '">Retreat</button>'
-    : "";
-  return '<article class="list-item raid-item"><strong>' + escapeHtml(siege.attackerName) + ' vs ' + escapeHtml(siege.defenderName) + '</strong><span>' + escapeHtml(plateau?.name || "Unknown plateau") + '</span><small>' + powerText + fortifyText + ', resolves in ' + formatDuration(remaining) + '.</small>' + fortify + retreat + '</article>';
+  const committedText = siege.targetType === "player"
+    ? isDefender
+      ? (siege.defenderCommittedAt ? "Your defenders are committed" : "No defenders committed yet")
+      : "Defensive response unknown"
+    : "Neutral expedition";
+  const defensePower = siegeDefensePower(siege, plateau);
+  const finalDefense = siegeFinalDefense(siege, plateau, siege.emergencyDefensePercent);
+  const defenseText = isDefender
+    ? "Committed defense " + formatStat(defensePower) + ", Emergency +" + number(siege.emergencyDefensePercent) + "%, Final " + formatStat(finalDefense)
+    : siege.targetType === "player"
+      ? "Defenses unknown"
+      : "Parshendi hold " + neutralDefenseLabel(plateau?.neutralDefenseRemaining || 0);
+  const defenderPanel = isDefender && siege.targetType === "player" ? siegeDefenderPanel(siege, plateau) : "";
+  return '<article class="list-item raid-item siege-card"><strong>' + title + '</strong><span>' + escapeHtml(plateau?.name || "Unknown plateau") + '</span><small>' + attackerText + '. ' + committedText + '. ' + defenseText + '. Resolves in ' + formatDuration(remaining) + '.</small>' + defenderPanel + '</article>';
+}
+
+function siegeDefenderPanel(siege, plateau) {
+  const commitPanel = siege.defenderCommittedAt
+    ? '<div class="siege-defense-note">Defending army locked: ' + escapeHtml(unitSummary(siege.defenderUnits, state.config.units)) + '.</div>'
+    : '<div class="siege-defense-panel"><strong>Commit defenders</strong><div class="unit-input-grid siege-defense-grid">' + siegeDefenderUnitInputs(siege) + '</div><button type="button" data-commit-siege-defenders="' + siege.id + '">Commit defending army</button></div>';
+  const currentPercent = Math.max(0, Number(siege.emergencyDefensePercent || 0));
+  const storedTarget = Number(lastSelections.emergencyDefense?.[siege.id]);
+  const targetPercent = Number.isFinite(storedTarget) && storedTarget >= currentPercent ? storedTarget : currentPercent;
+  const basePower = siegeDefensePower(siege, plateau);
+  const currentFinal = siegeFinalDefense(siege, plateau, currentPercent);
+  return commitPanel +
+    '<div class="siege-defense-panel emergency-defense-panel">' +
+    '<strong>Emergency Defenses</strong>' +
+    '<small>Temporary bonus for this siege only. It multiplies your committed defending army, so no defenders still means 0 defense.</small>' +
+    '<label class="slider-row"><span>Target bonus <b data-emergency-defense-percent="' + siege.id + '">' + number(targetPercent) + '%</b></span><input data-emergency-defense-range="' + siege.id + '" data-siege-id="' + siege.id + '" type="range" min="' + currentPercent + '" max="100" step="1" value="' + targetPercent + '"></label>' +
+    '<div class="siege-defense-preview" data-emergency-defense-preview="' + siege.id + '">' +
+    '<span>Defending Army Power <strong>' + formatStat(basePower) + '</strong></span>' +
+    '<span>Current Effective Defense <strong>' + formatStat(currentFinal) + '</strong></span>' +
+    '<span>Sphere Cost <strong>0</strong></span>' +
+    '</div>' +
+    '<button type="button" data-set-emergency-defense="' + siege.id + '">Prepare Emergency Defenses</button>' +
+    '</div>';
+}
+
+function siegeDefenderUnitInputs(siege) {
+  return Object.entries(state.config.unlockedUnits).map(([key, unit]) => {
+    const available = state.me.availableUnits[key] || 0;
+    const stored = lastSelections.siegeDefenders?.[siege.id + ":" + key];
+    const existing = stored ?? "0";
+    return '<label class="unit-input" title="' + unitStatsTooltip(unit) + '"><span>' + escapeHtml(unit.name) + '<small>Available ' + number(available) + '</small></span><input data-siege-defense-unit data-siege-id="' + siege.id + '" data-unit="' + key + '" type="number" min="0" max="' + available + '" value="' + existing + '"></label>';
+  }).join("");
+}
+
+function readSiegeDefenderUnits(siegeId) {
+  const units = emptyUnits();
+  document.querySelectorAll('[data-siege-defense-unit][data-siege-id="' + siegeId + '"]').forEach((input) => {
+    units[input.dataset.unit] = Math.max(0, Math.floor(Number(input.value) || 0));
+  });
+  return units;
+}
+
+function renderEmergencyDefensePreview(siegeId) {
+  const siege = state?.plateaus?.sieges?.find((entry) => entry.id === siegeId);
+  const preview = document.querySelector('[data-emergency-defense-preview="' + siegeId + '"]');
+  const input = document.querySelector('[data-emergency-defense-range="' + siegeId + '"]');
+  const label = document.querySelector('[data-emergency-defense-percent="' + siegeId + '"]');
+  if (!siege || !preview || !input) return;
+  const plateau = state.plateaus.byId[siege.plateauId];
+  const currentPercent = Math.max(0, Number(siege.emergencyDefensePercent || 0));
+  const targetPercent = Math.max(currentPercent, Math.min(100, Math.floor(Number(input.value) || 0)));
+  if (label) label.textContent = number(targetPercent) + "%";
+  lastSelections.emergencyDefense = lastSelections.emergencyDefense || {};
+  lastSelections.emergencyDefense[siegeId] = String(targetPercent);
+  const basePower = siegeDefensePower(siege, plateau);
+  const finalDefense = siegeFinalDefense(siege, plateau, targetPercent);
+  const cost = emergencyDefenseIncrementalCost(currentPercent, targetPercent);
+  preview.innerHTML = '<span>Defending Army Power <strong>' + formatStat(basePower) + '</strong></span>' +
+    '<span>Final Effective Defense <strong>' + formatStat(finalDefense) + '</strong></span>' +
+    '<span>Sphere Cost <strong>' + number(cost) + '</strong></span>';
 }
 
 function raidListMarkup(raids, emptyText) {
@@ -906,7 +996,13 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
       unitSummary: unitSummary(siege.attackerUnits, unitsConfig),
       attackerPower: siege.attackerPower,
       attackerSpeed: siege.attackerSpeed,
+      defenderUnits: normalizeUnitObject(siege.defenderUnits || {}, Object.keys(unitsConfig)),
+      defenderPower: siege.defenderPower || 0,
+      defenderSpeed: siege.defenderSpeed || 0,
+      defenderCommittedAt: siege.defenderCommittedAt || null,
       fortifyPercent: siege.fortifyPercent,
+      emergencyDefensePercent: siege.emergencyDefensePercent || 0,
+      emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent || 0,
       resolveAt: siege.resolveAt,
     })),
   };
@@ -974,6 +1070,11 @@ function travelMinutes(speed) {
   return Math.ceil((base * multiplier) / 60000);
 }
 
+function fixedSiegeTravelMinutes() {
+  const base = configValue("raidTravelGameDays", 1) * configValue("realMsPerGameDay", 3600000);
+  return Math.ceil(base / 60000);
+}
+
 function playerName(id) {
   return state.playerMap[id]?.name || "Unknown";
 }
@@ -1012,6 +1113,33 @@ function number(value) {
 
 function configValue(key, fallback) {
   return Number.isFinite(Number(state.config[key])) ? Number(state.config[key]) : fallback;
+}
+
+function plateauRuleValue(key, fallback) {
+  const value = state?.config?.plateauRules?.[key];
+  return Number.isFinite(Number(value)) ? Number(value) : fallback;
+}
+
+function emergencyDefenseTotalCost(percent) {
+  const maxPercent = plateauRuleValue("emergencyDefenseMaxPercent", 100);
+  const maxCost = plateauRuleValue("emergencyDefenseMaxCost", 12000);
+  const exponent = plateauRuleValue("emergencyDefenseCostExponent", 2);
+  const cappedPercent = Math.max(0, Math.min(maxPercent, Math.floor(Number(percent) || 0)));
+  return Math.round(maxCost * Math.pow(cappedPercent / maxPercent, exponent));
+}
+
+function emergencyDefenseIncrementalCost(currentPercent, targetPercent) {
+  return Math.max(0, emergencyDefenseTotalCost(targetPercent) - emergencyDefenseTotalCost(currentPercent));
+}
+
+function siegeDefensePower(siege, plateau) {
+  const terrainBonus = plateau?.highground ? 1 + plateauRuleValue("highgroundDefenseBonus", 0.2) : 1;
+  return Number(siege.defenderPower || 0) * terrainBonus;
+}
+
+function siegeFinalDefense(siege, plateau, percent = null) {
+  const defensePercent = percent ?? siege.emergencyDefensePercent ?? 0;
+  return siegeDefensePower(siege, plateau) * (1 + Number(defensePercent || 0) / 100);
 }
 
 function formatStat(value) {

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { requireAdmin } from "./admin";
 import { requireCurrentPlayer } from "./ownership";
 import {
@@ -15,13 +16,14 @@ import {
 import {
   applySurvivalLosses,
   casualtySummary,
-  COMBAT_RULES,
+  emergencyDefenseCost,
   effectivePower,
+  emptyUnits,
   normalizeUnits,
   PLATEAU_RULES,
   STARTING_RULES,
+  TIME_RULES,
   totalUnits,
-  travelMsForUnits,
   UNIT_RULES,
   unitSpeed,
   type UnitCounts,
@@ -87,14 +89,81 @@ function validateUnlockedUnits(buildings: { barracks: number }, units: UnitCount
   }
 }
 
-function targetDefensePower(defender: any, plateau: any, fortifyPercent: number) {
-  const watchtowerBonus =
-    1 + defender.buildings.watchtower * COMBAT_RULES.watchtowerDefensePerLevel;
+function committedDefensePower(
+  defenderUnits: UnitCounts,
+  plateau: any,
+  emergencyDefensePercent: number,
+) {
   const highgroundBonus = plateau.highground
     ? 1 + PLATEAU_RULES.highgroundDefenseBonus
     : 1;
-  const fortifyBonus = 1 + fortifyPercent / 100;
-  return effectivePower(defender.units) * watchtowerBonus * highgroundBonus * fortifyBonus;
+  const emergencyBonus = 1 + emergencyDefensePercent / 100;
+  return effectivePower(defenderUnits) * highgroundBonus * emergencyBonus;
+}
+
+function committedDefenseBasePower(defenderUnits: UnitCounts, plateau: any) {
+  const highgroundBonus = plateau.highground
+    ? 1 + PLATEAU_RULES.highgroundDefenseBonus
+    : 1;
+  return effectivePower(defenderUnits) * highgroundBonus;
+}
+
+function siegeTravelMs() {
+  return TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
+}
+
+async function purchaseEmergencyDefense(
+  ctx: MutationCtx,
+  args: { siegeId: Id<"sieges">; percent: number },
+) {
+  const defender = await requireCurrentPlayer(ctx);
+  const siege = await ctx.db.get(args.siegeId);
+  if (!siege || siege.status !== "pending" || siege.targetType !== "player") {
+    throw new Error("Choose an active player siege.");
+  }
+  if (siege.defenderId !== defender._id) {
+    throw new Error("Only the defender can prepare emergency defenses.");
+  }
+  if (Date.now() >= siege.resolveAt) {
+    throw new Error("This siege is already resolving.");
+  }
+
+  const currentPercent = Math.max(0, siege.emergencyDefensePercent ?? 0);
+  const targetPercent = Math.max(
+    0,
+    Math.min(PLATEAU_RULES.emergencyDefenseMaxPercent, Math.floor(args.percent)),
+  );
+  if (targetPercent < currentPercent) {
+    throw new Error("Emergency Defenses cannot be reduced once purchased.");
+  }
+  if (targetPercent === currentPercent) {
+    return {
+      emergencyDefensePercent: currentPercent,
+      cost: 0,
+    };
+  }
+
+  const cost =
+    emergencyDefenseCost(targetPercent) - emergencyDefenseCost(currentPercent);
+  if (defender.spheres < cost) {
+    throw new Error(`Not enough spheres. Need ${cost}.`);
+  }
+
+  const now = Date.now();
+  await ctx.db.patch(defender._id, {
+    spheres: defender.spheres - cost,
+    lastActiveAt: now,
+  });
+  await ctx.db.patch(siege._id, {
+    emergencyDefensePercent: targetPercent,
+    emergencyDefenseSpheresSpent:
+      (siege.emergencyDefenseSpheresSpent ?? 0) + cost,
+  });
+
+  return {
+    emergencyDefensePercent: targetPercent,
+    cost,
+  };
 }
 
 export const listPlateaus = query({
@@ -160,7 +229,7 @@ export const launchNeutralSiege = mutation({
     validateUnlockedUnits(attacker.buildings, units);
 
     const now = Date.now();
-    const resolveAt = now + travelMsForUnits(units);
+    const resolveAt = now + siegeTravelMs();
     const remainingUnits = subtractUnits(attacker.units, units);
     const siegeId = await ctx.db.insert("sieges", {
       plateauId: plateau._id,
@@ -170,6 +239,8 @@ export const launchNeutralSiege = mutation({
       attackerPower: effectivePower(units),
       attackerSpeed: unitSpeed(units),
       fortifyPercent: 0,
+      emergencyDefensePercent: 0,
+      emergencyDefenseSpheresSpent: 0,
       departAt: now,
       resolveAt,
       status: "pending",
@@ -221,7 +292,7 @@ export const launchPlayerSiege = mutation({
     validateUnlockedUnits(attacker.buildings, units);
 
     const now = Date.now();
-    const resolveAt = now + travelMsForUnits(units);
+    const resolveAt = now + siegeTravelMs();
     const remainingUnits = subtractUnits(attacker.units, units);
     const siegeId = await ctx.db.insert("sieges", {
       plateauId: plateau._id,
@@ -231,7 +302,12 @@ export const launchPlayerSiege = mutation({
       attackerUnits: units,
       attackerPower: effectivePower(units),
       attackerSpeed: unitSpeed(units),
+      defenderUnits: emptyUnits(),
+      defenderPower: 0,
+      defenderSpeed: 0,
       fortifyPercent: 0,
+      emergencyDefensePercent: 0,
+      emergencyDefenseSpheresSpent: 0,
       departAt: now,
       resolveAt,
       status: "pending",
@@ -264,10 +340,10 @@ export const launchPlayerSiege = mutation({
   },
 });
 
-export const fortifySiege = mutation({
+export const commitSiegeDefenders = mutation({
   args: {
     siegeId: v.id("sieges"),
-    percent: v.number(),
+    units: unitCounts,
   },
   handler: async (ctx, args) => {
     const defender = await requireCurrentPlayer(ctx);
@@ -276,33 +352,57 @@ export const fortifySiege = mutation({
       throw new Error("Choose an active player siege.");
     }
     if (siege.defenderId !== defender._id) {
-      throw new Error("Only the defender can fortify this siege.");
+      throw new Error("Only the defender can commit to this siege.");
+    }
+    if (Date.now() >= siege.resolveAt) {
+      throw new Error("This siege is already resolving.");
+    }
+    if (siege.defenderCommittedAt) {
+      throw new Error("Defenders are already committed to this siege.");
     }
 
-    const requested = Math.max(1, Math.floor(args.percent));
-    const availablePercent =
-      PLATEAU_RULES.siegeFortifyMaxPercent - siege.fortifyPercent;
-    const percent = Math.min(requested, availablePercent);
-    if (percent < 1) throw new Error("This siege is already fully fortified.");
-
-    const cost = percent * PLATEAU_RULES.siegeFortifySpheresPerPercent;
-    if (defender.spheres < cost) {
-      throw new Error(`Not enough spheres. Need ${cost}.`);
-    }
-
+    const units = cleanUnits(args.units);
+    if (totalUnits(units) < 1) throw new Error("Commit at least one unit.");
+    validateUnlockedUnits(defender.buildings, units);
+    const remainingUnits = subtractUnits(defender.units, units);
     const now = Date.now();
+
     await ctx.db.patch(defender._id, {
-      spheres: defender.spheres - cost,
+      units: remainingUnits,
       lastActiveAt: now,
     });
     await ctx.db.patch(siege._id, {
-      fortifyPercent: siege.fortifyPercent + percent,
+      defenderUnits: units,
+      defenderPower: effectivePower(units),
+      defenderSpeed: unitSpeed(units),
+      defenderCommittedAt: now,
     });
 
     return {
-      fortifyPercent: siege.fortifyPercent + percent,
-      cost,
+      committed: true,
+      defenderPower: effectivePower(units),
+      defenderSpeed: unitSpeed(units),
     };
+  },
+});
+
+export const setEmergencyDefense = mutation({
+  args: {
+    siegeId: v.id("sieges"),
+    percent: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await purchaseEmergencyDefense(ctx, args);
+  },
+});
+
+export const fortifySiege = mutation({
+  args: {
+    siegeId: v.id("sieges"),
+    percent: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await purchaseEmergencyDefense(ctx, args);
   },
 });
 
@@ -343,83 +443,12 @@ export const retreatSiege = mutation({
     siegeId: v.id("sieges"),
   },
   handler: async (ctx, args) => {
-    const player = await requireCurrentPlayer(ctx);
+    await requireCurrentPlayer(ctx);
     const siege = await ctx.db.get(args.siegeId);
     if (!siege || siege.status !== "pending") {
       throw new Error("Choose an active siege.");
     }
-    const plateau = await ctx.db.get(siege.plateauId);
-    if (!plateau) throw new Error("Plateau not found.");
-
-    const now = Date.now();
-    const attacker = await ctx.db.get(siege.attackerId);
-    if (!attacker) throw new Error("Attacker not found.");
-
-    if (player._id === siege.attackerId) {
-      const lossResult = applyLossRate(
-        siege.attackerUnits,
-        PLATEAU_RULES.attackerRetreatLossRate,
-        `${siege._id}:attacker-retreat:${now}`,
-      );
-      await ctx.db.patch(attacker._id, {
-        units: addUnits(attacker.units, lossResult.survivors),
-        lastActiveAt: now,
-      });
-      await ctx.db.patch(siege._id, {
-        status: "attacker_retreat",
-        resolvedAt: now,
-      });
-      await ctx.db.patch(plateau._id, {
-        activeSiegeId: undefined,
-        updatedAt: now,
-      });
-      await ctx.db.insert("gameEvents", {
-        text: `${attacker.name} retreated from a plateau siege.`,
-        createdAt: now,
-      });
-      return { retreated: true };
-    }
-
-    if (siege.defenderId && player._id === siege.defenderId) {
-      const defender = await ctx.db.get(siege.defenderId);
-      if (!defender) throw new Error("Defender not found.");
-      const attackerLossResult = applyLossRate(
-        siege.attackerUnits,
-        PLATEAU_RULES.siegeWinAttackerLossRate,
-        `${siege._id}:defender-retreat:attacker:${now}`,
-      );
-      await ctx.db.patch(attacker._id, {
-        units: addUnits(attacker.units, attackerLossResult.survivors),
-        lastActiveAt: now,
-      });
-      const defenderLossResult = applyLossRate(
-        defender.units,
-        PLATEAU_RULES.defenderRetreatLossRate,
-        `${siege._id}:defender-retreat:defender:${now}`,
-      );
-      await ctx.db.patch(defender._id, {
-        units: defenderLossResult.survivors,
-        lastActiveAt: now,
-      });
-      await ctx.db.patch(plateau._id, {
-        ownerPlayerId: attacker._id,
-        heldSince: now,
-        lastGemheartAt: now,
-        activeSiegeId: undefined,
-        updatedAt: now,
-      });
-      await ctx.db.patch(siege._id, {
-        status: "defender_retreat",
-        resolvedAt: now,
-      });
-      await ctx.db.insert("gameEvents", {
-        text: `${defender.name} abandoned ${plateau.name} to ${attacker.name}.`,
-        createdAt: now,
-      });
-      return { retreated: true };
-    }
-
-    throw new Error("Only the attacker or defender can retreat.");
+    throw new Error("Withdrawals are disabled for active sieges.");
   },
 });
 
@@ -521,10 +550,16 @@ export const resolveSiege = internalMutation({
         });
         resultText = `${attacker.name}'s siege found no defender.`;
       } else {
-        const defenderPower = targetDefensePower(
-          defender,
+        const defenderUnits = normalizeUnits(siege.defenderUnits ?? emptyUnits());
+        const emergencyDefensePercent = siege.emergencyDefensePercent ?? 0;
+        const defenderBasePower = committedDefenseBasePower(
+          defenderUnits,
           plateau,
-          siege.fortifyPercent,
+        );
+        const defenderPower = committedDefensePower(
+          defenderUnits,
+          plateau,
+          emergencyDefensePercent,
         );
         won = siege.attackerPower > defenderPower;
         const attackerLossResult = applyLossRate(
@@ -536,7 +571,7 @@ export const resolveSiege = internalMutation({
         );
         survivors = attackerLossResult.survivors;
         const defenderLossResult = applyLossRate(
-          defender.units,
+          defenderUnits,
           won
             ? PLATEAU_RULES.siegeWinDefenderLossRate
             : PLATEAU_RULES.siegeLossDefenderLossRate,
@@ -548,7 +583,7 @@ export const resolveSiege = internalMutation({
           lastActiveAt: now,
         });
         await ctx.db.patch(defender._id, {
-          units: defenderLossResult.survivors,
+          units: addUnits(defender.units, defenderLossResult.survivors),
           lastActiveAt: now,
         });
 
@@ -560,13 +595,13 @@ export const resolveSiege = internalMutation({
             activeSiegeId: undefined,
             updatedAt: now,
           });
-          resultText = `${attacker.name} captured ${plateau.name} from ${defender.name}. Attack Power ${siege.attackerPower}, Defense Power ${defenderPower}. Fortification +${siege.fortifyPercent}%. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
+          resultText = `${attacker.name} captured ${plateau.name} from ${defender.name}. Attack Power ${siege.attackerPower}, Committed Defense Power ${defenderBasePower}, Emergency Defenses +${emergencyDefensePercent}%, Final Defense ${defenderPower}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
         } else {
           await ctx.db.patch(plateau._id, {
             activeSiegeId: undefined,
             updatedAt: now,
           });
-          resultText = `${defender.name} held ${plateau.name} against ${attacker.name}. Attack Power ${siege.attackerPower}, Defense Power ${defenderPower}. Fortification +${siege.fortifyPercent}%. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
+          resultText = `${defender.name} held ${plateau.name} against ${attacker.name}. Attack Power ${siege.attackerPower}, Committed Defense Power ${defenderBasePower}, Emergency Defenses +${emergencyDefensePercent}%, Final Defense ${defenderPower}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
         }
 
         await ctx.db.insert("messages", {

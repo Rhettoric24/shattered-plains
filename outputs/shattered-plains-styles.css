@@ -169,6 +169,25 @@ h3 { font-size: 1rem; color: var(--accent); }
 .list-item small { display: block; color: var(--muted); margin-top: 4px; }
 .raid-item.incoming { border-color: rgba(127, 183, 255, 0.48); box-shadow: 0 0 18px rgba(127, 183, 255, 0.12); }
 .raid-item.outgoing { border-color: rgba(216, 229, 245, 0.28); }
+.siege-card { display: grid; gap: 10px; }
+.siege-defense-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  border: 1px solid rgba(127, 183, 255, 0.24);
+  border-radius: 6px;
+  background: rgba(127, 183, 255, 0.07);
+  padding: 12px;
+}
+.siege-defense-panel strong { color: var(--accent); }
+.siege-defense-panel > small, .siege-defense-note { color: var(--muted); line-height: 1.4; }
+.siege-defense-grid { margin-top: 2px; }
+.slider-row { display: grid; gap: 8px; }
+.slider-row span { display: flex; justify-content: space-between; gap: 10px; color: var(--text); font-weight: 850; }
+.slider-row input[type="range"] { padding: 0; accent-color: var(--accent); }
+.siege-defense-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.siege-defense-preview span { border: 1px solid rgba(216, 229, 245, 0.12); border-radius: 6px; background: rgba(7, 17, 31, 0.52); padding: 8px; color: var(--muted); font-size: 0.78rem; font-weight: 800; }
+.siege-defense-preview strong { display: block; margin-top: 4px; color: var(--accent); font-size: 0.95rem; }
 .plateau-status { display: grid; gap: 10px; }
 .plateau-card { border: 1px solid rgba(127, 183, 255, 0.32); border-radius: 6px; background: rgba(127, 183, 255, 0.08); padding: 14px; }
 .plateau-card strong, .plateau-card span, .plateau-card small { display: block; }
@@ -350,7 +369,7 @@ h3 { font-size: 1rem; color: var(--accent); }
     bottom: 12px;
     font-size: 0.8rem;
   }
-  .dashboard-stats, .stats-grid, .unit-input-grid, .raid-form, .raid-preview { grid-template-columns: 1fr; }
+  .dashboard-stats, .stats-grid, .unit-input-grid, .raid-form, .raid-preview, .siege-defense-preview { grid-template-columns: 1fr; }
   .world-alert { grid-template-columns: 1fr; }
   .panel { padding: 14px; }
   .stats-grid article { min-height: 70px; padding: 10px; }
