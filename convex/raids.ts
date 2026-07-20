@@ -3,6 +3,7 @@ import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { requireCurrentPlayer } from "./ownership";
+import { plateauCountsForPlayer } from "./plateauHelpers";
 import {
   applySurvivalLosses,
   casualtySummary,
@@ -116,7 +117,8 @@ async function createRaid(
 
   const now = Date.now();
   const departAt = now;
-  const arriveAt = now + travelMsForUnits(units);
+  const plateauCounts = await plateauCountsForPlayer(ctx, attacker._id);
+  const arriveAt = now + travelMsForUnits(units, plateauCounts);
   const power = effectivePower(units);
   const speed = unitSpeed(units);
   const remainingUnits = subtractUnits(attacker.units, units);

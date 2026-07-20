@@ -8,8 +8,27 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
+import {
+  createSeasonNeutralPlateaus,
+  createStarterPlateaus,
+} from "./plateauHelpers";
+import {
+  emptyBuildings,
+  emptyUnits,
+  STARTING_RULES,
+  WORLD_KEY,
+} from "./rules";
 
 type AnyCtx = QueryCtx | MutationCtx;
+type GameplayTable =
+  | "plateauCommitments"
+  | "plateauRuns"
+  | "raids"
+  | "sieges"
+  | "plateaus"
+  | "messages"
+  | "gameEvents"
+  | "gameState";
 
 declare const process: {
   env: Record<string, string | undefined>;
@@ -58,6 +77,84 @@ function requireDashboardAdminKey(adminKey: string) {
   if (adminKey !== configuredKey) {
     throw new Error("Invalid dashboard admin key.");
   }
+}
+
+async function deleteGameplayTable(ctx: MutationCtx, table: GameplayTable) {
+  let deleted = 0;
+
+  while (true) {
+    const rows = await ctx.db.query(table).take(100);
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      await ctx.db.delete(row._id);
+      deleted += 1;
+    }
+  }
+
+  return deleted;
+}
+
+async function performWorldResetKeepAccounts(ctx: MutationCtx) {
+  const now = Date.now();
+  const players = await ctx.db.query("players").take(200);
+  const deleted = {
+    plateauCommitments: await deleteGameplayTable(ctx, "plateauCommitments"),
+    plateauRuns: await deleteGameplayTable(ctx, "plateauRuns"),
+    raids: await deleteGameplayTable(ctx, "raids"),
+    sieges: await deleteGameplayTable(ctx, "sieges"),
+    plateaus: await deleteGameplayTable(ctx, "plateaus"),
+    messages: await deleteGameplayTable(ctx, "messages"),
+    gameEvents: await deleteGameplayTable(ctx, "gameEvents"),
+    gameState: await deleteGameplayTable(ctx, "gameState"),
+  };
+
+  const worldId = await ctx.db.insert("gameState", {
+    key: WORLD_KEY,
+    openAcres: players.length * STARTING_RULES.openAcresPerNewPlayer,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  for (const player of players) {
+    await ctx.db.patch(player._id, {
+      acres: STARTING_RULES.acres,
+      spheres: STARTING_RULES.spheres,
+      gemhearts: STARTING_RULES.gemhearts,
+      units: emptyUnits(),
+      buildings: emptyBuildings(),
+      lastEconomyAt: now,
+      lastActiveAt: now,
+      createdAt: now,
+    });
+
+    await createStarterPlateaus(ctx, player._id, now);
+
+    await ctx.db.insert("messages", {
+      toPlayerId: player._id,
+      kind: "system",
+      subject: "World reset",
+      body:
+        "The playtest world was reset. Your login and warcamp name were kept, and your kingdom has fresh starter resources.",
+      createdAt: now,
+    });
+  }
+
+  const neutralSeed = await createSeasonNeutralPlateaus(ctx, players.length, now);
+
+  await ctx.db.insert("gameEvents", {
+    text: `World reset. ${players.length} warcamps kept their accounts and received fresh starter kingdoms.`,
+    createdAt: now,
+  });
+
+  return {
+    reset: true,
+    worldId,
+    playersReset: players.length,
+    neutralPlateausCreated: neutralSeed.totalNeutral,
+    gemheartPlateausCreated: neutralSeed.gemhearts,
+    deleted,
+  };
 }
 
 async function pendingOperations(ctx: AnyCtx) {
@@ -277,5 +374,19 @@ export const forceResolveAllOperationsFromDashboard = mutation({
   handler: async (ctx, args) => {
     requireDashboardAdminKey(args.adminKey);
     return await scheduleAllPendingOperations(ctx);
+  },
+});
+
+export const resetWorldKeepAccounts = mutation({
+  args: {
+    confirm: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    if (args.confirm !== "RESET WORLD") {
+      throw new Error('Type "RESET WORLD" to confirm this reset.');
+    }
+
+    return await performWorldResetKeepAccounts(ctx);
   },
 });

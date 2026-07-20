@@ -2,7 +2,11 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { settlePlayerEconomy } from "./economyHelpers";
 import { requireCurrentPlayer } from "./ownership";
-import { plateauCountsForPlayer } from "./plateauHelpers";
+import {
+  plateauAttributeCountsForPlayer,
+  plateauCountsForPlayer,
+} from "./plateauHelpers";
+import { ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import {
   BUILDING_RULES,
   calculateBuildingStats,
@@ -14,6 +18,7 @@ const buildingKey = v.union(
   v.literal("market"),
   v.literal("watchtower"),
   v.literal("barracks"),
+  v.literal("soulcastBunker"),
 );
 
 type BuildingKey = keyof typeof BUILDING_RULES;
@@ -39,6 +44,8 @@ export const getBuildings = query({
   handler: async (ctx) => {
     const player = await requireCurrentPlayer(ctx);
     const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
+    const plateauAttributes = await plateauAttributeCountsForPlayer(ctx, player._id);
+    const ownedUnits = await ownedUnitsIncludingAway(ctx, player._id, player.units);
     const effects = calculateBuildingStats(
       player.acres,
       player.buildings,
@@ -57,6 +64,14 @@ export const getBuildings = query({
         watchtowerDefenseBonus: effects.watchtowerDefenseBonus,
         watchtowerDefensePercent: effects.watchtowerDefensePercent,
         barracksLevel: effects.barracksLevel,
+        soulcastBunkerLevel: effects.soulcastBunkerLevel,
+        soulcastBunkerCapacity: effects.soulcastBunkerCapacity,
+        provisions: provisionsStatus(
+          player.buildings,
+          plateauCounts,
+          ownedUnits,
+          plateauAttributes.large,
+        ),
       },
     };
   },

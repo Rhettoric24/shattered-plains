@@ -19,6 +19,7 @@ import {
   emergencyDefenseCost,
   effectivePower,
   emptyUnits,
+  identityPlateauType,
   normalizeUnits,
   PLATEAU_RULES,
   STARTING_RULES,
@@ -112,6 +113,35 @@ function siegeTravelMs() {
   return TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
 }
 
+function decoratePlateauForOwner(plateau: any, now: number) {
+  const type = identityPlateauType(plateau.type);
+  const lastGemheartAt = plateau.lastGemheartAt ?? plateau.heldSince ?? plateau.updatedAt;
+  const gemheartProgress =
+    type === "gemheart"
+      ? {
+          lastGemheartAt,
+          nextGemheartAt: lastGemheartAt + PLATEAU_RULES.gemheartIntervalMs,
+          progressPercent: Math.max(
+            0,
+            Math.min(
+              100,
+              Math.floor(
+                ((now - lastGemheartAt) / PLATEAU_RULES.gemheartIntervalMs) * 100,
+              ),
+            ),
+          ),
+        }
+      : null;
+
+  return {
+    ...plateau,
+    type,
+    typeName: plateauTypeName(type),
+    large: Boolean(plateau.large),
+    gemheartProgress,
+  };
+}
+
 async function purchaseEmergencyDefense(
   ctx: MutationCtx,
   args: { siegeId: Id<"sieges">; percent: number },
@@ -188,12 +218,12 @@ export const listPlateaus = query({
     return {
       types: plateauTypes(),
       counts: await plateauCountsForPlayer(ctx, viewer._id),
-      mine,
+      mine: mine.map((plateau) => decoratePlateauForOwner(plateau, Date.now())),
       neutral: neutral.filter((plateau) => !plateau.activeSiegeId),
       rivals: allOwned
         .filter((plateau) => plateau.ownerPlayerId !== viewer._id)
         .map((plateau) => ({
-          ...plateau,
+          ...decoratePlateauForOwner(plateau, Date.now()),
           ownerName: plateau.ownerPlayerId
             ? playerNames[plateau.ownerPlayerId] ?? "Unknown"
             : "Neutral",
@@ -459,6 +489,18 @@ export const backfillPlateaus = mutation({
     const now = Date.now();
     const players = await ctx.db.query("players").take(200);
     let starterCreated = 0;
+    let migrated = 0;
+    const existingPlateaus = await ctx.db.query("plateaus").take(300);
+    for (const plateau of existingPlateaus) {
+      const type = identityPlateauType(plateau.type);
+      const updates: any = {};
+      if (type !== plateau.type) updates.type = type;
+      if (plateau.large === undefined) updates.large = false;
+      if (Object.keys(updates).length > 0) {
+        await ctx.db.patch(plateau._id, { ...updates, updatedAt: now });
+        migrated += 1;
+      }
+    }
     for (const player of players) {
       starterCreated += await createStarterPlateaus(ctx, player._id, now);
     }
@@ -474,7 +516,7 @@ export const backfillPlateaus = mutation({
       createdAt: now,
     });
 
-    return { starterCreated, neutralCreated };
+    return { starterCreated, neutralCreated, migrated };
   },
 });
 

@@ -3,16 +3,19 @@ import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { requireCurrentPlayer } from "./ownership";
+import { plateauCountsForPlayer } from "./plateauHelpers";
 import {
   applySurvivalLosses,
   casualtySummary,
   effectivePower,
+  bridgedTravelReduction,
   normalizeUnits,
   PLATEAU_RUN_RULES,
   totalUnits,
   UNIT_RULES,
   unitPlunder,
   unitSpeed,
+  travelMsForUnits,
   type UnitCounts,
   type UnitKey,
 } from "./rules";
@@ -294,7 +297,13 @@ export const joinPlateauRun = mutation({
 
     const remainingUnits = subtractUnits(player.units, units);
     const power = effectivePower(units);
-    const speed = unitSpeed(units);
+    const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
+    const bridgedReduction = bridgedTravelReduction(plateauCounts);
+    const speed = unitSpeed(units) + bridgedReduction * 100;
+    const travelMinutes = Math.max(
+      1,
+      Math.round(travelMsForUnits(units, plateauCounts) / 60000),
+    );
 
     await ctx.db.patch(player._id, {
       units: remainingUnits,
@@ -307,6 +316,8 @@ export const joinPlateauRun = mutation({
       units,
       power,
       speed,
+      bridgedTravelReductionPercent: Math.round(bridgedReduction * 100),
+      travelMinutes,
       committedAt: now,
     });
 
@@ -315,7 +326,7 @@ export const joinPlateauRun = mutation({
       createdAt: now,
     });
 
-    return { commitmentId, power, speed };
+    return { commitmentId, power, speed, travelMinutes };
   },
 });
 

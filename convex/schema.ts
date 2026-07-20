@@ -15,6 +15,7 @@ const buildingLevels = v.object({
   market: v.number(),
   watchtower: v.number(),
   barracks: v.number(),
+  soulcastBunker: v.optional(v.number()),
 });
 
 const plateauType = v.union(
@@ -22,6 +23,8 @@ const plateauType = v.union(
   v.literal("training"),
   v.literal("gemheart"),
   v.literal("ancient_ruins"),
+  v.literal("bridged"),
+  v.literal("ancient"),
 );
 
 export default defineSchema({
@@ -74,6 +77,7 @@ export default defineSchema({
     status: v.union(v.literal("neutral"), v.literal("owned")),
     ownerPlayerId: v.optional(v.id("players")),
     highground: v.boolean(),
+    large: v.optional(v.boolean()),
     neutralDefenseInitial: v.number(),
     neutralDefenseRemaining: v.number(),
     heldSince: v.optional(v.number()),
@@ -150,6 +154,8 @@ export default defineSchema({
     units: unitCounts,
     power: v.number(),
     speed: v.number(),
+    bridgedTravelReductionPercent: v.optional(v.number()),
+    travelMinutes: v.optional(v.number()),
     committedAt: v.number(),
   })
     .index("by_run", ["plateauRunId"])

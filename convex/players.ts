@@ -4,16 +4,21 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { getCurrentPlayer, requireAuthUserId } from "./ownership";
 import {
   createNeutralPlateaus,
+  createSeasonNeutralPlateaus,
   createStarterPlateaus,
   neutralPlateaus,
   ownedPlateaus,
+  plateauAttributeCountsForPlayer,
   plateauCountsForPlayer,
 } from "./plateauHelpers";
+import { ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import {
   calculateArmyStats,
   calculateBuildingStats,
+  bridgedTravelReduction,
   emptyBuildings,
   emptyUnits,
+  sphereIncomeBonus,
   pendingEconomy,
   STARTING_RULES,
   WORLD_KEY,
@@ -100,11 +105,16 @@ async function createPlayerForAuth(
 
   const playerId = await ctx.db.insert("players", newPlayer);
   await createStarterPlateaus(ctx, playerId, now);
-  await createNeutralPlateaus(
-    ctx,
-    STARTING_RULES.neutralPlateausPerNewPlayer,
-    now,
-  );
+  const existingNeutralPlateaus = await neutralPlateaus(ctx);
+  if (existingNeutralPlateaus.length === 0) {
+    await createSeasonNeutralPlateaus(ctx, 1, now);
+  } else {
+    await createNeutralPlateaus(
+      ctx,
+      STARTING_RULES.neutralPlateausPerNewPlayer,
+      now,
+    );
+  }
 
   await ctx.db.patch(world._id, {
     openAcres: world.openAcres + STARTING_RULES.openAcresPerNewPlayer,
@@ -186,6 +196,7 @@ export const getPlayerByName = query({
 async function buildDashboard(ctx: QueryCtx, player: any) {
   const world = await getMainWorld(ctx);
   const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
+  const plateauAttributes = await plateauAttributeCountsForPlayer(ctx, player._id);
   const owned = await ownedPlateaus(ctx, player._id);
   const neutral = await neutralPlateaus(ctx);
   const incomingRaids = await ctx.db
@@ -204,6 +215,7 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
     .collect();
 
   const pending = pendingEconomy({ ...player, plateauCounts }, Date.now());
+  const ownedUnits = await ownedUnitsIncludingAway(ctx, player._id, player.units);
 
   return {
     player,
@@ -215,6 +227,19 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
     neutralPlateauCount: neutral.filter((plateau) => !plateau.activeSiegeId)
       .length,
     armyStats: calculateArmyStats(player.units),
+    provisions: provisionsStatus(
+      player.buildings,
+      plateauCounts,
+      ownedUnits,
+      plateauAttributes.large,
+    ),
+    plateauAttributes,
+    plateauBonuses: {
+      sphereIncomeBonusPercent: Math.round(sphereIncomeBonus(plateauCounts) * 100),
+      bridgedTravelReductionPercent: Math.round(
+        bridgedTravelReduction(plateauCounts) * 100,
+      ),
+    },
     buildingStats: calculateBuildingStats(
       player.acres,
       player.buildings,

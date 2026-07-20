@@ -79,9 +79,8 @@
             <article data-view-link="plateaus"><span>Plateaus</span><strong id="res-acres">0</strong></article>
             <article data-view-link="buildings"><span>Spheres</span><strong id="res-spheres">0</strong></article>
             <article data-view-link="buildings"><span>Gemhearts</span><strong id="res-gemhearts">0</strong></article>
-            <article data-view-link="plateaus"><span>Neutral</span><strong id="res-open-acres">0</strong></article>
             <article data-view-link="army"><span>Power</span><strong id="res-power">0</strong></article>
-            <article data-view-link="army"><span>Available</span><strong id="res-available">0</strong></article>
+            <article data-view-link="army" id="res-provisions-card"><span>Provisions</span><strong id="res-provisions">0 / 0</strong></article>
           </section>
 
           <section id="world-alerts" class="world-alerts" aria-label="World alerts"></section>
@@ -122,6 +121,7 @@
             <section class="panel full-panel">
               <p class="eyebrow">Buildings</p>
               <h2>Choose the next investment</h2>
+              <div id="provisions-summary" class="capacity-banner"></div>
               <div id="buildings" class="building-grid"></div>
             </section>
           </section>
@@ -130,6 +130,7 @@
             <section class="panel full-panel">
               <p class="eyebrow">Roster</p>
               <h2>Recruit units</h2>
+              <div id="army-provisions-summary" class="capacity-banner"></div>
               <div id="unit-roster" class="building-grid"></div>
             </section>
           </section>
@@ -270,8 +271,9 @@
                 <button id="start-plateau" type="button">Start plateau run</button>
                 <button id="finish-plateau" type="button">Finish plateau run</button>
                 <button id="backfill-plateaus" type="button">Backfill plateaus</button>
+                <button id="reset-world-keep-accounts" class="danger-button" type="button">Reset world / keep accounts</button>
               </div>
-              <p class="hint">These tools call Convex testing helpers. Economy is lazy-settled when you train, build, or open your dashboard.</p>
+              <p class="hint">These tools call Convex testing helpers. Economy is lazy-settled when you train, build, or open your dashboard. Resetting the world keeps login accounts and warcamp names, but wipes current gameplay state.</p>
             </section>
           </section>
 

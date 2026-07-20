@@ -2,6 +2,8 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
   emptyPlateauCounts,
+  identityPlateauType,
+  initialGemheartPlateauCount,
   PLATEAU_RULES,
   STARTING_RULES,
   type PlateauCounts,
@@ -12,16 +14,18 @@ type Ctx = QueryCtx | MutationCtx;
 
 const PLATEAU_TYPES: PlateauType[] = [
   "sphere",
-  "training",
+  "bridged",
   "gemheart",
-  "ancient_ruins",
+  "ancient",
 ];
 
 const TYPE_NAMES: Record<PlateauType, string> = {
   sphere: "Sphere Plateau",
-  training: "Training Plateau",
+  training: "Bridged Plateau",
   gemheart: "Gemheart Plateau",
-  ancient_ruins: "Ancient Ruins",
+  ancient_ruins: "Ancient Plateau",
+  bridged: "Bridged Plateau",
+  ancient: "Ancient Plateau",
 };
 
 function seededInt(seed: string, min: number, max: number) {
@@ -32,20 +36,20 @@ function seededInt(seed: string, min: number, max: number) {
   return min + (hash % (max - min + 1));
 }
 
-function neutralType(seed: string) {
+function neutralType(seed: string, allowGemheart: boolean) {
   const roll = seededInt(seed, 1, 100);
+  if (allowGemheart && roll > 88) return "gemheart";
   if (roll <= 45) return "sphere";
-  if (roll <= 70) return "training";
-  if (roll <= 88) return "ancient_ruins";
-  return "gemheart";
+  if (roll <= 72) return "bridged";
+  return "ancient";
 }
 
 function neutralName(type: PlateauType, sequence: number) {
-  return `${TYPE_NAMES[type]} ${sequence}`;
+  return `${TYPE_NAMES[identityPlateauType(type)]} ${sequence}`;
 }
 
 export function plateauTypeName(type: PlateauType) {
-  return TYPE_NAMES[type];
+  return TYPE_NAMES[identityPlateauType(type)];
 }
 
 export async function ownedPlateaus(ctx: Ctx, playerId: Id<"players">) {
@@ -69,9 +73,20 @@ export async function plateauCountsForPlayer(
   const counts = emptyPlateauCounts();
   const plateaus = await ownedPlateaus(ctx, playerId);
   for (const plateau of plateaus) {
-    counts[plateau.type] += 1;
+    counts[identityPlateauType(plateau.type)] += 1;
   }
   return counts;
+}
+
+export async function plateauAttributeCountsForPlayer(
+  ctx: Ctx,
+  playerId: Id<"players">,
+) {
+  const plateaus = await ownedPlateaus(ctx, playerId);
+  return {
+    large: plateaus.filter((plateau) => Boolean(plateau.large)).length,
+    highground: plateaus.filter((plateau) => Boolean(plateau.highground)).length,
+  };
 }
 
 export async function createStarterPlateaus(
@@ -89,6 +104,7 @@ export async function createStarterPlateaus(
       status: "owned",
       ownerPlayerId: playerId,
       highground: PLATEAU_RULES.starterHighground,
+      large: PLATEAU_RULES.starterLarge,
       neutralDefenseInitial: 0,
       neutralDefenseRemaining: 0,
       heldSince: now,
@@ -105,14 +121,16 @@ export async function createNeutralPlateaus(
   ctx: MutationCtx,
   count: number,
   now: number,
+  options: { allowGemheart?: boolean } = {},
 ) {
   const existing = await neutralPlateaus(ctx);
   const start = existing.length + 1;
+  const allowGemheart = options.allowGemheart ?? false;
 
   for (let index = 0; index < count; index += 1) {
     const sequence = start + index;
     const seed = `${now}:neutral:${sequence}`;
-    const type = neutralType(seed);
+    const type = neutralType(seed, allowGemheart);
     const defense = seededInt(
       `${seed}:defense`,
       PLATEAU_RULES.neutralDefenseMin,
@@ -121,12 +139,16 @@ export async function createNeutralPlateaus(
     const highground =
       seededInt(`${seed}:highground`, 1, 100) <=
       PLATEAU_RULES.neutralHighgroundChancePercent;
+    const large =
+      seededInt(`${seed}:large`, 1, 100) <=
+      PLATEAU_RULES.neutralLargeChancePercent;
 
     await ctx.db.insert("plateaus", {
       name: neutralName(type, sequence),
       type,
       status: "neutral",
       highground,
+      large,
       neutralDefenseInitial: defense,
       neutralDefenseRemaining: defense,
       createdAt: now,
@@ -135,6 +157,69 @@ export async function createNeutralPlateaus(
   }
 
   return count;
+}
+
+async function createSpecificNeutralPlateau(
+  ctx: MutationCtx,
+  type: PlateauType,
+  sequence: number,
+  now: number,
+) {
+  const seed = `${now}:neutral:${sequence}:${type}`;
+  const defense = seededInt(
+    `${seed}:defense`,
+    PLATEAU_RULES.neutralDefenseMin,
+    PLATEAU_RULES.neutralDefenseMax,
+  );
+  const highground =
+    seededInt(`${seed}:highground`, 1, 100) <=
+    PLATEAU_RULES.neutralHighgroundChancePercent;
+  const large =
+    seededInt(`${seed}:large`, 1, 100) <=
+    PLATEAU_RULES.neutralLargeChancePercent;
+
+  await ctx.db.insert("plateaus", {
+    name: neutralName(type, sequence),
+    type,
+    status: "neutral",
+    highground,
+    large,
+    neutralDefenseInitial: defense,
+    neutralDefenseRemaining: defense,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+export async function createSeasonNeutralPlateaus(
+  ctx: MutationCtx,
+  playerCount: number,
+  now: number,
+) {
+  const totalNeutral = playerCount * STARTING_RULES.neutralPlateausPerNewPlayer;
+  const gemhearts = Math.min(
+    totalNeutral,
+    initialGemheartPlateauCount(playerCount),
+  );
+  const existing = await neutralPlateaus(ctx);
+  const start = existing.length + 1;
+
+  for (let index = 0; index < gemhearts; index += 1) {
+    await createSpecificNeutralPlateau(ctx, "gemheart", start + index, now);
+  }
+
+  const nonGemheartCreated = await createNeutralPlateaus(
+    ctx,
+    Math.max(0, totalNeutral - gemhearts),
+    now,
+    { allowGemheart: false },
+  );
+
+  return {
+    totalNeutral,
+    gemhearts,
+    nonGemheartCreated,
+  };
 }
 
 export async function grantGemheartPlateauIncome(

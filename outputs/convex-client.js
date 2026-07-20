@@ -31,6 +31,7 @@ const refs = {
   signIn: "auth:signIn",
   signOut: "auth:signOut",
   isAdmin: "admin:isAdmin",
+  resetWorldKeepAccounts: "admin:resetWorldKeepAccounts",
   bootstrapWorld: "game:bootstrapWorld",
   getClock: "game:getClock",
   getGameConfig: "config:getGameConfig",
@@ -222,10 +223,11 @@ function showAccountMessage(text) {
 function buildState(data) {
   const player = data.dashboard.player;
   const playerUnits = normalizeUnitObject(player.units);
+  const playerBuildings = normalizeBuildingObject(player.buildings, data.config.buildings);
   const config = {
     ...data.config,
-    buildings: decorateBuildings(data.config.buildings, player.buildings),
-    unlockedUnits: unlockedUnits(data.config.units, player.buildings),
+    buildings: decorateBuildings(data.config.buildings, playerBuildings),
+    unlockedUnits: unlockedUnits(data.config.units, playerBuildings),
   };
   const outgoingRaids = data.raids.filter((raid) => raid.attackerId === player._id);
   const outgoingSieges = (data.plateaus?.sieges || []).filter((siege) => siege.attackerId === player._id);
@@ -242,7 +244,7 @@ function buildState(data) {
   );
   const totalUnitsAtHome = sumUnits(playerUnits);
   const totalUnitsOwned = totalUnitsAtHome + sumUnits(unitsAway);
-  const watchtowerBonus = 1 + (player.buildings.watchtower || 0) * data.config.watchtowerDefensePerLevel;
+  const watchtowerBonus = 1 + (playerBuildings.watchtower || 0) * data.config.watchtowerDefensePerLevel;
   const availableStats = data.dashboard.armyStats;
   const playerRows = data.players.map((entry) => ({
     id: entry._id,
@@ -264,8 +266,11 @@ function buildState(data) {
       units: playerUnits,
       availableUnits: playerUnits,
       unitsAway,
-      buildings: player.buildings,
+      buildings: playerBuildings,
       buildingStats: data.dashboard.buildingStats,
+      provisions: data.dashboard.provisions || { used: 0, capacity: 0, remaining: 0 },
+      plateauBonuses: data.dashboard.plateauBonuses || { sphereIncomeBonusPercent: 0, bridgedTravelReductionPercent: 0 },
+      plateauAttributes: data.dashboard.plateauAttributes || { large: 0, highground: 0 },
       totalIncomePerDay: data.dashboard.buildingStats.totalIncomePerDay,
       totalUnits: totalUnitsOwned,
       totalAvailableUnits: totalUnitsAtHome,
@@ -311,9 +316,8 @@ function render() {
   $("res-acres").textContent = number(me.acres);
   $("res-spheres").textContent = number(me.spheres);
   $("res-gemhearts").textContent = number(me.gemhearts || 0);
-  $("res-open-acres").textContent = number(state.openAcres);
   $("res-power").textContent = formatStat(me.power);
-  $("res-available").textContent = number(me.totalAvailableUnits);
+  renderTopProvisions();
   $("income").textContent = number(me.totalIncomePerDay);
   $("income-card").title = incomeTooltip();
   $("units-total").textContent = number(me.totalUnits);
@@ -481,9 +485,13 @@ function showView(view) {
 }
 
 function renderBuildings() {
+  renderProvisionsSummary("provisions-summary");
   $("buildings").innerHTML = Object.entries(state.config.buildings).map(([key, building]) => {
     const level = state.me.buildings[key] || building.level || 0;
-    return '<article class="upgrade-card"><div><strong>' + escapeHtml(building?.name || key) + '</strong><span>Level ' + level + '</span><small>' + escapeHtml(building?.description || "") + '</small></div><button data-building="' + key + '">Upgrade: ' + number(building?.nextCost || 0) + '</button></article>';
+    const provisionsLine = key === "soulcastBunker"
+      ? '<small>Current capacity +' + number(soulcastBunkerCapacity(level)) + '. Next level +' + number(soulcastBunkerLevelCapacity(level + 1)) + ' Provisions.</small>'
+      : "";
+    return '<article class="upgrade-card"><div><strong>' + escapeHtml(building?.name || key) + '</strong><span>Level ' + level + '</span><small>' + escapeHtml(building?.description || "") + '</small>' + provisionsLine + '</div><button data-building="' + key + '">Upgrade: ' + number(building?.nextCost || 0) + '</button></article>';
   }).join("");
   document.querySelectorAll("[data-building]").forEach((button) => {
     button.addEventListener("click", () => action(() => client.mutation(refs.upgradeBuilding, { building: button.dataset.building })));
@@ -491,15 +499,20 @@ function renderBuildings() {
 }
 
 function renderUnits() {
+  renderProvisionsSummary("army-provisions-summary");
   $("unit-roster").innerHTML = activeUnitEntries().map(([key, unit]) => {
     const unlocked = Boolean(state.config.unlockedUnits[key]);
     const count = state.me.units[key] || 0;
     const available = state.me.availableUnits[key] || 0;
     const costText = unit.gemheartCost ? "Cost " + unit.gemheartCost + " Gemheart" : "Cost " + unit.cost + " spheres";
+    const provisionCost = unit.provisionsCost || 0;
     const buttons = [1, 10, 50, 100].map((amount) => {
-      return '<button type="button" data-train-unit="' + key + '" data-train-count="' + amount + '"' + (unlocked ? "" : " disabled") + '>' + amount + '</button>';
+      const wouldUse = state.me.provisions.used + provisionCost * amount;
+      const overCapacity = wouldUse > state.me.provisions.capacity;
+      const title = overCapacity ? ' title="Needs more Provisions. Upgrade a Soulcast Bunker."' : "";
+      return '<button type="button" data-train-unit="' + key + '" data-train-count="' + amount + '"' + (unlocked ? "" : " disabled") + title + '>' + amount + '</button>';
     }).join("");
-    return '<article class="upgrade-card unit-card ' + (unlocked ? "" : "locked") + '" title="' + unitStatsTooltip(unit) + '"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span><small>' + escapeHtml(costText) + '</small><small>Owned: ' + number(count) + '</small><small>Ready: ' + number(available) + '</small></div><div class="train-buttons">' + buttons + '</div></article>';
+    return '<article class="upgrade-card unit-card ' + (unlocked ? "" : "locked") + '" title="' + unitStatsTooltip(unit) + '"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span><small>' + escapeHtml(costText) + '</small><small>Provisions: ' + number(provisionCost) + ' each</small><small>Owned: ' + number(count) + '</small><small>Ready: ' + number(available) + '</small></div><div class="train-buttons">' + buttons + '</div></article>';
   }).join("");
   document.querySelectorAll("[data-train-unit]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -509,6 +522,32 @@ function renderUnits() {
       }));
     });
   });
+}
+
+function renderProvisionsSummary(containerId) {
+  const container = $(containerId);
+  if (!container) return;
+  const provisions = state.me.provisions || { used: 0, capacity: 0, remaining: 0 };
+  const overCap = provisions.used > provisions.capacity;
+  container.classList.toggle("warning", overCap);
+  container.innerHTML = '<div><span>Provisions</span><strong>' + number(provisions.used) + ' / ' + number(provisions.capacity) + '</strong></div><small>' +
+    (overCap
+      ? 'Your army is over capacity. Upgrade a Soulcast Bunker before training more units.'
+      : number(provisions.remaining) + ' Provisions available for new units. Soulcast Bunkers increase capacity' + (provisions.largeBonusPercent ? ', boosted +' + number(provisions.largeBonusPercent) + '% by Large Plateaus.' : '.')) +
+    '</small>';
+}
+
+function renderTopProvisions() {
+  const card = $("res-provisions-card");
+  const value = $("res-provisions");
+  if (!card || !value) return;
+  const provisions = state.me.provisions || { used: 0, capacity: 0, remaining: 0 };
+  const overCap = provisions.used > provisions.capacity;
+  value.textContent = number(provisions.used) + " / " + number(provisions.capacity);
+  card.classList.toggle("warning", overCap);
+  card.title = overCap
+    ? "Over Provisions. Upgrade a Soulcast Bunker before training more units."
+    : number(provisions.remaining) + " Provisions available." + (provisions.largeBonusPercent ? "\nLarge Plateau bonus: +" + number(provisions.largeBonusPercent) + "% Soulcast Bunker capacity." : "");
 }
 
 function renderSelects() {
@@ -579,7 +618,7 @@ function renderRaidPreviews() {
 function previewMarkup(units, acres, type) {
   const stats = raidStats(units);
   const isSiege = type === "neutralSiege" || type === "playerSiege";
-  const travel = isSiege ? fixedSiegeTravelMinutes() : travelMinutes(stats.speed);
+  const travel = isSiege ? fixedSiegeTravelMinutes() : travelMinutes(stats.speed, true);
   const arrival = new Date(Date.now() + travel * 60000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const target = type === "spheres" ? sphereTargetPreview() : type === "plateau" ? plateauTargetPreview(stats) : type === "neutralSiege" ? neutralSiegePreview(stats) : type === "playerSiege" ? playerSiegePreview(stats) : "Choose a target";
   const speedLabel = isSiege ? "Future siege stat" : "Army Speed";
@@ -602,8 +641,9 @@ function plateauTargetPreview(stats) {
   if (!state.plateauRun) return "No plateau run is open";
   const participantCount = state.plateauRun.participants.length;
   const bonus = state.config.plateauRuns.joinOrderSpeedBonuses[participantCount] || 0;
-  const speedScore = stats.speed * (1 + bonus);
-  return "Difficulty " + plateauRunDifficultyLabel(state.plateauRun.difficultyPower) + ", loot " + plateauRunLootLabel(state.plateauRun.spherePool) + ". Your speed score " + formatStat(speedScore) + " with " + Math.round(bonus * 100) + "% join bonus";
+  const effectiveSpeed = stats.speed + bridgedTravelReductionPercent();
+  const speedScore = effectiveSpeed * (1 + bonus);
+  return "Difficulty " + plateauRunDifficultyLabel(state.plateauRun.difficultyPower) + ", loot " + plateauRunLootLabel(state.plateauRun.spherePool) + ". Your speed score " + formatStat(speedScore) + " with " + Math.round(bonus * 100) + "% join bonus and " + number(bridgedTravelReductionPercent()) + "% Bridged travel reduction";
 }
 
 function neutralSiegePreview(stats) {
@@ -659,8 +699,13 @@ function renderPlateaus() {
 }
 
 function plateauCard(plateau) {
-  const trait = plateau.highground ? "Highground" : "Standard ground";
-  return '<article class="plateau-holding-card" title="' + plateauTooltip(plateau) + '"><strong>' + escapeHtml(plateau.name) + '</strong><span>' + escapeHtml(plateau.typeName) + '</span><small>' + escapeHtml(trait) + '</small></article>';
+  const attributes = plateauAttributes(plateau).join(", ");
+  const underSiege = Boolean(plateau.activeSiegeId);
+  const status = underSiege ? '<small class="warning-text">Under siege</small>' : "";
+  const timer = plateau.gemheartProgress
+    ? '<small>Gemheart: ' + number(plateau.gemheartProgress.progressPercent) + '% toward next</small>'
+    : "";
+  return '<article class="plateau-holding-card ' + (underSiege ? "warning" : "") + '" title="' + plateauTooltip(plateau) + '"><strong>' + escapeHtml(plateau.name) + '</strong><span>' + escapeHtml(plateau.typeName) + '</span><small>' + escapeHtml(attributes) + '</small><small>' + escapeHtml(plateauBonusLabel(plateau)) + '</small>' + timer + status + '</article>';
 }
 
 function siegeCard(siege) {
@@ -788,7 +833,7 @@ function renderPlateau() {
       ? escapeHtml(entry.unitSummary)
       : "Committed force appears " + operationPowerLabel(entry.power);
     const detailText = isMine
-      ? "Power " + formatStat(entry.power) + ", speed " + formatStat(entry.speed) + ", speed score " + formatStat(entry.speedScore)
+      ? "Power " + formatStat(entry.power) + ", speed " + formatStat(entry.speed) + ", speed score " + formatStat(entry.speedScore) + (entry.travelMinutes ? ", travel " + formatDuration(entry.travelMinutes) : "")
       : "Estimated strength " + operationPowerLabel(entry.power) + ", pace " + operationSpeedLabel(entry.speedScore);
     return '<article class="list-item"><strong>' + escapeHtml(entry.playerName) + '</strong><span>' + forceText + '</span><small>' + detailText + bonus + ', joined #' + entry.joinOrder + '.</small></article>';
   }).join("") : '<div class="empty">No committed warcamps yet.</div>';
@@ -842,6 +887,7 @@ function activeUnitEntries() {
 
 function unitStatsTooltip(unit) {
   return escapeHtml(
+    "Provisions: " + number(unit.provisionsCost || 0) + " per unit\n" +
     "Power: " + formatStat(unit.power) + " - " + statTooltip("power") + "\n" +
     "Speed: " + formatStat(unit.speed) + " - " + statTooltip("speed") + "\n" +
     "Plunder: " + formatStat(unit.plunder || 0) + " - " + statTooltip("plunder") + "\n" +
@@ -851,21 +897,41 @@ function unitStatsTooltip(unit) {
 
 function incomeTooltip() {
   const stats = state.me.buildingStats || {};
+  const bonusPercent = stats.sphereBonusPercent || state.me.plateauBonuses?.sphereIncomeBonusPercent || 0;
   return [
     number(stats.marketIncomePerDay || 0) + "/day - Markets",
-    number(stats.acreIncomePerDay || stats.plateauIncomePerDay || 0) + "/day - Plateaus",
+    number(stats.sphereBonusIncomePerDay || 0) + "/day - Sphere Plateau bonus (+" + number(bonusPercent) + "%)",
   ].join("\n");
 }
 
 function plateauTooltip(plateau) {
   const effects = [];
-  if (plateau.type === "sphere") effects.push("Generates 150 spheres per game day before duplicate reductions.");
-  if (plateau.type === "training") effects.push("Reduces training costs through land bonuses.");
+  if (plateau.type === "sphere") effects.push("Sphere Plateau: +10% passive Sphere income, stacking to +30%.");
+  if (plateau.type === "bridged" || plateau.type === "training") effects.push("Bridged Plateau: -10% normal Raid and Plateau Run travel time, stacking to -30%.");
   if (plateau.type === "gemheart") effects.push("Grants 1 Gemheart every 12 real hours if held.");
-  if (plateau.type === "ancient_ruins") effects.push("Future research boost. Dormant for now.");
+  if (plateau.type === "ancient" || plateau.type === "ancient_ruins") effects.push("Ancient Plateau: future Research and Fabrial site. Dormant for now.");
   if (plateau.highground) effects.push("Highground: +20% defense when this plateau is attacked.");
+  if (plateau.large) effects.push("Large: +10% Soulcast Bunker Provisions capacity, stacking to +30%.");
+  if (plateau.gemheartProgress) {
+    effects.push("Gemheart progress: " + number(plateau.gemheartProgress.progressPercent) + "%.");
+  }
   if (!effects.length) effects.push("No special effect yet.");
   return escapeHtml(effects.join("\n"));
+}
+
+function plateauAttributes(plateau) {
+  const attributes = [];
+  if (plateau.highground) attributes.push("Highground");
+  if (plateau.large) attributes.push("Large");
+  return attributes.length ? attributes : ["Standard"];
+}
+
+function plateauBonusLabel(plateau) {
+  if (plateau.type === "sphere") return "+10% passive Sphere income";
+  if (plateau.type === "bridged" || plateau.type === "training") return "-10% Raid and Plateau Run travel";
+  if (plateau.type === "gemheart") return "1 Gemheart every 12 real hours";
+  if (plateau.type === "ancient" || plateau.type === "ancient_ruins") return "Future Research/Fabrial site";
+  return "No active bonus";
 }
 
 function neutralDefenseLabel(power) {
@@ -919,8 +985,37 @@ async function action(work) {
 function decorateBuildings(rules, levels) {
   return Object.fromEntries(Object.entries(rules).map(([key, rule]) => {
     const level = levels[key] || 0;
-    return [key, { ...rule, level, nextCost: rule.baseCost * (level + 1) }];
+    return [key, { ...rule, level, nextCost: buildingCost(rule, level) }];
   }));
+}
+
+function normalizeBuildingObject(buildings, rules) {
+  return Object.fromEntries(Object.keys(rules || {}).map((key) => [
+    key,
+    Math.max(0, Math.floor(Number(buildings?.[key]) || 0)),
+  ]));
+}
+
+function buildingCost(rule, currentLevel) {
+  if (Array.isArray(rule.levelCosts)) {
+    return rule.levelCosts[currentLevel] || rule.levelCosts[rule.levelCosts.length - 1] || rule.baseCost || 0;
+  }
+  return (rule.baseCost || 0) * (currentLevel + 1);
+}
+
+function soulcastBunkerLevelCapacity(level) {
+  const rule = state.config.buildings.soulcastBunker || {};
+  const values = rule.provisionsByLevel || [];
+  if (level < 1) return 0;
+  return values[level - 1] || values[values.length - 1] || 0;
+}
+
+function soulcastBunkerCapacity(level) {
+  let total = 0;
+  for (let current = 1; current <= level; current += 1) {
+    total += soulcastBunkerLevelCapacity(current);
+  }
+  return total;
 }
 
 function unlockedUnits(units, buildings) {
@@ -953,18 +1048,23 @@ function decorateRaids(raids, players, unitsConfig) {
 function decoratePlateaus(plateaus, players, unitsConfig) {
   const typeNames = {
     sphere: "Sphere Plateau",
-    training: "Training Plateau",
+    training: "Bridged Plateau",
     gemheart: "Gemheart Plateau",
-    ancient_ruins: "Ancient Ruins",
+    ancient_ruins: "Ancient Plateau",
+    bridged: "Bridged Plateau",
+    ancient: "Ancient Plateau",
   };
+  const normalizePlateauType = (type) => type === "training" ? "bridged" : type === "ancient_ruins" ? "ancient" : type;
   const decorate = (plateau, visible = true) => ({
     id: plateau._id,
     name: visible ? plateau.name : "Unclaimed Plateau",
-    type: visible ? plateau.type : "unknown",
-    typeName: visible ? (typeNames[plateau.type] || plateau.type) : "Unknown reward",
+    type: visible ? normalizePlateauType(plateau.type) : "unknown",
+    typeName: visible ? (plateau.typeName || typeNames[normalizePlateauType(plateau.type)] || plateau.type) : "Unknown reward",
     ownerName: plateau.ownerName || "Neutral",
     ownerPlayerId: plateau.ownerPlayerId || null,
     highground: Boolean(plateau.highground),
+    large: Boolean(plateau.large),
+    gemheartProgress: plateau.gemheartProgress || null,
     neutralDefenseRemaining: plateau.neutralDefenseRemaining || 0,
     activeSiegeId: plateau.activeSiegeId || null,
   });
@@ -1023,6 +1123,8 @@ function decoratePlateauRun(plateauRun, unitsConfig) {
       power: entry.power,
       speed: entry.speed,
       speedScore: entry.speedScore,
+      travelMinutes: entry.travelMinutes || null,
+      bridgedTravelReductionPercent: entry.bridgedTravelReductionPercent || 0,
       joinOrder: entry.joinOrder,
       joinOrderSpeedBonus: entry.joinOrderSpeedBonus,
     })),
@@ -1058,7 +1160,11 @@ function raidStats(units) {
   return stats;
 }
 
-function travelMinutes(speed) {
+function bridgedTravelReductionPercent() {
+  return Math.max(0, Math.min(30, Number(state?.me?.plateauBonuses?.bridgedTravelReductionPercent || 0)));
+}
+
+function travelMinutes(speed, includeBridged = false) {
   const base = configValue("raidTravelGameDays", 1) * configValue("realMsPerGameDay", 3600000);
   const effectiveSpeed = Math.max(
     -configValue("maxTravelPenaltyPercent", 50),
@@ -1067,7 +1173,8 @@ function travelMinutes(speed) {
   const multiplier = effectiveSpeed >= 0
     ? 1 - effectiveSpeed / 100
     : 1 + Math.abs(effectiveSpeed) / 100;
-  return Math.ceil((base * multiplier) / 60000);
+  const bridgedMultiplier = includeBridged ? 1 - bridgedTravelReductionPercent() / 100 : 1;
+  return Math.ceil((base * multiplier * bridgedMultiplier) / 60000);
 }
 
 function fixedSiegeTravelMinutes() {
@@ -1108,7 +1215,10 @@ function addUnitObjects(left, right) {
 }
 
 function number(value) {
-  return Math.floor(Number(value) || 0).toLocaleString();
+  const numeric = Number(value) || 0;
+  return numeric.toLocaleString(undefined, {
+    maximumFractionDigits: Number.isInteger(numeric) ? 0 : 2,
+  });
 }
 
 function configValue(key, fallback) {
@@ -1308,6 +1418,25 @@ $("finish-plateau").addEventListener("click", () => {
   action(() => client.mutation(refs.forceResolvePlateauRun, { plateauRunId: state.plateauRun.id }));
 });
 $("backfill-plateaus").addEventListener("click", () => action(() => client.mutation(refs.backfillPlateaus, {})));
+if ($("reset-world-keep-accounts")) {
+  $("reset-world-keep-accounts").addEventListener("click", () => {
+    const confirmText = window.prompt(
+      'This wipes raids, sieges, Plateau Runs, messages, plateaus, and kingdom progress, but keeps login accounts and warcamp names. Type "RESET WORLD" to continue.',
+    );
+    if (confirmText !== "RESET WORLD") return;
+
+    action(async () => {
+      const result = await client.mutation(refs.resetWorldKeepAccounts, {
+        confirm: confirmText,
+      });
+      alert(
+        "World reset complete. " +
+          number(result.playersReset) +
+          " warcamps were given fresh starter kingdoms.",
+      );
+    });
+  });
+}
 document.querySelectorAll(".nav-button").forEach((button) => {
   button.addEventListener("click", () => {
     if (button.dataset.adminOnly === "true" && !state?.isAdmin) return;

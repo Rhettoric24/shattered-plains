@@ -15,6 +15,7 @@ export const STARTING_RULES = {
   acres: 20,
   openAcresPerNewPlayer: 100,
   startingPlateaus: 2,
+  starterPlateauProvisionsCapacity: 25,
   neutralPlateausPerNewPlayer: 3,
   spheres: 1200,
   gemhearts: 1,
@@ -28,7 +29,15 @@ export const ECONOMY_RULES = {
 export const PLATEAU_RULES = {
   starterType: "sphere",
   starterHighground: true,
-  sphereIncomePerGameDay: 150,
+  starterLarge: false,
+  sphereIncomeBonusPerPlateau: 0.1,
+  sphereIncomeBonusMax: 0.3,
+  bridgedTravelReductionPerPlateau: 0.1,
+  bridgedTravelReductionMax: 0.3,
+  largeProvisionsBonusPerPlateau: 0.1,
+  largeProvisionsBonusMax: 0.3,
+  neutralLargeChancePercent: 15,
+  initialGemheartPlateauPlayerDivisor: 3,
   trainingDiscountPerPlateau: 0.1,
   gemheartIntervalMs: 12 * 60 * 60 * 1000,
   highgroundDefenseBonus: 0.2,
@@ -84,6 +93,7 @@ export const UNIT_RULES = {
     name: "Bridgeman",
     role: "Fast - Fragile",
     active: true,
+    provisionsCost: 0.5,
     power: 1,
     speed: 10,
     plunder: 2,
@@ -97,6 +107,7 @@ export const UNIT_RULES = {
     name: "Spearman",
     role: "Powerful - Reliable",
     active: true,
+    provisionsCost: 1,
     power: 5,
     speed: 4,
     plunder: 2,
@@ -110,6 +121,7 @@ export const UNIT_RULES = {
     name: "Chull",
     role: "High Plunder - Very Slow",
     active: true,
+    provisionsCost: 5,
     power: 0,
     speed: 1,
     plunder: 20,
@@ -123,6 +135,7 @@ export const UNIT_RULES = {
     name: "Scout",
     role: "Legacy intelligence unit",
     active: false,
+    provisionsCost: 2,
     power: 1.5,
     speed: 1,
     plunder: 1,
@@ -136,6 +149,7 @@ export const UNIT_RULES = {
     name: "Heavy Infantry",
     role: "Legacy defensive unit",
     active: false,
+    provisionsCost: 6,
     power: 4,
     speed: -0.5,
     plunder: 1,
@@ -149,6 +163,7 @@ export const UNIT_RULES = {
     name: "Shardbearer",
     role: "Legendary Power - Extremely Rare",
     active: true,
+    provisionsCost: 8,
     power: 20,
     speed: 3,
     plunder: 5,
@@ -166,23 +181,40 @@ export const BUILDING_RULES = {
   market: {
     name: "Gemheart Market",
     baseCost: 150,
+    constructionTimeMs: 0,
     description: "+250 spheres per game day per level",
   },
   watchtower: {
     name: "Watchtower",
     baseCost: 120,
+    constructionTimeMs: 0,
     description: "+5% home power per level",
   },
   barracks: {
     name: "Barracks",
     baseCost: 180,
+    constructionTimeMs: 0,
     description: "Unlocks advanced unit types",
+  },
+  soulcastBunker: {
+    name: "Soulcast Bunker",
+    baseCost: 500,
+    levelCosts: [500, 1000, 1750, 2750, 4000, 6000, 8500, 11500, 15000, 19000],
+    provisionsByLevel: [75, 100, 125, 150, 175, 200, 250, 300, 350, 400],
+    constructionTimeMs: 0,
+    description: "Increases total Provisions capacity for larger armies",
   },
 } as const;
 
 export type UnitKey = keyof typeof UNIT_RULES;
 export type BuildingKey = keyof typeof BUILDING_RULES;
-export type PlateauType = "sphere" | "training" | "gemheart" | "ancient_ruins";
+export type PlateauType =
+  | "sphere"
+  | "training"
+  | "gemheart"
+  | "ancient_ruins"
+  | "bridged"
+  | "ancient";
 
 export type UnitCounts = Record<UnitKey, number>;
 export type BuildingLevels = Record<BuildingKey, number>;
@@ -215,16 +247,34 @@ export function normalizeUnits(units: Partial<UnitCounts>): UnitCounts {
   return normalized;
 }
 
+export function addUnits(
+  current: Partial<UnitCounts>,
+  returned: Partial<UnitCounts>,
+) {
+  const next = normalizeUnits(current);
+  const normalizedReturned = normalizeUnits(returned);
+  for (const key of unitKeys()) {
+    next[key] += normalizedReturned[key];
+  }
+  return next;
+}
+
 export function emptyBuildings(): BuildingLevels {
   return {
     market: 0,
     watchtower: 0,
     barracks: 0,
+    soulcastBunker: 0,
   };
 }
 
 export function getBuildingCost(building: BuildingKey, currentLevel: number) {
-  return BUILDING_RULES[building].baseCost * (currentLevel + 1);
+  const rule = BUILDING_RULES[building];
+  if ("levelCosts" in rule) {
+    const lastCost = rule.levelCosts[rule.levelCosts.length - 1];
+    return rule.levelCosts[currentLevel] ?? lastCost;
+  }
+  return rule.baseCost * (currentLevel + 1);
 }
 
 export function emptyPlateauCounts(): PlateauCounts {
@@ -233,7 +283,15 @@ export function emptyPlateauCounts(): PlateauCounts {
     training: 0,
     gemheart: 0,
     ancient_ruins: 0,
+    bridged: 0,
+    ancient: 0,
   };
+}
+
+export function identityPlateauType(type: PlateauType): PlateauType {
+  if (type === "training") return "bridged";
+  if (type === "ancient_ruins") return "ancient";
+  return type;
 }
 
 export function diminishingMultiplier(index: number) {
@@ -250,23 +308,77 @@ export function diminishingTotal(count: number) {
 }
 
 export function plateauIncomePerGameDay(counts: PlateauCounts) {
-  return (
-    PLATEAU_RULES.sphereIncomePerGameDay *
-    diminishingTotal(counts.sphere)
-  );
+  return 0;
 }
 
 export function trainingDiscount(counts: PlateauCounts) {
-  return Math.min(
-    0.75,
-    PLATEAU_RULES.trainingDiscountPerPlateau *
-      diminishingTotal(counts.training),
-  );
+  return 0;
 }
 
 export function totalUnits(units: Partial<UnitCounts>) {
   const normalized = normalizeUnits(units);
   return unitKeys().reduce((sum, key) => sum + normalized[key], 0);
+}
+
+export function unitProvisionsUsed(units: Partial<UnitCounts>) {
+  const normalized = normalizeUnits(units);
+  return unitKeys().reduce(
+    (sum, key) => sum + normalized[key] * UNIT_RULES[key].provisionsCost,
+    0,
+  );
+}
+
+export function soulcastBunkerCapacity(level: number) {
+  const capacities = BUILDING_RULES.soulcastBunker.provisionsByLevel;
+  let total = 0;
+  for (let index = 0; index < Math.max(0, Math.floor(level)); index += 1) {
+    total += capacities[index] ?? capacities[capacities.length - 1];
+  }
+  return total;
+}
+
+export function provisionsCapacity(
+  buildings: Partial<BuildingLevels>,
+  ownedPlateauCount: number,
+  largePlateauCount = 0,
+) {
+  const starterCapacity =
+    Math.min(ownedPlateauCount, STARTING_RULES.startingPlateaus) *
+    STARTING_RULES.starterPlateauProvisionsCapacity;
+  const bunkerCapacity = soulcastBunkerCapacity(buildings.soulcastBunker ?? 0);
+  const largeBonus = Math.min(
+    PLATEAU_RULES.largeProvisionsBonusMax,
+    largePlateauCount * PLATEAU_RULES.largeProvisionsBonusPerPlateau,
+  );
+  return starterCapacity + Math.floor(bunkerCapacity * (1 + largeBonus));
+}
+
+export function sphereIncomeBonus(counts: PlateauCounts) {
+  return Math.min(
+    PLATEAU_RULES.sphereIncomeBonusMax,
+    counts.sphere * PLATEAU_RULES.sphereIncomeBonusPerPlateau,
+  );
+}
+
+export function bridgedTravelReduction(counts: PlateauCounts) {
+  return Math.min(
+    PLATEAU_RULES.bridgedTravelReductionMax,
+    counts.bridged * PLATEAU_RULES.bridgedTravelReductionPerPlateau,
+  );
+}
+
+export function largeProvisionsBonus(largePlateauCount: number) {
+  return Math.min(
+    PLATEAU_RULES.largeProvisionsBonusMax,
+    largePlateauCount * PLATEAU_RULES.largeProvisionsBonusPerPlateau,
+  );
+}
+
+export function initialGemheartPlateauCount(playerCount: number) {
+  return Math.max(
+    1,
+    Math.floor(playerCount / PLATEAU_RULES.initialGemheartPlateauPlayerDivisor),
+  );
 }
 
 export function unitSpeed(units: Partial<UnitCounts>) {
@@ -326,7 +438,10 @@ export function emergencyDefenseCost(percent: number) {
   );
 }
 
-export function travelMsForUnits(units: Partial<UnitCounts>) {
+export function travelMsForUnits(
+  units: Partial<UnitCounts>,
+  plateauCounts: PlateauCounts = emptyPlateauCounts(),
+) {
   const baseMs = TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
   const speed = Math.max(
     -TIME_RULES.maxTravelPenaltyPercent,
@@ -334,9 +449,10 @@ export function travelMsForUnits(units: Partial<UnitCounts>) {
   );
   const travelMultiplier =
     speed >= 0 ? 1 - speed / 100 : 1 + Math.abs(speed) / 100;
+  const bridgedMultiplier = 1 - bridgedTravelReduction(plateauCounts);
   return Math.max(
     60 * 1000,
-    Math.round(baseMs * travelMultiplier),
+    Math.round(baseMs * travelMultiplier * bridgedMultiplier),
   );
 }
 
@@ -445,10 +561,10 @@ export function incomePerGameDay(player: {
   buildings: { market: number };
   plateauCounts?: PlateauCounts;
 }) {
-  return (
-    plateauIncomePerGameDay(player.plateauCounts ?? emptyPlateauCounts()) +
-    player.buildings.market * ECONOMY_RULES.marketSpheresPerLevelPerGameDay
-  );
+  const counts = player.plateauCounts ?? emptyPlateauCounts();
+  const basePassiveIncome =
+    player.buildings.market * ECONOMY_RULES.marketSpheresPerLevelPerGameDay;
+  return basePassiveIncome * (1 + sphereIncomeBonus(counts));
 }
 
 export function roundResource(value: number) {
@@ -484,16 +600,23 @@ export function calculateBuildingStats(
   const acreIncomePerDay = plateauIncomePerGameDay(plateauCounts);
   const marketIncomePerDay =
     buildings.market * ECONOMY_RULES.marketSpheresPerLevelPerGameDay;
+  const sphereBonus = sphereIncomeBonus(plateauCounts);
+  const sphereBonusIncomePerDay = marketIncomePerDay * sphereBonus;
   const watchtowerDefenseBonus =
     buildings.watchtower * COMBAT_RULES.watchtowerDefensePerLevel;
+  const soulcastBunkerLevel = buildings.soulcastBunker ?? 0;
 
   return {
     acreIncomePerDay,
     marketIncomePerDay,
-    totalIncomePerDay: acreIncomePerDay + marketIncomePerDay,
+    sphereBonusPercent: Math.round(sphereBonus * 100),
+    sphereBonusIncomePerDay,
+    totalIncomePerDay: marketIncomePerDay + sphereBonusIncomePerDay,
     watchtowerDefenseBonus,
     watchtowerDefensePercent: Math.round(watchtowerDefenseBonus * 100),
     barracksLevel: buildings.barracks,
+    soulcastBunkerLevel,
+    soulcastBunkerCapacity: soulcastBunkerCapacity(soulcastBunkerLevel),
   };
 }
 
