@@ -76,6 +76,7 @@ export default defineSchema({
     type: plateauType,
     status: v.union(v.literal("neutral"), v.literal("owned")),
     ownerPlayerId: v.optional(v.id("players")),
+    origin: v.optional(v.union(v.literal("home"), v.literal("neutral"))),
     highground: v.boolean(),
     large: v.optional(v.boolean()),
     neutralDefenseInitial: v.number(),

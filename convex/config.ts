@@ -20,6 +20,7 @@ export const getGameConfig = query({
       neutralPlateausPerNewPlayer: STARTING_RULES.neutralPlateausPerNewPlayer,
       startingSpheres: STARTING_RULES.spheres,
       startingGemhearts: STARTING_RULES.gemhearts,
+      baseSphereIncomePerGameDay: ECONOMY_RULES.baseSphereIncomePerGameDay,
       realMsPerGameDay: TIME_RULES.realMsPerGameDay,
       raidTravelGameDays: TIME_RULES.raidTravelGameDays,
       speedReductionPerPoint: TIME_RULES.speedReductionPerPoint,

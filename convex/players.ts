@@ -126,7 +126,7 @@ async function createPlayerForAuth(
     kind: "system",
     subject: "Welcome to the Shattered Plains",
     body:
-      "Your warcamp has been founded with 2 highground Sphere Plateaus, 1,200 spheres, and 1 Gemheart.",
+      "Your warcamp has been founded with a balanced Home Plateau package, 1,200 spheres, and 1 Gemheart.",
     createdAt: now,
   });
 

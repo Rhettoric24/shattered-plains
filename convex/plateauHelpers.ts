@@ -3,9 +3,12 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
   emptyPlateauCounts,
   identityPlateauType,
+  homePlateauPackagesForPlayers,
   initialGemheartPlateauCount,
   PLATEAU_RULES,
+  randomHomePlateauPackage,
   STARTING_RULES,
+  type HomePlateauPackage,
   type PlateauCounts,
   type PlateauType,
 } from "./rules";
@@ -93,18 +96,22 @@ export async function createStarterPlateaus(
   ctx: MutationCtx,
   playerId: Id<"players">,
   now: number,
+  packageTypes?: HomePlateauPackage,
 ) {
   const existing = await ownedPlateaus(ctx, playerId);
   if (existing.length > 0) return 0;
+  const homePackage = packageTypes ?? randomHomePlateauPackage(`${playerId}:${now}`);
 
-  for (let index = 0; index < STARTING_RULES.startingPlateaus; index += 1) {
+  for (let index = 0; index < homePackage.length; index += 1) {
+    const type = identityPlateauType(homePackage[index]);
     await ctx.db.insert("plateaus", {
-      name: `Founding Sphere Plateau ${index + 1}`,
-      type: "sphere",
+      name: `Home ${plateauTypeName(type)} ${index + 1}`,
+      type,
       status: "owned",
       ownerPlayerId: playerId,
-      highground: PLATEAU_RULES.starterHighground,
-      large: PLATEAU_RULES.starterLarge,
+      origin: "home",
+      highground: false,
+      large: false,
       neutralDefenseInitial: 0,
       neutralDefenseRemaining: 0,
       heldSince: now,
@@ -115,6 +122,29 @@ export async function createStarterPlateaus(
   }
 
   return STARTING_RULES.startingPlateaus;
+}
+
+export async function createBalancedHomePlateaus(
+  ctx: MutationCtx,
+  playerIds: Id<"players">[],
+  now: number,
+) {
+  const packages = homePlateauPackagesForPlayers(playerIds.length, now);
+  let created = 0;
+
+  for (let index = 0; index < playerIds.length; index += 1) {
+    created += await createStarterPlateaus(
+      ctx,
+      playerIds[index],
+      now,
+      packages[index],
+    );
+  }
+
+  return {
+    created,
+    packages: packages.map((pkg) => pkg.map(identityPlateauType)),
+  };
 }
 
 export async function createNeutralPlateaus(
@@ -147,6 +177,7 @@ export async function createNeutralPlateaus(
       name: neutralName(type, sequence),
       type,
       status: "neutral",
+      origin: "neutral",
       highground,
       large,
       neutralDefenseInitial: defense,
@@ -182,6 +213,7 @@ async function createSpecificNeutralPlateau(
     name: neutralName(type, sequence),
     type,
     status: "neutral",
+    origin: "neutral",
     highground,
     large,
     neutralDefenseInitial: defense,

@@ -191,12 +191,18 @@ function mountainScheduleSlot(now: number) {
   const hour = Number(value("hour"));
   const minute = Number(value("minute"));
 
-  if ((hour !== 12 && hour !== 20) || minute >= 15) {
+  const scheduleLabels: Record<number, string> = {
+    9: "9 AM Mountain",
+    12: "noon Mountain",
+    20: "8 PM Mountain",
+  };
+
+  if (!(hour in scheduleLabels) || minute >= 15) {
     return null;
   }
 
   return {
-    label: hour === 12 ? "noon Mountain" : "8 PM Mountain",
+    label: scheduleLabels[hour],
     scheduleKey: `${value("year")}-${value("month")}-${value("day")}:${hour}`,
   };
 }

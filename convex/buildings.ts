@@ -59,8 +59,13 @@ export const getBuildings = query({
       pendingIncome: pending.income,
       buildings: decorateBuildings(player.buildings),
       effects: {
+        baseKingdomIncomePerDay: effects.baseKingdomIncomePerDay,
         marketIncomePerDay: effects.marketIncomePerDay,
         plateauIncomePerDay: effects.acreIncomePerDay,
+        passiveIncomeBeforeMultiplier: effects.passiveIncomeBeforeMultiplier,
+        sphereBonusPercent: effects.sphereBonusPercent,
+        sphereBonusIncomePerDay: effects.sphereBonusIncomePerDay,
+        totalIncomePerDay: effects.totalIncomePerDay,
         watchtowerDefenseBonus: effects.watchtowerDefenseBonus,
         watchtowerDefensePercent: effects.watchtowerDefensePercent,
         barracksLevel: effects.barracksLevel,

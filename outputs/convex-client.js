@@ -705,7 +705,8 @@ function plateauCard(plateau) {
   const timer = plateau.gemheartProgress
     ? '<small>Gemheart: ' + number(plateau.gemheartProgress.progressPercent) + '% toward next</small>'
     : "";
-  return '<article class="plateau-holding-card ' + (underSiege ? "warning" : "") + '" title="' + plateauTooltip(plateau) + '"><strong>' + escapeHtml(plateau.name) + '</strong><span>' + escapeHtml(plateau.typeName) + '</span><small>' + escapeHtml(attributes) + '</small><small>' + escapeHtml(plateauBonusLabel(plateau)) + '</small>' + timer + status + '</article>';
+  const origin = plateau.origin === "home" ? '<small>Home Plateau</small>' : "";
+  return '<article class="plateau-holding-card ' + (underSiege ? "warning" : "") + '" title="' + plateauTooltip(plateau) + '"><strong>' + escapeHtml(plateau.name) + '</strong><span>' + escapeHtml(plateau.typeName) + '</span>' + origin + '<small>' + escapeHtml(attributes) + '</small><small>' + escapeHtml(plateauBonusLabel(plateau)) + '</small>' + timer + status + '</article>';
 }
 
 function siegeCard(siege) {
@@ -899,13 +900,16 @@ function incomeTooltip() {
   const stats = state.me.buildingStats || {};
   const bonusPercent = stats.sphereBonusPercent || state.me.plateauBonuses?.sphereIncomeBonusPercent || 0;
   return [
+    number(stats.baseKingdomIncomePerDay || state.config.baseSphereIncomePerGameDay || 0) + "/day - Base Kingdom",
     number(stats.marketIncomePerDay || 0) + "/day - Markets",
     number(stats.sphereBonusIncomePerDay || 0) + "/day - Sphere Plateau bonus (+" + number(bonusPercent) + "%)",
+    number(stats.totalIncomePerDay || state.me.totalIncomePerDay || 0) + "/day - Total",
   ].join("\n");
 }
 
 function plateauTooltip(plateau) {
   const effects = [];
+  if (plateau.origin === "home") effects.push("Home Plateau: created as part of a starting package; it can still be conquered.");
   if (plateau.type === "sphere") effects.push("Sphere Plateau: +10% passive Sphere income, stacking to +30%.");
   if (plateau.type === "bridged" || plateau.type === "training") effects.push("Bridged Plateau: -10% normal Raid and Plateau Run travel time, stacking to -30%.");
   if (plateau.type === "gemheart") effects.push("Grants 1 Gemheart every 12 real hours if held.");
@@ -1062,6 +1066,7 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
     typeName: visible ? (plateau.typeName || typeNames[normalizePlateauType(plateau.type)] || plateau.type) : "Unknown reward",
     ownerName: plateau.ownerName || "Neutral",
     ownerPlayerId: plateau.ownerPlayerId || null,
+    origin: plateau.origin || null,
     highground: Boolean(plateau.highground),
     large: Boolean(plateau.large),
     gemheartProgress: plateau.gemheartProgress || null,

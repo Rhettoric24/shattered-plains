@@ -23,6 +23,7 @@ export const STARTING_RULES = {
 
 export const ECONOMY_RULES = {
   spheresPerAcrePerGameDay: 6,
+  baseSphereIncomePerGameDay: 250,
   marketSpheresPerLevelPerGameDay: 250,
 } as const;
 
@@ -30,6 +31,12 @@ export const PLATEAU_RULES = {
   starterType: "sphere",
   starterHighground: true,
   starterLarge: false,
+  homePlateauTypes: ["sphere", "bridged", "ancient"],
+  homePlateauPackages: [
+    ["sphere", "bridged"],
+    ["sphere", "ancient"],
+    ["bridged", "ancient"],
+  ],
   sphereIncomeBonusPerPlateau: 0.1,
   sphereIncomeBonusMax: 0.3,
   bridgedTravelReductionPerPlateau: 0.1,
@@ -72,7 +79,7 @@ export const COMBAT_RULES = {
 
 export const PLATEAU_RUN_RULES = {
   everyGameDays: 3,
-  joinRealMs: 15 * 60 * 1000,
+  joinRealMs: 30 * 60 * 1000,
   activePlayerWindowMs: 2 * 24 * 60 * 60 * 1000,
   difficultyPerActivePlayer: 75,
   difficultyRandomMin: 1,
@@ -294,6 +301,8 @@ export function identityPlateauType(type: PlateauType): PlateauType {
   return type;
 }
 
+export type HomePlateauPackage = readonly [PlateauType, PlateauType];
+
 export function diminishingMultiplier(index: number) {
   const values = PLATEAU_RULES.diminishingReturns;
   return values[Math.min(index, values.length - 1)];
@@ -358,6 +367,55 @@ export function sphereIncomeBonus(counts: PlateauCounts) {
     PLATEAU_RULES.sphereIncomeBonusMax,
     counts.sphere * PLATEAU_RULES.sphereIncomeBonusPerPlateau,
   );
+}
+
+function seededOrder(seed: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+export function homePlateauPackagesForPlayers(
+  playerCount: number,
+  seed: string | number,
+): HomePlateauPackage[] {
+  const packages = PLATEAU_RULES.homePlateauPackages as readonly HomePlateauPackage[];
+  const count = Math.max(0, Math.floor(playerCount));
+  const baseCount = Math.floor(count / packages.length);
+  const remainder = count % packages.length;
+  const remainderOrder = packages
+    .map((pkg, index) => ({
+      pkg,
+      index,
+      order: seededOrder(`${seed}:home:remainder:${index}`),
+    }))
+    .sort((left, right) => left.order - right.order);
+  const weightedPackages: HomePlateauPackage[] = [];
+
+  for (const pkg of packages) {
+    for (let index = 0; index < baseCount; index += 1) {
+      weightedPackages.push(pkg);
+    }
+  }
+  for (let index = 0; index < remainder; index += 1) {
+    weightedPackages.push(remainderOrder[index].pkg);
+  }
+
+  return weightedPackages
+    .map((pkg, index) => ({
+      pkg,
+      order: seededOrder(`${seed}:home:shuffle:${index}:${pkg.join("-")}`),
+    }))
+    .sort((left, right) => left.order - right.order)
+    .map((entry) => entry.pkg);
+}
+
+export function randomHomePlateauPackage(seed: string | number) {
+  const packages = PLATEAU_RULES.homePlateauPackages as readonly HomePlateauPackage[];
+  return packages[seededOrder(`${seed}:home:random`) % packages.length];
 }
 
 export function bridgedTravelReduction(counts: PlateauCounts) {
@@ -561,10 +619,32 @@ export function incomePerGameDay(player: {
   buildings: { market: number };
   plateauCounts?: PlateauCounts;
 }) {
+  return incomeBreakdown(player).totalIncomePerDay;
+}
+
+export function incomeBreakdown(player: {
+  acres: number;
+  buildings: { market: number };
+  plateauCounts?: PlateauCounts;
+}) {
   const counts = player.plateauCounts ?? emptyPlateauCounts();
-  const basePassiveIncome =
+  const baseKingdomIncomePerDay = ECONOMY_RULES.baseSphereIncomePerGameDay;
+  const marketIncomePerDay =
     player.buildings.market * ECONOMY_RULES.marketSpheresPerLevelPerGameDay;
-  return basePassiveIncome * (1 + sphereIncomeBonus(counts));
+  const passiveIncomeBeforeMultiplier =
+    baseKingdomIncomePerDay + marketIncomePerDay;
+  const sphereBonus = sphereIncomeBonus(counts);
+  const sphereBonusIncomePerDay = passiveIncomeBeforeMultiplier * sphereBonus;
+
+  return {
+    baseKingdomIncomePerDay,
+    marketIncomePerDay,
+    otherPassiveIncomePerDay: 0,
+    passiveIncomeBeforeMultiplier,
+    sphereBonusPercent: Math.round(sphereBonus * 100),
+    sphereBonusIncomePerDay,
+    totalIncomePerDay: passiveIncomeBeforeMultiplier + sphereBonusIncomePerDay,
+  };
 }
 
 export function roundResource(value: number) {
@@ -598,20 +678,18 @@ export function calculateBuildingStats(
   plateauCounts: PlateauCounts = emptyPlateauCounts(),
 ) {
   const acreIncomePerDay = plateauIncomePerGameDay(plateauCounts);
-  const marketIncomePerDay =
-    buildings.market * ECONOMY_RULES.marketSpheresPerLevelPerGameDay;
-  const sphereBonus = sphereIncomeBonus(plateauCounts);
-  const sphereBonusIncomePerDay = marketIncomePerDay * sphereBonus;
+  const income = incomeBreakdown({
+    acres,
+    buildings,
+    plateauCounts,
+  });
   const watchtowerDefenseBonus =
     buildings.watchtower * COMBAT_RULES.watchtowerDefensePerLevel;
   const soulcastBunkerLevel = buildings.soulcastBunker ?? 0;
 
   return {
     acreIncomePerDay,
-    marketIncomePerDay,
-    sphereBonusPercent: Math.round(sphereBonus * 100),
-    sphereBonusIncomePerDay,
-    totalIncomePerDay: marketIncomePerDay + sphereBonusIncomePerDay,
+    ...income,
     watchtowerDefenseBonus,
     watchtowerDefensePercent: Math.round(watchtowerDefenseBonus * 100),
     barracksLevel: buildings.barracks,

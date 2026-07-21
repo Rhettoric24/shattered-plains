@@ -9,8 +9,8 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import {
+  createBalancedHomePlateaus,
   createSeasonNeutralPlateaus,
-  createStarterPlateaus,
 } from "./plateauHelpers";
 import {
   emptyBuildings,
@@ -128,18 +128,21 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
       createdAt: now,
     });
 
-    await createStarterPlateaus(ctx, player._id, now);
-
     await ctx.db.insert("messages", {
       toPlayerId: player._id,
       kind: "system",
       subject: "World reset",
       body:
-        "The playtest world was reset. Your login and warcamp name were kept, and your kingdom has fresh starter resources.",
+        "The playtest world was reset. Your login and warcamp name were kept, and your kingdom has a fresh balanced Home Plateau package.",
       createdAt: now,
     });
   }
 
+  const homeSeed = await createBalancedHomePlateaus(
+    ctx,
+    players.map((player) => player._id),
+    now,
+  );
   const neutralSeed = await createSeasonNeutralPlateaus(ctx, players.length, now);
 
   await ctx.db.insert("gameEvents", {
@@ -151,6 +154,7 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
     reset: true,
     worldId,
     playersReset: players.length,
+    homePlateausCreated: homeSeed.created,
     neutralPlateausCreated: neutralSeed.totalNeutral,
     gemheartPlateausCreated: neutralSeed.gemhearts,
     deleted,
