@@ -3,6 +3,7 @@ import { internal } from "./_generated/api";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireAdmin } from "./admin";
+import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
 import {
   createNeutralPlateaus,
@@ -27,6 +28,7 @@ import {
   totalUnits,
   UNIT_RULES,
   unitSpeed,
+  travelMsForUnits,
   type UnitCounts,
   type UnitKey,
 } from "./rules";
@@ -259,7 +261,8 @@ export const launchNeutralSiege = mutation({
     validateUnlockedUnits(attacker.buildings, units);
 
     const now = Date.now();
-    const resolveAt = now + siegeTravelMs();
+    const plateauCounts = await plateauCountsForPlayer(ctx, attacker._id);
+    const resolveAt = now + travelMsForUnits(units, plateauCounts);
     const remainingUnits = subtractUnits(attacker.units, units);
     const siegeId = await ctx.db.insert("sieges", {
       plateauId: plateau._id,
@@ -284,7 +287,8 @@ export const launchNeutralSiege = mutation({
       activeSiegeId: siegeId,
       updatedAt: now,
     });
-    await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+      kind: "territory",
       text: `${attacker.name} launched an expedition toward a neutral plateau.`,
       createdAt: now,
     });
@@ -358,7 +362,8 @@ export const launchPlayerSiege = mutation({
       body: `${attacker.name} has started a siege against ${plateau.name}.`,
       createdAt: now,
     });
-    await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+      kind: "siege",
       text: `${attacker.name} started a siege against ${defender.name}.`,
       createdAt: now,
     });
@@ -511,7 +516,8 @@ export const backfillPlateaus = mutation({
         ? 0
         : await createNeutralPlateaus(ctx, targetNeutral - neutral.length, now);
 
-    await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+      kind: "world",
       text: `Plateau backfill created ${starterCreated} starter plateaus and ${neutralCreated} neutral plateaus.`,
       createdAt: now,
     });
@@ -667,7 +673,8 @@ export const resolveSiege = internalMutation({
       body: resultText,
       createdAt: now,
     });
-    await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+      kind: siege.targetType === "player" ? "siege" : "territory",
       text: resultText,
       createdAt: now,
     });

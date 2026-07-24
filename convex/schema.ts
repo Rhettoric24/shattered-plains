@@ -171,7 +171,9 @@ export default defineSchema({
   }).index("by_key", ["key"]),
 
   gameEvents: defineTable({
-    text: v.string(),
-    createdAt: v.number(),
-  }).index("by_created", ["createdAt"]),
+      text: v.string(),
+      kind: v.optional(v.string()),
+      gameDate: v.optional(v.string()),
+      createdAt: v.number(),
+    }).index("by_created", ["createdAt"]),
 });

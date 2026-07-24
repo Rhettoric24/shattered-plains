@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { settlePlayerEconomy } from "./economyHelpers";
+import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
 import {
   plateauAttributeCountsForPlayer,
@@ -111,7 +112,8 @@ export const upgradeBuilding = mutation({
       lastActiveAt: now,
     });
 
-    await ctx.db.insert("gameEvents", {
+    await insertGameEvent(ctx, {
+      kind: "warcamp",
       text: `${settledPlayer.name} upgraded ${rule.name} to level ${currentLevel + 1}.`,
       createdAt: now,
     });

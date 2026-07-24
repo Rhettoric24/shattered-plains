@@ -77,10 +77,14 @@ await esbuild.build({
   sourcemap: true,
 });
 
-await fs.copyFile(
-  path.join(root, "outputs", "shattered-plains-styles.css"),
-  path.join(dist, "shattered-plains-styles.css"),
-);
+for (const stylesheet of [
+  "shattered-plains-styles.css",
+  "clarity-layout.css",
+  "clarity-components.css",
+  "clarity-responsive.css",
+]) {
+  await fs.copyFile(path.join(root, "outputs", stylesheet), path.join(dist, stylesheet));
+}
 
 const sourceHtml = await fs.readFile(
   path.join(root, "outputs", "convex-client.html"),

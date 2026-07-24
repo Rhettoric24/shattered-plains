@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAdmin } from "./admin";
+import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
 import { plateauCountsForPlayer } from "./plateauHelpers";
 import {
@@ -175,7 +176,8 @@ async function createRaid(
     });
   }
 
-  await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+    kind: "raid",
     text: `${attacker.name} launched a raid.`,
     createdAt: now,
   });
@@ -457,7 +459,8 @@ export const resolveRaid = internalMutation({
       body: resultText,
       createdAt: now,
     });
-    await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+      kind: "raid",
       text: resultText,
       createdAt: now,
     });

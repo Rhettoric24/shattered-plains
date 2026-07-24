@@ -13,11 +13,25 @@ let refreshToken = localStorage.getItem(AUTH_REFRESH_KEY);
 if (authToken) client.setAuth(authToken);
 let state = null;
 let currentView = localStorage.getItem("sp-current-view") || "overview";
-let lastSelections = { trainUnit: "", target: "" };
+let lastSelections = { trainUnit: "", target: "", attackUnits: {}, recruitment: {} };
 let previewListenersReady = false;
 let tooltipTimer = null;
+let inboxFilter = "all";
+let holdingsExpanded = false;
 
 const $ = (id) => document.getElementById(id);
+
+/**
+ * Shared attack-planner contract. Every mission uses the same unit controls,
+ * outlook renderer, stat explanations, validation path, and confirmation shape.
+ * Mission configuration changes only timing and intelligence presentation.
+ */
+const ATTACK_PLANNERS = {
+  spheres: { formId: "sphere-form", unitsId: "sphere-raid-units", previewId: "sphere-raid-preview", timing: "speed", intelligence: "estimated" },
+  neutralSiege: { formId: "neutral-siege-form", unitsId: "neutral-siege-units", previewId: "neutral-siege-preview", timing: "speed", intelligence: "qualitative" },
+  playerSiege: { formId: "player-siege-form", unitsId: "player-siege-units", previewId: "player-siege-preview", timing: "fixed", intelligence: "known-owner" },
+  plateau: { formId: "plateau-form", unitsId: "plateau-run-units", previewId: "plateau-run-preview", timing: "speed-score", intelligence: "qualitative-rivals" },
+};
 
 window.addEventListener("error", (event) => {
   showAccountMessage("Browser error: " + event.message);
@@ -61,6 +75,7 @@ const refs = {
   listInbox: "messages:listInbox",
   sendMessage: "messages:sendMessage",
   markInboxRead: "messages:markInboxRead",
+  markMessageRead: "messages:markMessageRead",
   listEvents: "game:listEvents",
 };
 
@@ -286,6 +301,7 @@ function buildState(data) {
     inbox: (data.inbox?.messages || []).map((message) => ({
       id: message._id,
       fromPlayerId: message.fromPlayerId,
+      kind: message.kind || (message.fromPlayerId ? "player" : "report"),
       subject: message.subject,
       text: message.body,
       read: Boolean(message.readAt),
@@ -295,7 +311,7 @@ function buildState(data) {
     isAdmin: Boolean(data.adminStatus?.isAdmin),
     adminEmail: data.adminStatus?.email || null,
     alerts: [],
-    log: data.events.map((event) => ({ text: event.text, at: event.createdAt })),
+    log: data.events.map((event) => ({ text: event.text, at: event.createdAt, kind: event.kind || "world", gameDate: event.gameDate || null })),
   };
 }
 
@@ -310,22 +326,11 @@ function render() {
   $("game-screen").classList.remove("hidden");
   $("game-date").textContent = state.gameDate;
   $("player-name").textContent = me.name;
-  $("acres").textContent = number(me.acres);
-  $("spheres").textContent = number(me.spheres);
-  $("gemhearts").textContent = number(me.gemhearts || 0);
   $("res-acres").textContent = number(me.acres);
   $("res-spheres").textContent = number(me.spheres);
   $("res-gemhearts").textContent = number(me.gemhearts || 0);
-  $("res-power").textContent = formatStat(me.power);
+  $("res-units").textContent = number(me.totalAvailableUnits) + " / " + number(me.totalUnits);
   renderTopProvisions();
-  $("income").textContent = number(me.totalIncomePerDay);
-  $("income-card").title = incomeTooltip();
-  $("units-total").textContent = number(me.totalUnits);
-  $("available-total").textContent = number(me.totalAvailableUnits);
-  $("away-total").textContent = number(sumUnits(me.unitsAway));
-  $("power").textContent = formatStat(me.power);
-  $("home-power").textContent = formatStat(me.homePower);
-  $("open-acres").textContent = number(state.openAcres);
   renderBuildings();
   renderUnits();
   renderSelects();
@@ -344,6 +349,7 @@ function render() {
   renderOverview();
   renderWorldAlerts();
   renderAdminAccess();
+  renderNavStates();
   showView(currentView);
 }
 
@@ -375,14 +381,6 @@ function buildWorldAlerts() {
       title: "Plateau Run Open",
       text: formatDuration(remaining) + " left to join. Difficulty " + plateauRunDifficultyLabel(state.plateauRun.difficultyPower) + ", loot " + plateauRunLootLabel(state.plateauRun.spherePool) + ".",
       action: "Open Plateau",
-      view: "plateau",
-    });
-  } else {
-    alerts.push({
-      kind: "schedule",
-      title: "Plateau Runs",
-      text: "Scheduled daily at noon and 8 PM Mountain.",
-      action: "Plateau",
       view: "plateau",
     });
   }
@@ -448,9 +446,17 @@ function renderAdminAccess() {
   document.querySelectorAll("[data-admin-only='true']").forEach((element) => {
     element.classList.toggle("hidden", !isAdmin);
   });
-  if (!isAdmin && currentView === "testing") {
+  if (!isAdmin && (currentView === "testing" || currentView === "chronicle")) {
     currentView = "overview";
   }
+}
+
+function renderNavStates() {
+  const runState = $("run-nav-state");
+  const siegeState = $("siege-nav-state");
+  if (runState) runState.classList.toggle("hidden", !state.plateauRun);
+  const needsDefense = state.plateaus.sieges.some((siege) => siege.defenderId === state.me.id && !siege.defenderCommittedAt);
+  if (siegeState) siegeState.classList.toggle("hidden", !needsDefense);
 }
 
 function captureSelections() {
@@ -465,9 +471,17 @@ function captureSelections() {
   document.querySelectorAll("[data-emergency-defense-range]").forEach((input) => {
     lastSelections.emergencyDefense[input.dataset.siegeId] = input.value;
   });
+  document.querySelectorAll("[data-attack-planner]").forEach((planner) => {
+    const plannerId = planner.dataset.attackPlanner;
+    lastSelections.attackUnits[plannerId] = lastSelections.attackUnits[plannerId] || {};
+    planner.querySelectorAll("input[data-unit]").forEach((input) => {
+      lastSelections.attackUnits[plannerId][input.dataset.unit] = input.value;
+    });
+  });
 }
 
 function showView(view) {
+  if ((view === "testing" || view === "chronicle") && !state?.isAdmin) view = "overview";
   currentView = view;
   localStorage.setItem("sp-current-view", view);
   closeMobileMenu();
@@ -482,46 +496,95 @@ function showView(view) {
     $("view-title").textContent = active.dataset.title || "Dashboard";
     $("view-eyebrow").textContent = active.dataset.eyebrow || "Command";
   }
+  if (view === "inbox" && localStorage.getItem("sp-auto-read-inbox") === "true" && state?.unreadCount > 0) {
+    action(() => client.mutation(refs.markInboxRead, {}));
+  }
 }
 
 function renderBuildings() {
-  renderProvisionsSummary("provisions-summary");
-  $("buildings").innerHTML = Object.entries(state.config.buildings).map(([key, building]) => {
+  const visibleBuildings = Object.entries(state.config.buildings).filter(([key]) => key === "market" || key === "soulcastBunker");
+  $("buildings").innerHTML = visibleBuildings.map(([key, building]) => {
     const level = state.me.buildings[key] || building.level || 0;
-    const provisionsLine = key === "soulcastBunker"
-      ? '<small>Current capacity +' + number(soulcastBunkerCapacity(level)) + '. Next level +' + number(soulcastBunkerLevelCapacity(level + 1)) + ' Provisions.</small>'
-      : "";
-    return '<article class="upgrade-card"><div><strong>' + escapeHtml(building?.name || key) + '</strong><span>Level ' + level + '</span><small>' + escapeHtml(building?.description || "") + '</small>' + provisionsLine + '</div><button data-building="' + key + '">Upgrade: ' + number(building?.nextCost || 0) + '</button></article>';
+    const nextCost = Number(building?.nextCost || 0);
+    const affordable = state.me.spheres >= nextCost;
+    const values = buildingEffectValues(key, level);
+    const name = key === "market" ? "Warcamp Market" : building?.name || key;
+    return '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>' + escapeHtml(name) + '</strong><span>Level ' + level + '</span></div><span class="status-badge ' + (affordable ? 'ready' : 'blocked') + '">' + (affordable ? 'Affordable' : 'Need ' + number(nextCost - state.me.spheres)) + '</span></div><small>' + escapeHtml(building?.description || "") + '</small><div class="effect-comparison"><div><span>Current effect</span><strong>' + escapeHtml(values.current) + '</strong></div><div><span>After upgrade</span><strong>' + escapeHtml(values.next) + '</strong></div></div><div class="cost-line"><span>Upgrade cost</span><strong>' + number(nextCost) + ' Spheres</strong></div><button data-building="' + key + '" data-building-name="' + escapeHtml(name) + '" data-building-cost="' + nextCost + '"' + (affordable ? '' : ' disabled') + '>Upgrade to Level ' + (level + 1) + '</button></article>';
   }).join("");
   document.querySelectorAll("[data-building]").forEach((button) => {
-    button.addEventListener("click", () => action(() => client.mutation(refs.upgradeBuilding, { building: button.dataset.building })));
+    button.addEventListener("click", () => {
+      const cost = Number(button.dataset.buildingCost || 0);
+      if (state.me.spheres > 0 && cost >= state.me.spheres * 0.5) {
+        const remaining = state.me.spheres - cost;
+        if (!window.confirm("Upgrade " + button.dataset.buildingName + " for " + number(cost) + " Spheres? You will have " + number(remaining) + " Spheres remaining.")) return;
+      }
+      action(() => client.mutation(refs.upgradeBuilding, { building: button.dataset.building }));
+    });
   });
 }
 
+function buildingEffectValues(key, level) {
+  if (key === "market") {
+    const perLevel = configValue("marketSpheresPerLevelPerGameDay", 250);
+    return { current: "+" + number(level * perLevel) + " Spheres/day", next: "+" + number((level + 1) * perLevel) + " Spheres/day", gain: "+" + number(perLevel) + " per day" };
+  }
+  const current = soulcastBunkerCapacity(level);
+  const next = soulcastBunkerCapacity(level + 1);
+  return { current: number(current) + " Provisions", next: number(next) + " Provisions", gain: "+" + number(next - current) + " capacity" };
+}
+
 function renderUnits() {
-  renderProvisionsSummary("army-provisions-summary");
+  renderArmyStatus();
   $("unit-roster").innerHTML = activeUnitEntries().map(([key, unit]) => {
     const unlocked = Boolean(state.config.unlockedUnits[key]);
     const count = state.me.units[key] || 0;
     const available = state.me.availableUnits[key] || 0;
-    const costText = unit.gemheartCost ? "Cost " + unit.gemheartCost + " Gemheart" : "Cost " + unit.cost + " spheres";
+    const resourceCost = unit.gemheartCost || unit.cost || 0;
+    const resourceName = unit.gemheartCost ? "Gemheart" + (resourceCost === 1 ? "" : "s") : "Spheres";
     const provisionCost = unit.provisionsCost || 0;
-    const buttons = [1, 10, 50, 100].map((amount) => {
-      const wouldUse = state.me.provisions.used + provisionCost * amount;
-      const overCapacity = wouldUse > state.me.provisions.capacity;
-      const title = overCapacity ? ' title="Needs more Provisions. Upgrade a Soulcast Bunker."' : "";
-      return '<button type="button" data-train-unit="' + key + '" data-train-count="' + amount + '"' + (unlocked ? "" : " disabled") + title + '>' + amount + '</button>';
-    }).join("");
-    return '<article class="upgrade-card unit-card ' + (unlocked ? "" : "locked") + '" title="' + unitStatsTooltip(unit) + '"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span><small>' + escapeHtml(costText) + '</small><small>Provisions: ' + number(provisionCost) + ' each</small><small>Owned: ' + number(count) + '</small><small>Ready: ' + number(available) + '</small></div><div class="train-buttons">' + buttons + '</div></article>';
+    const draft = Math.max(0, Math.floor(Number(lastSelections.recruitment[key]) || 0));
+    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">' + number(available) + ' ready / ' + number(count) + ' owned</span></div><div class="unit-stat-grid"><button type="button" class="stat-cell" title="' + statTooltip("power") + '"><span>Power</span><strong>' + formatStat(unit.power) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("speed") + '"><span>Speed</span><strong>' + formatStat(unit.speed) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("plunder") + '"><span>Plunder</span><strong>' + formatStat(unit.plunder || 0) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("survival") + '"><span>Survival</span><strong>' + formatPercent(unit.survival || 0) + '</strong></button></div>' + (key === "shardbearer" ? '<p class="rule-callout">Shardbearer present: total army Power doubles once.</p>' : '') + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div><div class="quantity-builder"><div class="quick-add"><button type="button" data-recruit-add="1">+1</button><button type="button" data-recruit-add="10">+10</button><button type="button" data-recruit-add="50">+50</button><button type="button" data-recruit-add="100">+100</button></div><label>Quantity<input data-recruit-quantity type="number" min="0" value="' + draft + '"></label><div class="quantity-corrections"><button type="button" class="secondary" data-recruit-minus>−1</button><button type="button" class="secondary" data-recruit-clear>Clear</button></div></div><div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button></article>';
   }).join("");
-  document.querySelectorAll("[data-train-unit]").forEach((button) => {
-    button.addEventListener("click", () => {
-      action(() => client.mutation(refs.trainUnit, {
-        unit: button.dataset.trainUnit,
-        count: Number(button.dataset.trainCount),
-      }));
-    });
+  attachRecruitmentControls();
+}
+
+function renderArmyStatus() {
+  const container = $("army-status");
+  if (!container) return;
+  container.innerHTML = pulseItem("Units ready", number(state.me.totalAvailableUnits) + " / " + number(state.me.totalUnits)) + pulseItem("Ready Power", formatStat(state.me.power)) + pulseItem("Provisions", number(state.me.provisions.used) + " / " + number(state.me.provisions.capacity)) + pulseItem("Units away", number(sumUnits(state.me.unitsAway)));
+}
+
+function attachRecruitmentControls() {
+  document.querySelectorAll("[data-recruit-card]").forEach((card) => {
+    const key = card.dataset.recruitCard;
+    const input = card.querySelector("[data-recruit-quantity]");
+    const update = (value) => { input.value = String(Math.max(0, Math.floor(Number(value) || 0))); lastSelections.recruitment[key] = input.value; renderRecruitmentPreview(card, key); };
+    card.querySelectorAll("[data-recruit-add]").forEach((button) => button.addEventListener("click", () => update(Number(input.value) + Number(button.dataset.recruitAdd))));
+    card.querySelector("[data-recruit-minus]").addEventListener("click", () => update(Number(input.value) - 1));
+    card.querySelector("[data-recruit-clear]").addEventListener("click", () => update(0));
+    input.addEventListener("input", () => update(input.value));
+    card.querySelector("[data-recruit-submit]").addEventListener("click", () => action(async () => { await client.mutation(refs.trainUnit, { unit: key, count: Number(input.value) }); lastSelections.recruitment[key] = 0; }));
+    renderRecruitmentPreview(card, key);
   });
+}
+
+function renderRecruitmentPreview(card, key) {
+  const unit = state.config.units[key];
+  const count = Math.max(0, Math.floor(Number(card.querySelector("[data-recruit-quantity]").value) || 0));
+  const resourceName = unit.gemheartCost ? "Gemhearts" : "Spheres";
+  const unitCost = unit.gemheartCost || unit.cost || 0;
+  const availableResource = unit.gemheartCost ? state.me.gemhearts : state.me.spheres;
+  const totalCost = count * unitCost;
+  const provisionCost = count * (unit.provisionsCost || 0);
+  const after = state.me.provisions.used + provisionCost;
+  const shortages = [];
+  if (totalCost > availableResource) shortages.push("Needs " + number(totalCost - availableResource) + " more " + resourceName);
+  if (after > state.me.provisions.capacity) shortages.push("Needs " + number(after - state.me.provisions.capacity) + " more Provisions");
+  const preview = card.querySelector("[data-recruit-preview]");
+  card.classList.toggle("has-draft", count > 0);
+  preview.classList.toggle("empty-draft", count < 1);
+  preview.innerHTML = '<span>Total cost <strong>' + number(totalCost) + ' ' + resourceName + '</strong></span><span>Provision use <strong>+' + number(provisionCost) + '</strong></span><span>After recruiting <strong>' + number(after) + ' / ' + number(state.me.provisions.capacity) + '</strong></span>' + (count < 1 ? '<small>Enter a quantity to preview recruitment.</small>' : shortages.length ? '<small class="warning-text">' + escapeHtml(shortages.join(" · ")) + '</small>' : '<small>Ready to recruit.</small>');
+  card.querySelector("[data-recruit-submit]").disabled = count < 1 || shortages.length > 0;
 }
 
 function renderProvisionsSummary(containerId) {
@@ -575,13 +638,15 @@ function renderRaidUnitInputs(containerId) {
   const container = $(containerId);
   if (!container) return;
   if (container.contains(document.activeElement)) return;
+  const planner = container.closest("[data-attack-planner]");
+  const plannerId = planner?.dataset.attackPlanner || containerId;
   const currentValues = {};
   container.querySelectorAll("input[data-unit]").forEach((input) => {
     currentValues[input.dataset.unit] = input.value;
   });
   container.innerHTML = Object.entries(state.config.unlockedUnits).map(([key, unit]) => {
     const available = state.me.availableUnits[key] || 0;
-    const existing = currentValues[key] || "0";
+    const existing = currentValues[key] ?? lastSelections.attackUnits?.[plannerId]?.[key] ?? "0";
     return '<label class="unit-input" title="' + unitStatsTooltip(unit) + '"><span>' + escapeHtml(unit.name) + '<small>Available ' + number(available) + '</small></span><input data-unit="' + key + '" type="number" min="0" max="' + available + '" value="' + existing + '"></label>';
   }).join("");
 }
@@ -591,6 +656,20 @@ function readRaidUnits(containerId) {
   $(containerId).querySelectorAll("input[data-unit]").forEach((input) => {
     units[input.dataset.unit] = Math.max(0, Math.floor(Number(input.value) || 0));
   });
+  return units;
+}
+
+function validatedRaidUnits(containerId) {
+  const units = readRaidUnits(containerId);
+  const selected = sumUnits(units);
+  if (!selected) throw new Error("Choose at least one ready unit before confirming this mission.");
+  for (const [key, count] of Object.entries(units)) {
+    const available = Number(state.me.availableUnits[key] || 0);
+    if (count > available) {
+      const unitName = state.config.units[key]?.name || key;
+      throw new Error(`Only ${number(available)} ${unitName} are ready; remove ${number(count - available)} from this mission.`);
+    }
+  }
   return units;
 }
 
@@ -609,32 +688,64 @@ function attachPreviewListeners() {
 
 function renderRaidPreviews() {
   if (!state) return;
-  $("sphere-raid-preview").innerHTML = previewMarkup(readRaidUnits("sphere-raid-units"), 0, "spheres");
-  $("neutral-siege-preview").innerHTML = previewMarkup(readRaidUnits("neutral-siege-units"), 0, "neutralSiege");
-  $("player-siege-preview").innerHTML = previewMarkup(readRaidUnits("player-siege-units"), 0, "playerSiege");
-  $("plateau-run-preview").innerHTML = previewMarkup(readRaidUnits("plateau-run-units"), 0, "plateau");
+  if ($("sphere-mission-summary")) $("sphere-mission-summary").innerHTML = '<strong>Raid Parshendi sphere stores</strong><span>Resistance and reward are estimates. Your force is committed for the full displayed duration.</span>';
+  Object.entries(ATTACK_PLANNERS).forEach(([type, planner]) => {
+    const units = readRaidUnits(planner.unitsId);
+    $(planner.previewId).innerHTML = previewMarkup(units, type, planner);
+    const submit = $(planner.formId)?.querySelector('button[type="submit"], button:not([type])');
+    if (submit) submit.disabled = !attackPlannerCanSubmit(type, planner, units);
+  });
 }
 
-function previewMarkup(units, acres, type) {
+function attackPlannerCanSubmit(type, planner, units) {
+  if (sumUnits(units) < 1) return false;
+  if (Object.entries(units).some(([key, count]) => count > Number(state.me.availableUnits[key] || 0))) return false;
+  if (type === "neutralSiege" && !$("neutral-plateau-target").value) return false;
+  if (type === "playerSiege" && !$("player-plateau-target").value) return false;
+  if (type === "plateau" && !state.plateauRun) return false;
+  return Boolean($(planner.formId));
+}
+
+function previewMarkup(units, type, planner) {
   const stats = raidStats(units);
-  const isSiege = type === "neutralSiege" || type === "playerSiege";
-  const travel = isSiege ? fixedSiegeTravelMinutes() : travelMinutes(stats.speed, true);
-  const arrival = new Date(Date.now() + travel * 60000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const isPlayerSiege = planner.timing === "fixed";
+  const travel = isPlayerSiege ? fixedSiegeTravelMinutes() : travelMinutes(stats.speed, true);
   const target = type === "spheres" ? sphereTargetPreview() : type === "plateau" ? plateauTargetPreview(stats) : type === "neutralSiege" ? neutralSiegePreview(stats) : type === "playerSiege" ? playerSiegePreview(stats) : "Choose a target";
-  const speedLabel = isSiege ? "Future siege stat" : "Army Speed";
-  return '<div title="' + statTooltip("power") + '"><span>Power</span><strong>' + formatStat(stats.power) + '</strong></div>' +
-    '<div title="' + statTooltip("speed") + '"><span>' + speedLabel + '</span><strong>' + formatStat(stats.speed) + '</strong></div>' +
-    '<div><span>Travel</span><strong>' + formatDuration(travel) + '</strong></div>' +
-    '<div><span>Arrival</span><strong>' + arrival + '</strong></div>' +
-    '<div title="' + statTooltip("plunder") + '"><span>Max Plunder</span><strong>' + number(stats.plunder) + '</strong></div>' +
-    '<div title="' + escapeHtml(stats.survivalDetails) + '"><span>Survival</span><strong>' + escapeHtml(stats.survivalLabel) + '</strong></div>' +
-    '<div class="preview-wide"><span>Target check</span><strong>' + escapeHtml(target) + '</strong></div>';
+  const timingTitle = isPlayerSiege ? "Player sieges are fixed at one real hour. Army Speed does not shorten them." : speedBreakdown(units, stats, travel);
+  const rewardLabel = type === "plateau" ? "Reward capacity" : "Max Plunder";
+  return '<div class="outlook-heading"><span>Mission outlook</span><strong>' + escapeHtml(target) + '</strong></div><div class="outlook-grid">' +
+    outlookCell("Power", formatStat(stats.power), powerBreakdown(units, stats)) +
+    outlookCell(rewardLabel, type === "plateau" ? "Event pool" : number(stats.plunder) + " Spheres", plunderBreakdown(units, stats)) +
+    outlookCell("Time committed", formatDuration(travel), timingTitle) +
+    outlookCell("Survival", stats.survivalLabel, stats.survivalDetails) +
+    '</div>';
+}
+
+function outlookCell(label, value, details) {
+  return '<button type="button" class="outlook-cell" title="' + escapeHtml(details) + '"><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(value) + '</strong></button>';
+}
+
+function powerBreakdown(units, stats) {
+  const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + formatStat(unit.power) + " " + unit.name);
+  if (Number(units.shardbearer || 0) > 0) lines.push("Shardbearer multiplier: ×2 once");
+  lines.push("Final Power: " + formatStat(stats.power));
+  return lines.join("\n");
+}
+
+function plunderBreakdown(units, stats) {
+  const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + formatStat(unit.plunder || 0) + " from " + unit.name);
+  lines.push("Maximum recovery: " + number(stats.plunder) + " Spheres");
+  return lines.join("\n");
+}
+
+function speedBreakdown(units, stats, travel) {
+  return "Army Speed: " + formatStat(stats.speed) + "\nBridged Plateau reduction: " + number(bridgedTravelReductionPercent()) + "%\nTotal mission duration: " + formatDuration(travel);
 }
 
 function sphereTargetPreview() {
   const averageDefense = (configValue("parshendiSphereRaidMinDefense", 4) + configValue("parshendiSphereRaidMaxDefense", 16)) / 2;
   const averageReward = (configValue("parshendiSphereRaidMinReward", 250) + configValue("parshendiSphereRaidMaxReward", 650)) / 2;
-  return "Parshendi stores look " + neutralDefenseLabel(averageDefense) + " with " + plateauRunLootLabel(averageReward) + " loot.";
+  return "Estimated resistance: " + neutralDefenseLabel(averageDefense) + "\nEstimated reward: " + plateauRunLootLabel(averageReward);
 }
 
 function plateauTargetPreview(stats) {
@@ -649,7 +760,7 @@ function plateauTargetPreview(stats) {
 function neutralSiegePreview(stats) {
   const target = state.plateaus.neutral.find((plateau) => plateau.id === $("neutral-plateau-target").value);
   if (!target) return "Choose a neutral plateau";
-  return "Parshendi hold looks " + neutralDefenseLabel(target.neutralDefenseRemaining) + ". Your power " + formatStat(stats.power) + ".";
+  return "Parshendi defense: " + neutralDefenseLabel(target.neutralDefenseRemaining) + "\nYour Power: " + formatStat(stats.power);
 }
 
 function playerSiegePreview(stats) {
@@ -661,19 +772,21 @@ function playerSiegePreview(stats) {
 
 function renderRaids() {
   const outgoing = state.raids.filter((raid) => raid.attackerId === state.me.id);
-  const incoming = state.raids.filter((raid) => raid.targetId === state.me.id);
   const world = state.raids.filter((raid) => raid.attackerId !== state.me.id && raid.targetId !== state.me.id);
-  $("outgoing-queue").innerHTML = raidListMarkup(outgoing, "No outgoing raids.");
-  $("incoming-queue").innerHTML = raidListMarkup(incoming, "No incoming raids.");
+  $("outgoing-queue").innerHTML = raidListMarkup(outgoing, "No raids underway.");
   $("world-queue").innerHTML = raidListMarkup(world, "No other visible raids.");
-  $("queue").innerHTML = raidListMarkup(state.raids, "No visible pending raids.");
 }
 
 function renderPlateaus() {
   if (!$("owned-plateaus")) return;
-  $("owned-plateaus").innerHTML = state.plateaus.mine.length ? state.plateaus.mine.map(plateauCard).join("") : '<div class="empty">No owned plateaus yet.</div>';
+  renderPlateauBonusSummary();
+  renderGroupedHoldings();
   renderRaidPreviews();
-  $("active-sieges").innerHTML = state.plateaus.sieges.length ? state.plateaus.sieges.map(siegeCard).join("") : '<div class="empty">No active plateau sieges.</div>';
+  const urgent = state.plateaus.sieges.filter((siege) => siege.defenderId === state.me.id && !siege.defenderCommittedAt);
+  const routine = state.plateaus.sieges.filter((siege) => !urgent.includes(siege));
+  $("active-sieges").innerHTML = routine.length ? routine.map(siegeCard).join("") : '<div class="empty">No other active plateau sieges.</div>';
+  $("urgent-sieges-panel").classList.toggle("hidden", urgent.length < 1);
+  $("urgent-sieges").innerHTML = urgent.map(siegeCard).join("");
 
   document.querySelectorAll("[data-commit-siege-defenders]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -696,6 +809,33 @@ function renderPlateaus() {
     input.addEventListener("input", () => renderEmergencyDefensePreview(input.dataset.siegeId));
     renderEmergencyDefensePreview(input.dataset.siegeId);
   });
+}
+
+function renderPlateauBonusSummary() {
+  const container = $("plateau-bonus-summary");
+  if (!container) return;
+  const counts = Object.fromEntries(["sphere", "bridged", "ancient", "gemheart"].map((type) => [type, state.plateaus.mine.filter((plateau) => plateau.type === type || (type === "ancient" && plateau.type === "ancient_ruins")).length]));
+  const gemheart = state.plateaus.mine.find((plateau) => plateau.gemheartProgress);
+  container.innerHTML = pulseItem("Sphere income", modifierLabel(state.me.plateauBonuses.sphereIncomeBonusPercent, "+")) + pulseItem("Travel time", modifierLabel(state.me.plateauBonuses.bridgedTravelReductionPercent, "−")) + pulseItem("Provision capacity", modifierLabel(state.me.provisions.largeBonusPercent, "+")) + pulseItem("Ancient sites", number(counts.ancient)) + (gemheart ? pulseItem("Next Gemheart", number(gemheart.gemheartProgress.progressPercent) + "%") : pulseItem("Gemheart sites", number(counts.gemheart)));
+}
+
+function renderGroupedHoldings() {
+  const container = $("owned-plateaus");
+  if (!state.plateaus.mine.length) { container.innerHTML = '<div class="empty">No owned plateaus yet.</div>'; return; }
+  const groups = [
+    ["sphere", "Sphere Plateaus"],
+    ["bridged", "Bridged Plateaus"],
+    ["ancient", "Ancient Plateaus"],
+    ["gemheart", "Gemheart Plateaus"],
+  ];
+  container.innerHTML = groups.map(([type, label]) => {
+    const plateaus = state.plateaus.mine.filter((plateau) => plateau.type === type || (type === "ancient" && plateau.type === "ancient_ruins"));
+    if (!plateaus.length) return "";
+    return '<section class="plateau-group"><h3>' + label + ' <span>' + number(plateaus.length) + '</span></h3><div class="plateau-card-grid">' + plateaus.map(plateauCard).join("") + '</div></section>';
+  }).join("");
+  container.classList.toggle("hidden", !holdingsExpanded);
+  $("toggle-holdings").textContent = holdingsExpanded ? "Hide individual plateaus" : "Show all plateaus (" + number(state.plateaus.mine.length) + ")";
+  $("toggle-holdings").setAttribute("aria-expanded", String(holdingsExpanded));
 }
 
 function plateauCard(plateau) {
@@ -811,7 +951,8 @@ function raidListMarkup(raids, emptyText) {
     const details = isMine
       ? 'Power ' + formatStat(raid.power) + ', Speed ' + formatStat(raid.speed) + externalDefenseText(raid) + ', travel ' + formatDuration(raid.travelMinutes) + '.'
       : 'Estimated strength ' + operationPowerLabel(raid.power) + externalDefenseText(raid) + ', travel ' + formatDuration(raid.travelMinutes) + '.';
-    return '<article class="list-item raid-item ' + direction.toLowerCase() + '"><strong>' + direction + ':</strong> ' + escapeHtml(raid.attackerName) + ' to <strong>' + escapeHtml(raid.targetName) + '</strong><span>' + force + '</span><small>' + details + ' Arrives ' + arrival + ' (' + formatDuration(remaining) + ' left).</small></article>';
+    const activityLabel = direction === "Outgoing" ? "My Raid" : "World Raid";
+    return '<article class="list-item raid-item ' + direction.toLowerCase() + '"><strong>' + activityLabel + ':</strong> ' + escapeHtml(raid.attackerName) + ' to <strong>' + escapeHtml(raid.targetName) + '</strong><span>' + force + '</span><small>' + details + ' Resolves ' + arrival + ' (' + formatDuration(remaining) + ' left).</small></article>';
   }).join("") : '<div class="empty">' + emptyText + '</div>';
 }
 
@@ -821,10 +962,15 @@ function renderPlateau() {
   if (!status || !participants) return;
   const run = state.plateauRun;
   if (!run) {
-    status.innerHTML = '<div class="empty">No active plateau run.</div>';
+    const next = nextPlateauRunOpening();
+    status.innerHTML = '<div class="plateau-card schedule-card"><strong>Next Plateau Run</strong><span>' + escapeHtml(next.label) + '</span><small>Opens in ' + formatDuration(next.minutes) + '. Daily schedule: ' + plateauRunSchedule().map((entry) => entry.label).join(" · ") + ' Mountain.</small></div>';
     participants.innerHTML = '<div class="empty">No committed warcamps.</div>';
+    $("plateau-run-commit-panel").classList.add("hidden");
+    $("plateau-run-roster-panel").classList.add("hidden");
     return;
   }
+  $("plateau-run-commit-panel").classList.remove("hidden");
+  $("plateau-run-roster-panel").classList.remove("hidden");
   const remaining = Math.max(0, Math.ceil((run.joinUntil - Date.now()) / 60000));
   status.innerHTML = '<div class="plateau-card"><strong>Join window open</strong><span>' + formatDuration(remaining) + ' left</span><small>Difficulty ' + plateauRunDifficultyLabel(run.difficultyPower) + '. Loot: ' + number(run.gemheartReward) + ' Gemheart and a ' + plateauRunLootLabel(run.spherePool) + ' sphere pool.</small></div>';
   participants.innerHTML = run.participants.length ? run.participants.map((entry) => {
@@ -840,6 +986,26 @@ function renderPlateau() {
   }).join("") : '<div class="empty">No committed warcamps yet.</div>';
 }
 
+function plateauRunSchedule() {
+  return state?.config?.plateauRunSchedule || [
+    { hour: 9, minute: 0, label: "9 AM" },
+    { hour: 12, minute: 0, label: "Noon" },
+    { hour: 20, minute: 0, label: "8 PM" },
+  ];
+}
+
+function nextPlateauRunOpening() {
+  const now = new Date();
+  const mountainParts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Denver", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now);
+  const value = (type) => Number(mountainParts.find((part) => part.type === type)?.value || 0);
+  const currentMinutes = value("hour") * 60 + value("minute");
+  const schedule = plateauRunSchedule();
+  const today = schedule.find((entry) => entry.hour * 60 + (entry.minute || 0) > currentMinutes);
+  const target = today || schedule[0];
+  const targetMinutes = target.hour * 60 + (target.minute || 0) + (today ? 0 : 24 * 60);
+  return { label: (today ? "Today at " : "Tomorrow at ") + target.label + " Mountain", minutes: targetMinutes - currentMinutes };
+}
+
 function renderInboxBadge() {
   const badge = $("inbox-badge");
   if (!badge) return;
@@ -851,39 +1017,94 @@ function renderInboxBadge() {
 function renderInbox() {
   const list = $("inbox-list");
   if (!list) return;
-  const inbox = state.inbox || [];
+  const inbox = (state.inbox || []).filter((message) => inboxFilter === "all" || (inboxFilter === "players" ? message.kind === "player" : message.kind !== "player")).sort((a, b) => Number(a.read) - Number(b.read) || b.at - a.at);
+  $("toggle-compose").classList.toggle("secondary", inboxFilter !== "players");
   list.innerHTML = inbox.length ? inbox.map((message) => {
     const from = message.fromPlayerId ? playerName(message.fromPlayerId) : "System";
     const readClass = message.read ? "read" : "unread";
-    return '<article class="list-item message-item ' + readClass + '"><strong>' + escapeHtml(message.subject) + '</strong><span>' + escapeHtml(message.text) + '</span><small>' + escapeHtml(from) + ' | ' + new Date(message.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + '</small></article>';
+    const category = message.fromPlayerId ? "Player" : "Report";
+    const preview = message.text.length > 110 ? message.text.slice(0, 107) + "…" : message.text;
+    return '<details class="list-item message-item ' + readClass + '" data-message-id="' + message.id + '"' + (message.read ? '' : ' data-unread="true"') + '><summary><div><span class="event-kind">' + category + '</span><strong>' + escapeHtml(message.subject) + '</strong><small>' + escapeHtml(preview) + '</small></div><time>' + relativeTime(message.at) + '</time></summary><div class="message-body"><p>' + escapeHtml(message.text) + '</p><small>From ' + escapeHtml(from) + ' · ' + new Date(message.at).toLocaleString() + '</small></div></details>';
   }).join("") : '<div class="empty">No messages yet.</div>';
+  list.querySelectorAll("details[data-unread='true']").forEach((details) => details.addEventListener("toggle", () => {
+    if (!details.open) return;
+    details.removeAttribute("data-unread");
+    action(() => client.mutation(refs.markMessageRead, { messageId: details.dataset.messageId }));
+  }, { once: true }));
 }
 
 function renderLog() {
+  let currentDay = "";
   const markup = state.log.map((entry) => {
-    return '<article class="list-item">' + escapeHtml(entry.text) + '<small>' + new Date(entry.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + '</small></article>';
+    const date = new Date(entry.at);
+    const day = date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+    const heading = day !== currentDay ? (currentDay = day, '<h3 class="chronicle-day">' + day + '</h3>') : "";
+    return heading + '<article class="list-item chronicle-item"><span class="event-kind">' + escapeHtml(eventKindLabel(entry.kind)) + '</span><strong>' + escapeHtml(entry.text) + '</strong><small>' + escapeHtml(entry.gameDate || state.gameDate) + ' · ' + date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + '</small></article>';
   }).join("");
   $("log").innerHTML = markup || '<div class="empty">No events yet.</div>';
 }
 
 function renderOverview() {
-  $("overview-units").innerHTML = activeUnitEntries().map(([key, unit]) => {
-    const count = state.me.units[key] || 0;
-    const available = state.me.availableUnits[key] || 0;
-    return '<div><span>' + escapeHtml(unit.name) + '</span><strong>' + number(available) + '/' + number(count) + '</strong></div>';
-  }).join("");
-  $("overview-buildings").innerHTML = Object.entries(state.me.buildings).map(([key, level]) => {
-    const building = state.config.buildings[key];
-    return '<div><span>' + escapeHtml(building?.name || key) + '</span><strong>Level ' + level + '</strong></div>';
-  }).join("");
-  $("overview-raids").innerHTML = state.raids.length ? state.raids.slice(0, 3).map((raid) => {
-    const label = raid.attackerId === state.me.id ? "Outgoing to " + raid.targetName : raid.targetId === state.me.id ? "Incoming from " + raid.attackerName : raid.attackerName + " to " + raid.targetName;
-    return '<div><span>' + escapeHtml(label) + '</span><strong>' + formatDuration(Math.max(0, Math.ceil((raid.arrivalAt - Date.now()) / 60000))) + '</strong></div>';
-  }).join("") : '<div><span>Pending raids</span><strong>None</strong></div>';
+  renderCommandBriefing();
+  const bonusLines = [
+    ["Income", modifierLabel(state.me.plateauBonuses.sphereIncomeBonusPercent, "+")],
+    ["Travel time", modifierLabel(state.me.plateauBonuses.bridgedTravelReductionPercent, "−")],
+    ["Provision capacity", modifierLabel(state.me.provisions.largeBonusPercent, "+")],
+  ];
+  const operationCount = state.raids.filter((raid) => raid.attackerId === state.me.id).length + state.plateaus.sieges.filter((siege) => siege.attackerId === state.me.id || siege.defenderId === state.me.id).length + (state.plateauRun?.participants.some((entry) => entry.playerId === state.me.id) ? 1 : 0);
+  $("kingdom-pulse").innerHTML = pulseItem("Income / day", number(state.me.totalIncomePerDay), incomeTooltip(), true) + pulseItem("Ready Power", formatStat(state.me.power)) + pulseBreakdownItem("Plateau bonuses", bonusLines) + pulseItem("Active operations", number(operationCount));
+  const operations = [];
+  state.raids.filter((raid) => raid.attackerId === state.me.id).forEach((raid) => operations.push({ label: "Sphere raid", detail: raid.targetName, at: raid.arrivalAt, view: "raids" }));
+  state.plateaus.sieges.filter((siege) => siege.attackerId === state.me.id || siege.defenderId === state.me.id).forEach((siege) => operations.push({ label: siege.defenderId === state.me.id ? "Defending siege" : "Plateau siege", detail: state.plateaus.byId[siege.plateauId]?.name || "Plateau", at: siege.resolveAt, view: "plateaus" }));
+  if (state.plateauRun?.participants.some((entry) => entry.playerId === state.me.id)) operations.push({ label: "Plateau Run", detail: "Warcamp committed", at: state.plateauRun.joinUntil, view: "plateau" });
+  operations.sort((a, b) => a.at - b.at);
+  $("overview-operations").innerHTML = operations.length ? operations.map((item) => '<button type="button" class="operation-row" data-operation-view="' + item.view + '"><span><strong>' + escapeHtml(item.label) + '</strong><small>' + escapeHtml(item.detail) + '</small></span><b>' + formatDuration(Math.max(0, Math.ceil((item.at - Date.now()) / 60000))) + '</b></button>').join("") : '<div class="empty">No armies are currently committed. Your next move is yours.</div>';
+  $("overview-operations").querySelectorAll("[data-operation-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.operationView)));
+}
+
+function renderCommandBriefing() {
+  const panel = $("command-briefing");
+  const container = $("command-priorities");
+  const priorities = [];
+  const urgentSieges = state.plateaus.sieges.filter((siege) => siege.defenderId === state.me.id && !siege.defenderCommittedAt);
+  if (urgentSieges.length) priorities.push({ label: "Defensive siege", text: urgentSieges.length + " plateau" + (urgentSieges.length === 1 ? " needs" : "s need") + " defenders", view: "plateaus" });
+  if (state.plateauRun) priorities.push({ label: "Plateau Run open", text: formatDuration(Math.max(0, Math.ceil((state.plateauRun.joinUntil - Date.now()) / 60000))) + " left to commit", view: "plateau" });
+  if (state.me.provisions.used > state.me.provisions.capacity) priorities.push({ label: "Over Provisions", text: "Recruitment is blocked until capacity recovers", view: "buildings" });
+  panel.classList.toggle("hidden", priorities.length < 1);
+  container.innerHTML = priorities.map((item) => '<button type="button" class="priority-item" data-priority-view="' + item.view + '"><span>' + escapeHtml(item.label) + '</span><strong>' + escapeHtml(item.text) + '</strong></button>').join("");
+  container.querySelectorAll("[data-priority-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.priorityView)));
+}
+
+function pulseItem(label, value, title = "", expandable = false) {
+  return '<article class="pulse-item' + (expandable ? ' expandable' : '') + '"' + (title ? ' title="' + escapeHtml(title) + '" tabindex="0"' : '') + '><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(value) + '</strong></article>';
+}
+
+function pulseBreakdownItem(label, lines) {
+  return '<article class="pulse-item"><span>' + escapeHtml(label) + '</span><div class="pulse-lines">' + lines.map(([name, value]) => '<div><small>' + escapeHtml(name) + '</small><strong>' + escapeHtml(value) + '</strong></div>').join("") + '</div></article>';
+}
+
+function relativeTime(at) {
+  const minutes = Math.max(0, Math.floor((Date.now() - at) / 60000));
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return minutes + "m ago";
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + "h ago";
+  return Math.floor(hours / 24) + "d ago";
+}
+
+function eventKindLabel(kind) {
+  return ({ territory: "Territory", siege: "Siege", raid: "Raid", plateau_run: "Plateau Run", gemheart: "Gemheart", warcamp: "Warcamp", economy: "Economy" })[kind] || "World";
 }
 
 function activeUnitEntries() {
-  return Object.entries(state.config.units).filter(([, unit]) => unit.active !== false);
+  const order = ["bridgeman", "spearman", "chull", "shardbearer"];
+  return Object.entries(state.config.units)
+    .filter(([, unit]) => unit.active !== false)
+    .sort(([left], [right]) => {
+      const leftIndex = order.indexOf(left);
+      const rightIndex = order.indexOf(right);
+      return (leftIndex < 0 ? order.length : leftIndex) - (rightIndex < 0 ? order.length : rightIndex);
+    });
 }
 
 function unitStatsTooltip(unit) {
@@ -1265,8 +1486,13 @@ function formatPercent(value) {
   return ((Number(value || 0) * 100).toLocaleString(undefined, { maximumFractionDigits: 1 })) + "%";
 }
 
+function modifierLabel(value, prefix) {
+  const numeric = Number(value || 0);
+  return numeric > 0 ? prefix + number(numeric) + "%" : "No bonus";
+}
+
 function survivalProfile(included) {
-  if (!included.length) return { label: "None", details: "No units selected." };
+  if (!included.length) return { label: "No units selected", details: "Select at least one ready unit to see its Survival profile." };
   const lowest = Math.min(...included.map((entry) => Number(entry.unit.survival || 0)));
   const label =
     lowest >= 0.995
@@ -1360,6 +1586,12 @@ $("create-account-form").addEventListener("submit", (event) => {
   event.preventDefault();
   createAccount();
 });
+document.querySelectorAll("[data-account-mode]").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll("[data-account-mode]").forEach((entry) => { const active = entry === button; entry.classList.toggle("active", active); entry.setAttribute("aria-selected", String(active)); });
+    document.querySelectorAll("[data-account-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.accountPanel === button.dataset.accountMode));
+  });
+});
 $("sign-in-form").addEventListener("submit", (event) => {
   event.preventDefault();
   signIn();
@@ -1376,22 +1608,22 @@ $("logout").addEventListener("click", () => {
 });
 $("sphere-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  action(() => client.mutation(refs.launchSphereRaid, { units: readRaidUnits("sphere-raid-units") }));
+  action(() => client.mutation(refs.launchSphereRaid, { units: validatedRaidUnits("sphere-raid-units") }));
 });
 $("neutral-siege-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!$("neutral-plateau-target").value) return alert("Choose a neutral plateau.");
-  action(() => client.mutation(refs.launchNeutralSiege, { plateauId: $("neutral-plateau-target").value, units: readRaidUnits("neutral-siege-units") }));
+  action(() => client.mutation(refs.launchNeutralSiege, { plateauId: $("neutral-plateau-target").value, units: validatedRaidUnits("neutral-siege-units") }));
 });
 $("player-siege-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!$("player-plateau-target").value) return alert("Choose an enemy plateau.");
-  action(() => client.mutation(refs.launchPlayerSiege, { plateauId: $("player-plateau-target").value, units: readRaidUnits("player-siege-units") }));
+  action(() => client.mutation(refs.launchPlayerSiege, { plateauId: $("player-plateau-target").value, units: validatedRaidUnits("player-siege-units") }));
 });
 $("plateau-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!state.plateauRun) return alert("No Plateau Run is open.");
-  action(() => client.mutation(refs.joinPlateauRun, { plateauRunId: state.plateauRun.id, units: readRaidUnits("plateau-run-units") }));
+  action(() => client.mutation(refs.joinPlateauRun, { plateauRunId: state.plateauRun.id, units: validatedRaidUnits("plateau-run-units") }));
 });
 $("message-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -1402,9 +1634,27 @@ $("message-form").addEventListener("submit", (event) => {
       body: $("message-text").value,
     });
     $("message-text").value = "";
+    $("compose-panel").classList.add("hidden");
+    $("toggle-compose").setAttribute("aria-expanded", "false");
   });
 });
 $("mark-inbox-read").addEventListener("click", () => action(() => client.mutation(refs.markInboxRead, {})));
+$("toggle-compose").addEventListener("click", () => {
+  const open = $("compose-panel").classList.toggle("hidden") === false;
+  $("toggle-compose").setAttribute("aria-expanded", String(open));
+});
+document.querySelectorAll("[data-inbox-filter]").forEach((button) => button.addEventListener("click", () => {
+  inboxFilter = button.dataset.inboxFilter;
+  document.querySelectorAll("[data-inbox-filter]").forEach((entry) => entry.classList.toggle("active", entry === button));
+  renderInbox();
+}));
+$("auto-read-inbox").checked = localStorage.getItem("sp-auto-read-inbox") === "true";
+$("auto-read-inbox").addEventListener("change", () => localStorage.setItem("sp-auto-read-inbox", String($("auto-read-inbox").checked)));
+$("toggle-holdings").addEventListener("click", () => { holdingsExpanded = !holdingsExpanded; renderGroupedHoldings(); });
+document.querySelectorAll("[data-expedition-mode]").forEach((button) => button.addEventListener("click", () => {
+  document.querySelectorAll("[data-expedition-mode]").forEach((entry) => entry.classList.toggle("active", entry === button));
+  document.querySelectorAll("[data-expedition-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.expeditionPanel === button.dataset.expeditionMode));
+}));
 $("finish-raids").addEventListener("click", () => {
   action(async () => {
     const result = await client.mutation(refs.forceResolveAllRaids, {});
@@ -1476,6 +1726,11 @@ document.querySelectorAll("[data-view-link]").forEach((element) => {
 });
 document.addEventListener("click", (event) => {
   if (!isMobileLayout()) return;
+  const calculation = event.target.closest(".stat-cell[title], .outlook-cell[title]");
+  if (calculation) {
+    showTapTooltip(calculation.getAttribute("title"));
+    return;
+  }
   if (event.target.closest("button, input, select, textarea, [data-view-link], .nav-button")) return;
   const target = event.target.closest("[title]");
   if (!target) {

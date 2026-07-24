@@ -95,6 +95,12 @@ export const PLATEAU_RUN_RULES = {
   successfulRunLossRate: 0.12,
 } as const;
 
+export const PLATEAU_RUN_SCHEDULE = [
+  { hour: 9, minute: 0, label: "9 AM" },
+  { hour: 12, minute: 0, label: "Noon" },
+  { hour: 20, minute: 0, label: "8 PM" },
+] as const;
+
 export const UNIT_RULES = {
   bridgeman: {
     name: "Bridgeman",
@@ -186,7 +192,7 @@ export const UNIT_RULES = {
 
 export const BUILDING_RULES = {
   market: {
-    name: "Gemheart Market",
+    name: "Warcamp Market",
     baseCost: 150,
     constructionTimeMs: 0,
     description: "+250 spheres per game day per level",

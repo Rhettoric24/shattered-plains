@@ -5,6 +5,7 @@ import {
   ECONOMY_RULES,
   PLATEAU_RULES,
   PLATEAU_RUN_RULES,
+  PLATEAU_RUN_SCHEDULE,
   STARTING_RULES,
   TIME_RULES,
   UNIT_RULES,
@@ -36,6 +37,7 @@ export const getGameConfig = query({
       units: UNIT_RULES,
       buildings: BUILDING_RULES,
       plateauRuns: PLATEAU_RUN_RULES,
+      plateauRunSchedule: PLATEAU_RUN_SCHEDULE,
     };
   },
 });

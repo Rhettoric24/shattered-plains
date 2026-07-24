@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAdmin } from "./admin";
+import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
 import { plateauCountsForPlayer } from "./plateauHelpers";
 import {
@@ -11,6 +12,7 @@ import {
   bridgedTravelReduction,
   normalizeUnits,
   PLATEAU_RUN_RULES,
+  PLATEAU_RUN_SCHEDULE,
   totalUnits,
   UNIT_RULES,
   unitPlunder,
@@ -157,7 +159,8 @@ async function createPlateauRun(
     });
   }
 
-  await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+    kind: "plateau_run",
     text: `A ${options.source === "schedule" ? "scheduled " : ""}Plateau Run opened for ${activeCount} active warcamps. Difficulty ${difficulty}.`,
     createdAt: now,
   });
@@ -191,18 +194,13 @@ function mountainScheduleSlot(now: number) {
   const hour = Number(value("hour"));
   const minute = Number(value("minute"));
 
-  const scheduleLabels: Record<number, string> = {
-    9: "9 AM Mountain",
-    12: "noon Mountain",
-    20: "8 PM Mountain",
-  };
-
-  if (!(hour in scheduleLabels) || minute >= 15) {
+  const slot = PLATEAU_RUN_SCHEDULE.find((entry) => entry.hour === hour && minute >= entry.minute && minute < entry.minute + 15);
+  if (!slot) {
     return null;
   }
 
   return {
-    label: scheduleLabels[hour],
+    label: `${slot.label} Mountain`,
     scheduleKey: `${value("year")}-${value("month")}-${value("day")}:${hour}`,
   };
 }
@@ -327,7 +325,8 @@ export const joinPlateauRun = mutation({
       committedAt: now,
     });
 
-    await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+      kind: "plateau_run",
       text: `${player.name} committed forces to the Plateau Run.`,
       createdAt: now,
     });
@@ -370,7 +369,8 @@ export const resolvePlateauRun = internalMutation({
         status: "resolved",
         resolvedAt: now,
       });
-      await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+        kind: "plateau_run",
         text: "The Plateau Run closed with no warcamps committed.",
         createdAt: now,
       });
@@ -433,7 +433,8 @@ export const resolvePlateauRun = internalMutation({
         status: "resolved",
         resolvedAt: now,
       });
-      await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+        kind: "plateau_run",
         text: `The Plateau Run failed. Combined power ${combinedPower.toFixed(2)} did not beat ${run.difficulty}.`,
         createdAt: now,
       });
@@ -492,7 +493,8 @@ export const resolvePlateauRun = internalMutation({
       winnerPlayerId: winner.playerId,
       resolvedAt: now,
     });
-    await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+      kind: "gemheart",
       text: `${winnerPlayer?.name ?? "A warcamp"} claimed the Gemheart. Combined power ${combinedPower.toFixed(2)} beat ${run.difficulty}.`,
       createdAt: now,
     });

@@ -1,0 +1,28 @@
+/* Clarity Pass: responsive overrides kept separate from component definitions. */
+@media (max-width: 980px) {
+  .pulse-grid, .outlook-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #plateau-bonus-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .two-column { grid-template-columns: 1fr; }
+  #unit-roster { grid-template-columns: 1fr; }
+}
+@media (max-width: 680px) {
+  body { overflow-x: hidden; }
+  .account-panel { padding: 24px 18px; overflow: hidden; }
+  .setup-copy, .account-forms, .account-mode { min-width: 0; }
+  .setup-copy h2, .setup-copy p { overflow-wrap: anywhere; }
+  .account-forms .mode-button { padding-inline: 6px; white-space: normal; font-size: 0.82rem; }
+  .pulse-grid, .outlook-grid, .unit-stat-grid, .effect-comparison, .recruit-preview, .attack-planner { grid-template-columns: 1fr; }
+  #plateau-bonus-summary, .target-selector { grid-template-columns: 1fr; }
+  .section-heading, .inbox-controls, .message-item summary { align-items: stretch; display: grid; }
+  .mode-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quick-add { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .quick-add button { padding: 0 4px; }
+  #unit-roster .quantity-builder { grid-template-columns: 1fr; }
+  #unit-roster .quantity-corrections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .priority-item, .operation-row { min-height: 60px; }
+  .attack-planner { max-width: none; }
+  .outlook-cell small { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}

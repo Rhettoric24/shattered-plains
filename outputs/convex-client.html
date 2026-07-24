@@ -5,35 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Shattered Plains Convex Multiplayer</title>
     <link rel="stylesheet" href="shattered-plains-styles.css" />
+    <link rel="stylesheet" href="clarity-layout.css" />
+    <link rel="stylesheet" href="clarity-components.css" />
+    <link rel="stylesheet" href="clarity-responsive.css" />
   </head>
   <body>
     <main class="shell">
       <section id="account-screen" class="setup-panel account-panel">
         <div class="setup-copy">
-          <p class="eyebrow">Convex multiplayer</p>
+          <p class="eyebrow">The warcamps gather</p>
           <h1>Shattered Plains</h1>
-          <h2>Create or enter a warcamp</h2>
-          <p>This version uses Convex Auth. Your email and password control the account; your warcamp name controls your in-game identity.</p>
+          <h2>Build a warcamp. Contest the plateaus.</h2>
+          <p>Raise armies, claim distant plateaus, and race rival warcamps for the gemhearts of the Shattered Plains.</p>
         </div>
         <div class="account-forms">
-          <form id="create-account-form" class="setup-form">
-            <h3>Create account</h3>
+          <div class="mode-switcher" role="tablist" aria-label="Account access">
+            <button type="button" class="mode-button active" data-account-mode="create" role="tab" aria-selected="true">Found a Warcamp</button>
+            <button type="button" class="mode-button" data-account-mode="signin" role="tab" aria-selected="false">Return to Warcamp</button>
+          </div>
+          <form id="create-account-form" class="setup-form account-mode active" data-account-panel="create">
             <label>Email</label>
             <input id="create-email" type="email" placeholder="you@example.com" autocomplete="email" />
             <label>Password</label>
             <input id="create-password" type="password" placeholder="At least 8 characters" autocomplete="new-password" />
             <label>Warcamp name</label>
             <input id="create-warcamp-name" placeholder="Your in-game warcamp" autocomplete="off" />
-            <button id="register" type="submit">Create account</button>
+            <button id="register" type="submit">Found Warcamp</button>
           </form>
 
-          <form id="sign-in-form" class="setup-form">
-            <h3>Sign in</h3>
+          <form id="sign-in-form" class="setup-form account-mode" data-account-panel="signin">
             <label>Email</label>
             <input id="sign-in-email" type="email" placeholder="you@example.com" autocomplete="email" />
             <label>Password</label>
             <input id="sign-in-password" type="password" placeholder="Your password" autocomplete="current-password" />
-            <button type="submit" class="secondary">Sign in</button>
+            <button type="submit">Return to Warcamp</button>
           </form>
 
           <p id="message" class="hint account-message"></p>
@@ -53,11 +58,11 @@
             <button class="nav-button" type="button" data-view="buildings">Buildings</button>
             <button class="nav-button" type="button" data-view="army">Army</button>
             <button class="nav-button" type="button" data-view="raids">Raids</button>
-            <button class="nav-button" type="button" data-view="plateaus">Plateaus</button>
-            <button class="nav-button" type="button" data-view="plateau">Plateau Runs</button>
+            <button class="nav-button" type="button" data-view="plateaus">Plateaus <span class="nav-state-dot hidden" id="siege-nav-state" aria-label="Siege needs attention"></span></button>
+            <button class="nav-button" type="button" data-view="plateau">Plateau Runs <span class="nav-state-dot hidden" id="run-nav-state" aria-label="Plateau Run open"></span></button>
             <button class="nav-button" type="button" data-view="inbox">Inbox <span id="inbox-badge" class="nav-badge hidden">0</span></button>
             <button class="nav-button hidden" type="button" data-view="testing" data-admin-only="true">Testing</button>
-            <button class="nav-button" type="button" data-view="chronicle">Chronicle</button>
+            <button class="nav-button hidden" type="button" data-view="chronicle" data-admin-only="true">Chronicle</button>
           </nav>
           <button id="logout" class="secondary sidebar-logout" type="button">Sign out</button>
         </aside>
@@ -76,52 +81,25 @@
           </header>
 
           <section class="resource-strip" aria-label="Current resources">
-            <article data-view-link="plateaus"><span>Plateaus</span><strong id="res-acres">0</strong></article>
             <article data-view-link="buildings"><span>Spheres</span><strong id="res-spheres">0</strong></article>
             <article data-view-link="buildings"><span>Gemhearts</span><strong id="res-gemhearts">0</strong></article>
-            <article data-view-link="army"><span>Power</span><strong id="res-power">0</strong></article>
             <article data-view-link="army" id="res-provisions-card"><span>Provisions</span><strong id="res-provisions">0 / 0</strong></article>
+            <article data-view-link="army"><span>Units ready</span><strong id="res-units">0 / 0</strong></article>
+            <article data-view-link="plateaus"><span>Plateaus</span><strong id="res-acres">0</strong></article>
           </section>
 
-          <section id="world-alerts" class="world-alerts" aria-label="World alerts"></section>
 
           <section class="view active" id="view-overview" data-title="Warcamp status" data-eyebrow="Overview">
-            <div class="stats-grid dashboard-stats">
-              <article data-view-link="plateaus"><span>Plateaus</span><strong id="acres">0</strong></article>
-              <article data-view-link="buildings"><span>Spheres</span><strong id="spheres">0</strong></article>
-              <article data-view-link="buildings"><span>Gemhearts</span><strong id="gemhearts">0</strong></article>
-              <article data-view-link="buildings" id="income-card"><span>Income/day</span><strong id="income">0</strong></article>
-              <article data-view-link="army"><span>Units</span><strong id="units-total">0</strong></article>
-              <article data-view-link="army"><span>Power</span><strong id="power">0</strong></article>
-              <article data-view-link="army"><span>Home Power</span><strong id="home-power">0</strong></article>
-              <article data-view-link="army"><span>Available</span><strong id="available-total">0</strong></article>
-              <article data-view-link="army"><span>Away</span><strong id="away-total">0</strong></article>
-              <article data-view-link="plateaus"><span>Neutral</span><strong id="open-acres">0</strong></article>
-            </div>
-            <div class="overview-grid">
-              <section class="panel compact-panel">
-                <p class="eyebrow">Army</p>
-                <h2>Ready forces</h2>
-                <div id="overview-units" class="summary-list"></div>
-              </section>
-              <section class="panel compact-panel">
-                <p class="eyebrow">Buildings</p>
-                <h2>Warcamp upgrades</h2>
-                <div id="overview-buildings" class="summary-list"></div>
-              </section>
-              <section class="panel compact-panel">
-                <p class="eyebrow">Raids</p>
-                <h2>Current operations</h2>
-                <div id="overview-raids" class="summary-list"></div>
-              </section>
-            </div>
+            <section id="command-briefing" class="command-briefing hidden"><p class="eyebrow">Needs attention</p><div id="command-priorities" class="priority-list"></div></section>
+            <section class="panel full-panel"><p class="eyebrow">Kingdom pulse</p><div id="kingdom-pulse" class="pulse-grid"></div></section>
+            <section class="panel full-panel"><div class="section-heading split-heading"><div><p class="eyebrow">Operations</p><h2>Armies in motion</h2></div></div><div id="overview-operations" class="operation-timeline"></div></section>
           </section>
 
           <section class="view" id="view-buildings" data-title="Upgrade warcamp" data-eyebrow="Buildings">
             <section class="panel full-panel">
               <p class="eyebrow">Buildings</p>
               <h2>Choose the next investment</h2>
-              <div id="provisions-summary" class="capacity-banner"></div>
+              <p class="section-intro">Compare what each level provides with what the next investment will cost.</p>
               <div id="buildings" class="building-grid"></div>
             </section>
           </section>
@@ -130,82 +108,64 @@
             <section class="panel full-panel">
               <p class="eyebrow">Roster</p>
               <h2>Recruit units</h2>
-              <div id="army-provisions-summary" class="capacity-banner"></div>
+              <div id="army-status" class="pulse-grid"></div>
               <div id="unit-roster" class="building-grid"></div>
             </section>
           </section>
 
           <section class="view" id="view-raids" data-title="Raid planning" data-eyebrow="Raids">
+            <section class="panel full-panel"><p class="eyebrow">Active raids</p><div class="raid-queue-grid two-column"><div><h3>My Raids</h3><div id="outgoing-queue" class="list"></div></div><div><h3>World Raids</h3><div id="world-queue" class="list"></div></div></div></section>
             <section class="panel full-panel">
               <p class="eyebrow">Parshendi</p>
               <h2>Raid sphere stores</h2>
-              <form id="sphere-form" class="raid-form contained-form">
+              <form id="sphere-form" class="attack-planner" data-attack-planner="sphere">
+                <div id="sphere-mission-summary" class="mission-summary form-wide"></div>
                 <div class="form-wide">
                   <label>Raid units</label>
                   <div id="sphere-raid-units" class="unit-input-grid"></div>
                 </div>
-                <div id="sphere-raid-preview" class="raid-preview form-wide"></div>
+                <div id="sphere-raid-preview" class="attack-outlook form-wide"></div>
                 <button>Launch sphere raid</button>
               </form>
-            </section>
-            <section class="panel full-panel">
-              <p class="eyebrow">Operations</p>
-              <h2>Raids in motion</h2>
-              <div class="raid-queue-grid">
-                <div>
-                  <h3>Outgoing</h3>
-                  <div id="outgoing-queue" class="list"></div>
-                </div>
-                <div>
-                  <h3>Incoming</h3>
-                  <div id="incoming-queue" class="list"></div>
-                </div>
-                <div>
-                  <h3>World</h3>
-                  <div id="world-queue" class="list"></div>
-                </div>
-              </div>
-              <div id="queue" class="list hidden"></div>
             </section>
           </section>
 
           <section class="view" id="view-plateaus" data-title="Plateau control" data-eyebrow="Land">
+            <section id="urgent-sieges-panel" class="panel full-panel hidden"><p class="eyebrow">Needs response</p><h2>Defend your plateaus</h2><div id="urgent-sieges" class="list"></div></section>
             <section class="panel full-panel">
               <p class="eyebrow">Holdings</p>
-              <h2>Your plateaus</h2>
-              <div id="owned-plateaus" class="list"></div>
+              <h2>Kingdom-wide plateau effects</h2>
+              <div id="plateau-bonus-summary" class="pulse-grid"></div>
+              <button id="toggle-holdings" type="button" class="secondary disclosure-button" aria-expanded="false">Show all plateaus</button>
+              <div id="owned-plateaus" class="plateau-groups hidden"></div>
             </section>
             <section class="panel full-panel">
-              <p class="eyebrow">Neutral</p>
-              <h2>Claim a plateau</h2>
-              <form id="neutral-siege-form" class="raid-form contained-form">
-                <label>Target plateau</label>
-                <select id="neutral-plateau-target"></select>
+              <p class="eyebrow">Expeditions</p>
+              <div class="mode-switcher expedition-switcher"><button type="button" class="mode-button active" data-expedition-mode="neutral">Explore Neutral</button><button type="button" class="mode-button" data-expedition-mode="rival">Siege Rival</button></div>
+              <form id="neutral-siege-form" class="attack-planner expedition-panel active" data-expedition-panel="neutral" data-attack-planner="neutral">
+                <div class="mission-summary form-wide"><strong>Explore the neutral plateau pool</strong><span>Army Speed and Bridged Plateaus reduce this expedition's total duration. Plateau identity remains hidden until capture.</span></div>
+                <div class="target-selector form-wide"><label for="neutral-plateau-target">Target Plateau</label><select id="neutral-plateau-target"></select></div>
                 <div class="form-wide">
-                  <label>Siege units</label>
+                  <label>Select Units</label>
                   <div id="neutral-siege-units" class="unit-input-grid"></div>
                 </div>
-                <div id="neutral-siege-preview" class="raid-preview form-wide"></div>
+                <div id="neutral-siege-preview" class="attack-outlook form-wide"></div>
                 <button>Launch expedition</button>
               </form>
-            </section>
-            <section class="panel full-panel">
-              <p class="eyebrow">Rivals</p>
-              <h2>Siege a plateau</h2>
-              <form id="player-siege-form" class="raid-form contained-form">
-                <label>Target plateau</label>
-                <select id="player-plateau-target"></select>
+              <form id="player-siege-form" class="attack-planner expedition-panel" data-expedition-panel="rival" data-attack-planner="rival">
+                <div class="mission-summary form-wide"><strong>Challenge a rival holding</strong><span>Player sieges always take one real hour. Speed does not shorten the siege window.</span></div>
+                <div class="target-selector form-wide"><label for="player-plateau-target">Target Plateau</label><select id="player-plateau-target"></select></div>
                 <div class="form-wide">
-                  <label>Siege units</label>
+                  <label>Select Units</label>
                   <div id="player-siege-units" class="unit-input-grid"></div>
                 </div>
-                <div id="player-siege-preview" class="raid-preview form-wide"></div>
+                <div id="player-siege-preview" class="attack-outlook form-wide"></div>
                 <button>Start siege</button>
               </form>
             </section>
             <section class="panel full-panel">
               <p class="eyebrow">Sieges</p>
-              <h2>Active plateau sieges</h2>
+              <h2>All active sieges</h2>
               <div id="active-sieges" class="list"></div>
             </section>
           </section>
@@ -216,19 +176,19 @@
               <h2>Current plateau run</h2>
               <div id="plateau-status" class="plateau-status"></div>
             </section>
-            <section class="panel full-panel">
+            <section id="plateau-run-commit-panel" class="panel full-panel">
               <p class="eyebrow">Commit</p>
               <h2>Send troops to the run</h2>
-              <form id="plateau-form" class="raid-form contained-form">
+              <form id="plateau-form" class="attack-planner" data-attack-planner="plateau">
                 <div class="form-wide">
                   <label>Plateau run units</label>
                   <div id="plateau-run-units" class="unit-input-grid"></div>
                 </div>
-                <div id="plateau-run-preview" class="raid-preview form-wide"></div>
+                <div id="plateau-run-preview" class="attack-outlook form-wide"></div>
                 <button>Commit to plateau run</button>
               </form>
             </section>
-            <section class="panel full-panel">
+            <section id="plateau-run-roster-panel" class="panel full-panel">
               <p class="eyebrow">Roster</p>
               <h2>Committed warcamps</h2>
               <div id="plateau-participants" class="list"></div>
@@ -242,11 +202,12 @@
                   <p class="eyebrow">Notifications</p>
                   <h2>Inbox</h2>
                 </div>
-                <button id="mark-inbox-read" type="button" class="secondary">Mark all read</button>
+                <div class="inline-actions"><button id="toggle-compose" type="button" class="secondary" aria-expanded="false">Compose Spanreed</button><button id="mark-inbox-read" type="button" class="secondary">Mark all read</button></div>
               </div>
+              <div class="inbox-controls"><div class="filter-chips" role="group" aria-label="Inbox filter"><button type="button" class="filter-chip active" data-inbox-filter="all">All</button><button type="button" class="filter-chip" data-inbox-filter="reports">Reports</button><button type="button" class="filter-chip" data-inbox-filter="players">Player Messages</button></div><label class="preference-toggle"><input id="auto-read-inbox" type="checkbox"> Mark messages read when Inbox opens</label></div>
               <div id="inbox-list" class="list"></div>
             </section>
-            <section class="panel full-panel">
+            <section id="compose-panel" class="panel full-panel hidden">
               <p class="eyebrow">Message</p>
               <h2>Send a spanreed note</h2>
               <form id="message-form" class="message-form contained-form">
@@ -277,7 +238,7 @@
             </section>
           </section>
 
-          <section class="view" id="view-chronicle" data-title="Event log" data-eyebrow="Chronicle">
+          <section class="view hidden" id="view-chronicle" data-title="Event log" data-eyebrow="Chronicle" data-admin-only="true">
             <section class="panel full-panel">
               <p class="eyebrow">Chronicle</p>
               <h2>Recent events</h2>

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { settlePlayerEconomy } from "./economyHelpers";
+import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
 import {
   plateauAttributeCountsForPlayer,
@@ -126,8 +127,17 @@ export const trainUnit = mutation({
       lastActiveAt: now,
     });
 
-    await ctx.db.insert("gameEvents", {
-      text: `${settledPlayer.name} trained ${count} ${rule.name}${count === 1 ? "" : "s"}.`,
+    const trainedUnitName = count === 1
+      ? rule.name
+      : rule.name === "Bridgeman"
+        ? "Bridgemen"
+        : rule.name === "Spearman"
+          ? "Spearmen"
+          : `${rule.name}s`;
+
+    await insertGameEvent(ctx, {
+      kind: "warcamp",
+      text: `${settledPlayer.name} trained ${count} ${trainedUnitName}.`,
       createdAt: now,
     });
 

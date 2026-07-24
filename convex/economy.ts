@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { settlePlayerEconomy } from "./economyHelpers";
+import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
 import { plateauCountsForPlayer } from "./plateauHelpers";
 import { incomePerGameDay, pendingEconomy, TIME_RULES, WORLD_KEY } from "./rules";
@@ -84,7 +85,8 @@ export const advanceEconomy = mutation({
     }
 
     await ctx.db.patch(world._id, { updatedAt: now });
-    await ctx.db.insert("gameEvents", {
+    await insertGameEvent(ctx, {
+      kind: "economy",
       text: `Economy settled for ${players.length} warcamps.`,
       createdAt: now,
     });

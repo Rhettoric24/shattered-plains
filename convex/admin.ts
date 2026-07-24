@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { insertGameEvent } from "./eventHelpers";
 import type { Id } from "./_generated/dataModel";
 import {
   mutation,
@@ -145,7 +146,8 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
   );
   const neutralSeed = await createSeasonNeutralPlateaus(ctx, players.length, now);
 
-  await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+    kind: "world",
     text: `World reset. ${players.length} warcamps kept their accounts and received fresh starter kingdoms.`,
     createdAt: now,
   });

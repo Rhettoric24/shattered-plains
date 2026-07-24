@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { insertGameEvent } from "./eventHelpers";
 import { getCurrentPlayer, requireAuthUserId } from "./ownership";
 import {
   createNeutralPlateaus,
@@ -130,7 +131,8 @@ async function createPlayerForAuth(
     createdAt: now,
   });
 
-  await ctx.db.insert("gameEvents", {
+  await insertGameEvent(ctx, {
+    kind: "warcamp",
     text: `${displayName} founded a warcamp.`,
     createdAt: now,
   });

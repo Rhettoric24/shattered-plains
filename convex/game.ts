@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server";
+import { insertGameEvent } from "./eventHelpers";
 import { getGameClock, WORLD_KEY } from "./rules";
 
 export const getWorldStatus = query({
@@ -48,8 +49,9 @@ export const bootstrapWorld = mutation({
       updatedAt: now,
     });
 
-    await ctx.db.insert("gameEvents", {
+    await insertGameEvent(ctx, {
       text: "Convex world created.",
+      kind: "world",
       createdAt: now,
     });
 
@@ -60,11 +62,16 @@ export const bootstrapWorld = mutation({
 export const listEvents = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db
+    const events = await ctx.db
       .query("gameEvents")
       .withIndex("by_created")
       .order("desc")
       .take(80);
+    const world = await ctx.db.query("gameState").withIndex("by_key", (q) => q.eq("key", WORLD_KEY)).unique();
+    return events.map((event) => ({
+      ...event,
+      gameDate: event.gameDate || (world ? getGameClock(world.createdAt, event.createdAt).label : null),
+    }));
   },
 });
 
