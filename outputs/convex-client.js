@@ -18,6 +18,7 @@ let previewListenersReady = false;
 let tooltipTimer = null;
 let inboxFilter = "all";
 let holdingsExpanded = false;
+let latestLoadRequest = 0;
 
 const $ = (id) => document.getElementById(id);
 
@@ -175,6 +176,7 @@ function clearAuthTokens() {
 }
 
 async function load(options = {}) {
+  const requestId = ++latestLoadRequest;
   const allowRefresh = options.allowRefresh ?? true;
   if (!authToken) return signedOut();
   captureSelections();
@@ -195,6 +197,8 @@ async function load(options = {}) {
       client.query(refs.getClock, {}),
       client.query(refs.isAdmin, {}),
     ]);
+
+    if (requestId !== latestLoadRequest) return;
 
     if (!dashboard || !dashboard.player) {
       state = null;
@@ -217,6 +221,8 @@ async function load(options = {}) {
       client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })),
     ]);
 
+    if (requestId !== latestLoadRequest) return;
+
     state = buildState({
       config,
       dashboard,
@@ -233,6 +239,7 @@ async function load(options = {}) {
     });
     render();
   } catch (error) {
+    if (requestId !== latestLoadRequest) return;
     if (allowRefresh && await refreshAuthToken()) {
       return await load({ allowRefresh: false });
     }
@@ -519,7 +526,7 @@ function showView(view) {
 function renderBuildings() {
   const visibleBuildings = Object.entries(state.config.buildings).filter(([key]) => key === "market" || key === "watchtower" || key === "ardentMonastery" || key === "soulcastBunker");
   $("buildings").innerHTML = visibleBuildings.map(([key, building]) => {
-    const level = state.me.buildings[key] || building.level || 0;
+    const level = state.me.buildings[key] ?? building.level ?? 0;
     const nextCost = Number(building?.nextCost || 0);
     const affordable = state.me.spheres >= nextCost;
     const values = buildingEffectValues(key, level);
@@ -1421,10 +1428,12 @@ function plateauRunLootLabel(spheres) {
 async function action(work) {
   try {
     captureSelections();
-    await work();
+    const result = await work();
     await load();
+    return result;
   } catch (error) {
     alert(friendlyError(error));
+    return null;
   }
 }
 
@@ -1898,22 +1907,22 @@ $("backfill-plateaus").addEventListener("click", () => action(async () => {
   alert("Plateau maintenance complete. " + number(result.defensesRetuned || 0) + " neutral defenses retuned; " + number(result.neutralCreated || 0) + " neutral plateaus created.");
 }));
 if ($("reset-world-keep-accounts")) {
-  $("reset-world-keep-accounts").addEventListener("click", () => {
+  $("reset-world-keep-accounts").addEventListener("click", async () => {
     const confirmText = window.prompt(
       'This wipes raids, sieges, Plateau Runs, messages, plateaus, and kingdom progress, but keeps login accounts and warcamp names. Type "RESET WORLD" to continue.',
     );
     if (confirmText !== "RESET WORLD") return;
 
-    action(async () => {
-      const result = await client.mutation(refs.resetWorldKeepAccounts, {
-        confirm: confirmText,
-      });
+    const result = await action(() => client.mutation(refs.resetWorldKeepAccounts, {
+      confirm: confirmText,
+    }));
+    if (result) {
       alert(
         "World reset complete. " +
           number(result.playersReset) +
           " warcamps were given fresh starter kingdoms.",
       );
-    });
+    }
   });
 }
 document.querySelectorAll(".nav-button").forEach((button) => {
