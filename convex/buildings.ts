@@ -18,6 +18,7 @@ import {
 const buildingKey = v.union(
   v.literal("market"),
   v.literal("watchtower"),
+  v.literal("ardentMonastery"),
   v.literal("barracks"),
   v.literal("soulcastBunker"),
 );
@@ -67,8 +68,6 @@ export const getBuildings = query({
         sphereBonusPercent: effects.sphereBonusPercent,
         sphereBonusIncomePerDay: effects.sphereBonusIncomePerDay,
         totalIncomePerDay: effects.totalIncomePerDay,
-        watchtowerDefenseBonus: effects.watchtowerDefenseBonus,
-        watchtowerDefensePercent: effects.watchtowerDefensePercent,
         barracksLevel: effects.barracksLevel,
         soulcastBunkerLevel: effects.soulcastBunkerLevel,
         soulcastBunkerCapacity: effects.soulcastBunkerCapacity,
@@ -77,6 +76,7 @@ export const getBuildings = query({
           plateauCounts,
           ownedUnits,
           plateauAttributes.large,
+          player.ardentiaConclaves ?? 0,
         ),
       },
     };
@@ -92,6 +92,9 @@ export const upgradeBuilding = mutation({
     const { player: settledPlayer } = await settlePlayerEconomy(ctx, player);
     const rule = BUILDING_RULES[args.building];
     const currentLevel = settledPlayer.buildings[args.building] ?? 0;
+    if ("maxLevel" in rule && currentLevel >= rule.maxLevel) {
+      throw new Error(`${rule.name} has reached its maximum level.`);
+    }
     const cost = getBuildingCost(args.building, currentLevel);
 
     if (settledPlayer.spheres < cost) {

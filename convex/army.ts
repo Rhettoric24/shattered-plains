@@ -38,6 +38,7 @@ export const getArmy = query({
       plateauCounts,
       ownedUnits,
       plateauAttributes.large,
+      player.ardentiaConclaves ?? 0,
     );
 
     return {
@@ -110,6 +111,7 @@ export const trainUnit = mutation({
       plateauCounts,
       nextOwnedUnits,
       plateauAttributes.large,
+      settledPlayer.ardentiaConclaves ?? 0,
     );
     if (provisions.used > provisions.capacity) {
       throw new Error(

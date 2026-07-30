@@ -4,11 +4,26 @@ export const TIME_RULES = {
   realMsPerGameDay: 60 * 60 * 1000,
   gameHoursPerDay: 24,
   raidTravelGameDays: 1,
-  speedReductionPerPoint: 0.01,
-  speedQuantityFactor: 1 / 60,
-  speedNeutralPoint: 4,
-  maxTravelReductionPercent: 50,
-  maxTravelPenaltyPercent: 50,
+  statDiminishingConstant: 100,
+  minimumMissionMs: 60 * 1000,
+} as const;
+
+export const ARMY_RULES = {
+  shardbearerSupportPowerPerUnit: 100,
+  baseCasualtyFactor: 0.25,
+  minimumBaseCasualtyRate: 0.03,
+  maximumBaseCasualtyRate: 0.8,
+  maximumFinalCasualtyRate: 0.95,
+} as const;
+
+export const ARDENTIA_RULES = {
+  name: "Ardentia Scout Conclave",
+  recruitmentCost: 2000,
+  provisionsCost: 10,
+  conclavesPerMonasteryLevel: 1,
+  maxPerMission: 1,
+  minimumSuccessChance: 0.25,
+  maximumSuccessChance: 0.95,
 } as const;
 
 export const STARTING_RULES = {
@@ -48,8 +63,8 @@ export const PLATEAU_RULES = {
   trainingDiscountPerPlateau: 0.1,
   gemheartIntervalMs: 12 * 60 * 60 * 1000,
   highgroundDefenseBonus: 0.2,
-  neutralDefenseMin: 35,
-  neutralDefenseMax: 80,
+  neutralDefenseMin: 120,
+  neutralDefenseMax: 220,
   neutralHighgroundChancePercent: 12,
   siegeFortifySpheresPerPercent: 50,
   siegeFortifyMaxPercent: 100,
@@ -58,41 +73,53 @@ export const PLATEAU_RULES = {
   emergencyDefenseCostExponent: 2,
   attackerRetreatLossRate: 0.18,
   defenderRetreatLossRate: 0.12,
-  siegeWinAttackerLossRate: 0.22,
-  siegeLossAttackerLossRate: 0.55,
-  siegeWinDefenderLossRate: 0.18,
-  siegeLossDefenderLossRate: 0.08,
-  neutralWinLossRate: 0.15,
-  neutralLossLossRate: 0.45,
   diminishingReturns: [1, 0.75, 0.5, 0.25],
 } as const;
 
 export const COMBAT_RULES = {
-  watchtowerDefensePerLevel: 0.05,
-  openDefenseBase: 3,
-  openDefensePerAcre: 0.9,
-  parshendiSphereRaidMinDefense: 4,
-  parshendiSphereRaidMaxDefense: 16,
+  openDefenseBase: 0.6,
+  openDefensePerAcre: 0.18,
+  parshendiSphereRaidMinDefense: 20,
+  parshendiSphereRaidMaxDefense: 50,
   parshendiSphereRaidMinReward: 250,
   parshendiSphereRaidMaxReward: 650,
 } as const;
+
+export function resistanceLabel(power: number) {
+  if (power <= 50) return "Vulnerable";
+  if (power <= 100) return "Guarded";
+  if (power <= 150) return "Defended";
+  if (power <= 220) return "Fortified";
+  return "Impregnable";
+}
+
+export function missionRiskLabel(power: number) {
+  if (power <= 20) return "Manageable";
+  if (power <= 36) return "Dangerous";
+  if (power <= 56) return "Brutal";
+  return "Overwhelming";
+}
+
+export function rewardLabel(spheres: number) {
+  if (spheres <= 1200) return "Small";
+  if (spheres <= 2600) return "Rich";
+  return "Massive";
+}
 
 export const PLATEAU_RUN_RULES = {
   everyGameDays: 3,
   joinRealMs: 30 * 60 * 1000,
   activePlayerWindowMs: 2 * 24 * 60 * 60 * 1000,
-  difficultyPerActivePlayer: 75,
+  difficultyPerActivePlayer: 15,
   difficultyRandomMin: 1,
-  difficultyRandomMax: 20,
-  minimumDifficulty: 25,
+  difficultyRandomMax: 4,
+  minimumDifficulty: 5,
   sphereRewardPerActivePlayer: 500,
   sphereRewardRandomMin: 250,
   sphereRewardRandomMax: 900,
   gemheartReward: 1,
   fastestPowerBonus: 0.1,
   joinOrderSpeedBonuses: [0.1, 0.07, 0.05],
-  failedRunLossRate: 0.55,
-  successfulRunLossRate: 0.12,
 } as const;
 
 export const PLATEAU_RUN_SCHEDULE = [
@@ -104,13 +131,15 @@ export const PLATEAU_RUN_SCHEDULE = [
 export const UNIT_RULES = {
   bridgeman: {
     name: "Bridgeman",
-    role: "Fast - Fragile",
+    role: "Rapid deployment",
+    identity: "Makes missions dramatically faster, but leaves the formation more exposed.",
+    bestFor: "Fast raids, expeditions, and beating rivals to timed objectives.",
     active: true,
     provisionsCost: 0.5,
-    power: 1,
-    speed: 10,
-    plunder: 2,
-    survival: 0.75,
+    power: 0.5,
+    speed: 1,
+    plunder: 0,
+    survivability: -1,
     cost: 5,
     gemheartCost: 0,
     barracksLevel: 0,
@@ -118,13 +147,15 @@ export const UNIT_RULES = {
   },
   spearman: {
     name: "Spearman",
-    role: "Powerful - Reliable",
+    role: "Reliable battle line",
+    identity: "The dependable core of an army: steady Power and better casualty control.",
+    bestFor: "Winning ordinary fights and protecting more specialized units.",
     active: true,
     provisionsCost: 1,
-    power: 5,
-    speed: 4,
-    plunder: 2,
-    survival: 0.95,
+    power: 1,
+    speed: 0,
+    plunder: 0,
+    survivability: 1,
     cost: 18,
     gemheartCost: 0,
     barracksLevel: 0,
@@ -132,13 +163,15 @@ export const UNIT_RULES = {
   },
   chull: {
     name: "Chull",
-    role: "High Plunder - Very Slow",
+    role: "Heavy transport",
+    identity: "Carries enormous loot and protects the column, but sharply slows every mission.",
+    bestFor: "Sphere raids, Gemheart Runs, and any mission where cargo capacity matters.",
     active: true,
     provisionsCost: 5,
     power: 0,
-    speed: 1,
+    speed: -1,
     plunder: 20,
-    survival: 0.99,
+    survivability: 2,
     cost: 45,
     gemheartCost: 0,
     barracksLevel: 0,
@@ -147,12 +180,14 @@ export const UNIT_RULES = {
   scout: {
     name: "Scout",
     role: "Legacy intelligence unit",
+    identity: "A future specialist for information and reconnaissance.",
+    bestFor: "Inactive until intelligence missions are introduced.",
     active: false,
     provisionsCost: 2,
-    power: 1.5,
-    speed: 1,
-    plunder: 1,
-    survival: 0.9,
+    power: 0.25,
+    speed: 2,
+    plunder: 0,
+    survivability: 0,
     cost: 18,
     gemheartCost: 0,
     barracksLevel: 2,
@@ -161,12 +196,14 @@ export const UNIT_RULES = {
   heavy: {
     name: "Heavy Infantry",
     role: "Legacy defensive unit",
+    identity: "A future durable assault and defensive specialist.",
+    bestFor: "Inactive until deeper siege roles are introduced.",
     active: false,
     provisionsCost: 6,
-    power: 4,
-    speed: -0.5,
-    plunder: 1,
-    survival: 0.96,
+    power: 2,
+    speed: -1,
+    plunder: 0,
+    survivability: 3,
     cost: 35,
     gemheartCost: 0,
     barracksLevel: 3,
@@ -174,34 +211,47 @@ export const UNIT_RULES = {
   },
   shardbearer: {
     name: "Shardbearer",
-    role: "Legendary Power - Extremely Rare",
+    role: "Legendary breakthrough",
+    identity: "Personally devastating and able to magnify a bounded amount of supporting troop Power.",
+    bestFor: "Turning a compact assault force into a serious battlefield threat.",
     active: true,
     provisionsCost: 8,
     power: 20,
-    speed: 3,
-    plunder: 5,
-    survival: 0.999,
+    speed: 0,
+    plunder: 0,
+    survivability: 5,
     cost: 0,
     gemheartCost: 1,
     barracksLevel: 0,
     trainingTime: "Instant",
     description:
-      "Doubles the power of raids it joins and home defenses while available.",
+      "Breakthrough: doubles up to 100 supporting troop Power per Shardbearer.",
   },
 } as const;
 
 export const BUILDING_RULES = {
   market: {
     name: "Warcamp Market",
-    baseCost: 150,
+    baseCost: 500,
+    costMultiplier: 2,
     constructionTimeMs: 0,
     description: "+250 spheres per game day per level",
   },
   watchtower: {
     name: "Watchtower",
-    baseCost: 120,
+    baseCost: 1500,
+    levelCosts: [1500, 3000, 7500],
+    maxLevel: 3,
     constructionTimeMs: 0,
-    description: "+5% home power per level",
+    description: "Reveals neutral territory, improves incoming warnings, and protects your warcamp's secrets.",
+  },
+  ardentMonastery: {
+    name: "Ardent Monastery",
+    baseCost: 5000,
+    levelCosts: [5000, 10000, 15000],
+    maxLevel: 3,
+    constructionTimeMs: 0,
+    description: "Supports one Ardentia Scout Conclave per level and unlocks active field investigations.",
   },
   barracks: {
     name: "Barracks",
@@ -276,6 +326,7 @@ export function emptyBuildings(): BuildingLevels {
   return {
     market: 0,
     watchtower: 0,
+    ardentMonastery: 0,
     barracks: 0,
     soulcastBunker: 0,
   };
@@ -286,6 +337,9 @@ export function getBuildingCost(building: BuildingKey, currentLevel: number) {
   if ("levelCosts" in rule) {
     const lastCost = rule.levelCosts[rule.levelCosts.length - 1];
     return rule.levelCosts[currentLevel] ?? lastCost;
+  }
+  if ("costMultiplier" in rule) {
+    return Math.round(rule.baseCost * rule.costMultiplier ** currentLevel);
   }
   return rule.baseCost * (currentLevel + 1);
 }
@@ -447,22 +501,18 @@ export function initialGemheartPlateauCount(playerCount: number) {
 
 export function unitSpeed(units: Partial<UnitCounts>) {
   const normalized = normalizeUnits(units);
-  const total = totalUnits(normalized);
-  if (total === 0) return 0;
-  const weightedSpeed = unitKeys().reduce(
+  return unitKeys().reduce(
     (sum, key) => sum + normalized[key] * UNIT_RULES[key].speed,
     0,
   );
-  const averageSpeed = weightedSpeed / total;
-  const quantityPressure = unitKeys().reduce(
-    (sum, key) =>
-      sum +
-      normalized[key] *
-        (UNIT_RULES[key].speed - TIME_RULES.speedNeutralPoint) *
-        TIME_RULES.speedQuantityFactor,
+}
+
+export function unitSurvivability(units: Partial<UnitCounts>) {
+  const normalized = normalizeUnits(units);
+  return unitKeys().reduce(
+    (sum, key) => sum + normalized[key] * UNIT_RULES[key].survivability,
     0,
   );
-  return averageSpeed + quantityPressure;
 }
 
 export function basePower(units: Partial<UnitCounts>) {
@@ -473,13 +523,20 @@ export function basePower(units: Partial<UnitCounts>) {
   );
 }
 
-export function shardbearerMultiplier(units: Partial<UnitCounts>) {
-  return normalizeUnits(units).shardbearer > 0 ? 2 : 1;
+export function shardbearerBreakthroughBonus(units: Partial<UnitCounts>) {
+  const normalized = normalizeUnits(units);
+  const supportingPower = unitKeys()
+    .filter((key) => key !== "shardbearer")
+    .reduce((sum, key) => sum + normalized[key] * UNIT_RULES[key].power, 0);
+  return Math.min(
+    supportingPower,
+    normalized.shardbearer * ARMY_RULES.shardbearerSupportPowerPerUnit,
+  );
 }
 
 export function effectivePower(units: Partial<UnitCounts>) {
   const normalized = normalizeUnits(units);
-  return basePower(normalized) * shardbearerMultiplier(normalized);
+  return basePower(normalized) + shardbearerBreakthroughBonus(normalized);
 }
 
 export function unitPlunder(units: Partial<UnitCounts>) {
@@ -507,15 +564,13 @@ export function travelMsForUnits(
   plateauCounts: PlateauCounts = emptyPlateauCounts(),
 ) {
   const baseMs = TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
-  const speed = Math.max(
-    -TIME_RULES.maxTravelPenaltyPercent,
-    Math.min(unitSpeed(units), TIME_RULES.maxTravelReductionPercent),
-  );
+  const speed = unitSpeed(units);
+  const constant = TIME_RULES.statDiminishingConstant;
   const travelMultiplier =
-    speed >= 0 ? 1 - speed / 100 : 1 + Math.abs(speed) / 100;
+    speed >= 0 ? constant / (constant + speed) : 1 + Math.abs(speed) / constant;
   const bridgedMultiplier = 1 - bridgedTravelReduction(plateauCounts);
   return Math.max(
-    60 * 1000,
+    TIME_RULES.minimumMissionMs,
     Math.round(baseMs * travelMultiplier * bridgedMultiplier),
   );
 }
@@ -531,7 +586,7 @@ function seededUnitRoll(seed: string) {
 
 export function applySurvivalLosses(
   units: Partial<UnitCounts>,
-  exposedCount: number,
+  baseCasualtyRate: number,
   seed: string,
 ) {
   const normalized = normalizeUnits(units);
@@ -545,28 +600,63 @@ export function applySurvivalLosses(
     }
   }
 
-  const exposed = unitPool
+  const finalCasualtyRate = casualtyRateAfterSurvivability(
+    baseCasualtyRate,
+    unitSurvivability(normalized),
+  );
+  const expectedCasualties = unitPool.length * finalCasualtyRate;
+  const wholeCasualties = Math.floor(expectedCasualties);
+  const fractionalCasualty =
+    seededUnitRoll(`${seed}:rounding`) < expectedCasualties - wholeCasualties ? 1 : 0;
+  const casualtyCount = Math.min(unitPool.length, wholeCasualties + fractionalCasualty);
+
+  const lost = unitPool
     .map((key, index) => ({
       key,
-      order: seededUnitRoll(`${seed}:exposed:${key}:${index}`),
+      order: seededUnitRoll(`${seed}:casualty:${key}:${index}`),
       index,
     }))
     .sort((left, right) => left.order - right.order)
-    .slice(0, Math.min(Math.max(0, exposedCount), unitPool.length));
+    .slice(0, casualtyCount);
 
-  for (const entry of exposed) {
-    const roll = seededUnitRoll(`${seed}:survival:${entry.key}:${entry.index}`);
-    if (roll > UNIT_RULES[entry.key].survival) {
-      survivors[entry.key] -= 1;
-      casualties[entry.key] += 1;
-    }
+  for (const entry of lost) {
+    survivors[entry.key] -= 1;
+    casualties[entry.key] += 1;
   }
 
   return {
     survivors,
     casualties,
-    exposed: exposed.length,
+    baseCasualtyRate,
+    finalCasualtyRate,
   };
+}
+
+export function baseCasualtyRate(ownPower: number, opposingPower: number) {
+  if (opposingPower <= 0) return 0;
+  if (ownPower <= 0) return ARMY_RULES.maximumBaseCasualtyRate;
+  return Math.max(
+    ARMY_RULES.minimumBaseCasualtyRate,
+    Math.min(
+      ARMY_RULES.maximumBaseCasualtyRate,
+      ARMY_RULES.baseCasualtyFactor * (opposingPower / ownPower),
+    ),
+  );
+}
+
+export function casualtyRateAfterSurvivability(
+  baseRate: number,
+  survivability: number,
+) {
+  const constant = TIME_RULES.statDiminishingConstant;
+  const multiplier =
+    survivability >= 0
+      ? constant / (constant + survivability)
+      : 1 + Math.abs(survivability) / constant;
+  return Math.min(
+    ARMY_RULES.maximumFinalCasualtyRate,
+    Math.max(0, baseRate * multiplier),
+  );
 }
 
 export function casualtySummary(casualties: Partial<UnitCounts>) {
@@ -579,44 +669,42 @@ export function casualtySummary(casualties: Partial<UnitCounts>) {
 
 export function survivalProfile(units: Partial<UnitCounts>) {
   const normalized = normalizeUnits(units);
-  const included = unitKeys().filter((key) => normalized[key] > 0);
-  if (!included.length) return { label: "None", details: "No units selected." };
-  const lowest = Math.min(...included.map((key) => UNIT_RULES[key].survival));
+  if (totalUnits(normalized) < 1) return { label: "None", details: "No units selected." };
+  const survivability = unitSurvivability(normalized);
   const label =
-    lowest >= 0.995
-      ? "Exceptional"
-      : lowest >= 0.97
-        ? "Durable"
-        : lowest >= 0.93
-          ? "Steady"
-          : lowest >= 0.8
-            ? "Risky"
-            : "Fragile";
-  const details = included
-    .map(
-      (key) =>
-        `${UNIT_RULES[key].name}: ${Math.round(UNIT_RULES[key].survival * 1000) / 10}%`,
-    )
-    .join(", ");
-  return { label, details };
+    survivability >= 100
+      ? "Exceptional preservation"
+      : survivability >= 40
+        ? "Durable formation"
+        : survivability >= 0
+          ? "Steady formation"
+          : survivability >= -40
+            ? "Exposed formation"
+            : "Fragile formation";
+  return {
+    label,
+    details: `Army Survivability ${survivability >= 0 ? "+" : ""}${survivability}.`,
+  };
 }
 
 export function calculateArmyStats(units: Partial<UnitCounts>) {
   const normalized = normalizeUnits(units);
   const base = basePower(normalized);
   const speed = unitSpeed(normalized);
-  const multiplier = shardbearerMultiplier(normalized);
+  const survivability = unitSurvivability(normalized);
+  const breakthroughPower = shardbearerBreakthroughBonus(normalized);
   const survival = survivalProfile(normalized);
 
   return {
     totalUnits: totalUnits(normalized),
     basePower: base,
     speed,
-    power: base * multiplier,
+    power: base + breakthroughPower,
     plunder: unitPlunder(normalized),
+    survivability,
     survivalLabel: survival.label,
     survivalDetails: survival.details,
-    shardbearerMultiplier: multiplier,
+    shardbearerBreakthroughPower: breakthroughPower,
   };
 }
 
@@ -689,15 +777,11 @@ export function calculateBuildingStats(
     buildings,
     plateauCounts,
   });
-  const watchtowerDefenseBonus =
-    buildings.watchtower * COMBAT_RULES.watchtowerDefensePerLevel;
   const soulcastBunkerLevel = buildings.soulcastBunker ?? 0;
 
   return {
     acreIncomePerDay,
     ...income,
-    watchtowerDefenseBonus,
-    watchtowerDefensePercent: Math.round(watchtowerDefenseBonus * 100),
     barracksLevel: buildings.barracks,
     soulcastBunkerLevel,
     soulcastBunkerCapacity: soulcastBunkerCapacity(soulcastBunkerLevel),

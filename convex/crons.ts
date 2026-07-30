@@ -10,4 +10,11 @@ crons.cron(
   {},
 );
 
+crons.interval(
+  "settle Gemheart Plateau yields",
+  { minutes: 15 },
+  internal.economy.settleGemheartPlateaus,
+  {},
+);
+
 export default crons;

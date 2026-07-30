@@ -13,6 +13,7 @@
 #view-army .eyebrow, #view-raids .eyebrow { color: var(--military-accent); }
 #view-plateaus .eyebrow { color: var(--territory-accent); }
 #view-plateau .eyebrow { color: var(--gemheart-accent); }
+#view-intelligence .eyebrow { color: var(--territory-accent); }
 .account-panel { overflow: hidden; background: linear-gradient(145deg, rgba(13, 27, 47, .96), rgba(28, 31, 37, .94)); }
 .mode-switcher { padding: 5px; border: 1px solid var(--stone-soft); border-radius: 8px; background: rgba(7, 17, 31, .7); }
 .mode-button { flex: 1; min-width: 130px; background: transparent; color: var(--muted); border-color: transparent; }
@@ -45,6 +46,9 @@
 .cost-line { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid rgba(216, 229, 245, .12); padding-top: 9px; color: var(--muted); font-size: .78rem; }
 .cost-line strong { color: var(--text); }
 .unit-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.unit-identity { display: grid; gap: 5px; color: var(--muted); line-height: 1.45; }
+.unit-identity p { margin: 0; }
+.unit-identity small strong { color: var(--text); }
 .stat-cell, .outlook-cell { min-height: 66px; padding: 8px; color: var(--text); text-align: left; background: rgba(7, 17, 31, .62); }
 .stat-cell span, .stat-cell strong, .outlook-cell span, .outlook-cell strong, .outlook-cell small { display: block; }
 .stat-cell strong, .outlook-cell strong { margin-top: 5px; color: var(--accent); }
@@ -126,4 +130,27 @@
 .message-body { margin: 0 12px 12px; border-top: 1px solid rgba(216, 229, 245, .12); padding-top: 12px; }
 .message-body p { white-space: pre-wrap; line-height: 1.5; }
 .chronicle-item { display: grid; gap: 6px; }
+.intelligence-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 12px; }
+.dossier-card { display: grid; gap: 12px; border: 1px solid rgba(127, 183, 255, .25); border-radius: 8px; padding: 15px; background: linear-gradient(145deg, rgba(33, 43, 66, .8), rgba(7, 17, 31, .82)); }
+.dossier-card:focus, .dossier-card:hover { border-color: rgba(127, 183, 255, .55); outline: none; }
+.territory-report-link[data-territory-plateau] { cursor: pointer; }
+.territory-report-link[data-territory-plateau]:focus,
+.territory-report-link[data-territory-plateau]:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0, 0, 0, .2); }
+.conclave-attachment { display: flex; align-items: flex-start; justify-self: start; width: min(100%, 560px); gap: 12px; border: 1px solid rgba(160, 131, 205, .35); border-radius: 8px; padding: 13px; background: rgba(83, 58, 119, .16); cursor: pointer; }
+.conclave-attachment.hidden { display: none; }
+.conclave-attachment input { margin-top: 4px; }
+.conclave-attachment span { display: grid; gap: 4px; }
+.conclave-attachment small { color: var(--muted); line-height: 1.4; }
+.conclave-attachment.unavailable { opacity: .6; cursor: not-allowed; }
+.conclave-card { border-color: rgba(160, 131, 205, .42); }
+.dossier-card p { margin: 0; color: var(--text); line-height: 1.5; }
+.dossier-card small { color: var(--muted); }
+.dossier-facts { display: grid; grid-template-columns: minmax(90px, auto) 1fr; gap: 7px 12px; border-top: 1px solid rgba(216, 229, 245, .12); padding-top: 10px; }
+.dossier-facts span { color: var(--muted); font-size: .72rem; font-weight: 850; }
+.dossier-facts strong { color: var(--accent); text-align: right; }
+.freshness-badge { border: 1px solid rgba(216, 229, 245, .24); border-radius: 999px; padding: 4px 8px; color: var(--muted); font-size: .68rem; font-weight: 900; }
+.freshness-badge.fresh { color: var(--success); border-color: rgba(152, 220, 185, .45); }
+.freshness-badge.aging { color: var(--warning); border-color: rgba(255, 216, 138, .45); }
+.empty-intelligence { display: grid; gap: 6px; border: 1px dashed rgba(216, 229, 245, .2); border-radius: 8px; padding: 18px; color: var(--muted); }
+.empty-intelligence strong { color: var(--text); }
 @keyframes signal-pulse { 0%, 100% { opacity: .65; } 50% { opacity: 1; } }

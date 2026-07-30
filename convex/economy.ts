@@ -1,9 +1,12 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { settlePlayerEconomy } from "./economyHelpers";
 import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
-import { plateauCountsForPlayer } from "./plateauHelpers";
+import {
+  grantGemheartPlateauIncome,
+  plateauCountsForPlayer,
+} from "./plateauHelpers";
 import { incomePerGameDay, pendingEconomy, TIME_RULES, WORLD_KEY } from "./rules";
 
 export const getEconomyStatus = query({
@@ -95,6 +98,35 @@ export const advanceEconomy = mutation({
       elapsedGameDays: maxElapsedGameDays,
       updatedPlayers: players.length,
       totalEarned,
+    };
+  },
+});
+
+export const settleGemheartPlateaus = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const players = await ctx.db.query("players").take(200);
+    let totalGemhearts = 0;
+    let updatedPlayers = 0;
+
+    for (const player of players) {
+      const gemheartIncome = await grantGemheartPlateauIncome(ctx, player, now);
+      if (gemheartIncome.gemhearts > 0) {
+        totalGemhearts += gemheartIncome.gemhearts;
+        updatedPlayers += 1;
+        await ctx.db.patch(player._id, {
+          gemhearts: gemheartIncome.totalGemhearts,
+          lastActiveAt: now,
+        });
+      }
+    }
+
+    return {
+      checkedPlayers: players.length,
+      updatedPlayers,
+      totalGemhearts,
+      settledAt: now,
     };
   },
 });

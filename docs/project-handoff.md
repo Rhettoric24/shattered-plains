@@ -10,7 +10,7 @@ The project is live as a browser-playable Convex multiplayer prototype.
 - GitHub repo: `https://github.com/Rhettoric24/shattered-plains`
 - Backend: Convex dev deployment, currently `https://clean-yak-51.convex.cloud`
 - Frontend host: GitHub Pages
-- Current development folder: `C:\Users\rhett\Documents\Codex\2026-07-01\i-a`
+- Current development folder: `C:\Users\rhett\Documents\Codex\2026-07-01\shatteredPlainsSim`
 
 The old local JSON server prototype has been removed from the active project. The current architecture is Convex plus a static browser frontend.
 
@@ -24,7 +24,7 @@ There are two live halves:
 The normal update flow is:
 
 ```text
-Backend change -> npx convex dev -> Convex updates
+Backend change -> npm run dev -> Convex updates
 Frontend/code change -> git commit -> git push -> GitHub Actions -> GitHub Pages updates
 ```
 
@@ -124,7 +124,7 @@ git push
 Push backend changes:
 
 ```powershell
-npx convex dev
+npm run dev
 ```
 
 For now, the GitHub Pages workflow points at the current Convex URL unless the repo variable `CONVEX_URL` is changed.
@@ -150,7 +150,7 @@ See `docs/patch-roadmap.md` for the planned patch sequence.
 If starting a new chat, paste this:
 
 ```text
-This is the Shattered Plains Convex browser game in C:\Users\rhett\Documents\Codex\2026-07-01\i-a.
+This is the Shattered Plains Convex browser game in C:\Users\rhett\Documents\Codex\2026-07-01\shatteredPlainsSim.
 Read AGENTS.md, README.md, docs/project-handoff.md, docs/patch-roadmap.md, and docs/convex-migration-plan.md first.
 The app is live at https://rhettoric24.github.io/shattered-plains/ and uses Convex for the backend.
 We are working on [describe patch or bug].

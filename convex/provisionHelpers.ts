@@ -1,6 +1,7 @@
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
+  ARDENTIA_RULES,
   addUnits,
   largeProvisionsBonus,
   normalizeUnits,
@@ -75,8 +76,10 @@ export function provisionsStatus(
   plateauCounts: PlateauCounts,
   ownedUnits: UnitCounts,
   largePlateauCount = 0,
+  ardentiaConclaves = 0,
 ) {
-  const used = unitProvisionsUsed(ownedUnits);
+  const used = unitProvisionsUsed(ownedUnits) +
+    Math.max(0, Math.floor(ardentiaConclaves)) * ARDENTIA_RULES.provisionsCost;
   const capacity = provisionsCapacity(
     buildings,
     plateauCountTotal(plateauCounts),

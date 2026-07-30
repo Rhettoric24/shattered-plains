@@ -14,6 +14,7 @@ const unitCounts = v.object({
 const buildingLevels = v.object({
   market: v.number(),
   watchtower: v.number(),
+  ardentMonastery: v.optional(v.number()),
   barracks: v.number(),
   soulcastBunker: v.optional(v.number()),
 });
@@ -37,6 +38,7 @@ export default defineSchema({
     acres: v.number(),
     spheres: v.number(),
     gemhearts: v.number(),
+    ardentiaConclaves: v.optional(v.number()),
     units: unitCounts,
     buildings: buildingLevels,
     lastEconomyAt: v.optional(v.number()),
@@ -62,6 +64,7 @@ export default defineSchema({
     acres: v.optional(v.number()),
     defensePower: v.optional(v.number()),
     rewardSpheres: v.optional(v.number()),
+    ardentiaConclave: v.optional(v.boolean()),
     departAt: v.number(),
     arriveAt: v.number(),
     resolvedAt: v.optional(v.number()),
@@ -106,6 +109,7 @@ export default defineSchema({
     fortifyPercent: v.number(),
     emergencyDefensePercent: v.optional(v.number()),
     emergencyDefenseSpheresSpent: v.optional(v.number()),
+    ardentiaConclave: v.optional(v.boolean()),
     departAt: v.number(),
     resolveAt: v.number(),
     resolvedAt: v.optional(v.number()),
@@ -176,4 +180,29 @@ export default defineSchema({
       gameDate: v.optional(v.string()),
       createdAt: v.number(),
     }).index("by_created", ["createdAt"]),
+
+  intelligenceReports: defineTable({
+    viewerPlayerId: v.id("players"),
+    targetType: v.union(v.literal("kingdom"), v.literal("territory")),
+    targetPlayerId: v.optional(v.id("players")),
+    plateauId: v.optional(v.id("plateaus")),
+    source: v.union(
+      v.literal("player_raid"),
+      v.literal("neutral_expedition"),
+      v.literal("watchtower"),
+      v.literal("ardent"),
+    ),
+    level: v.number(),
+    observedAt: v.number(),
+    militaryPower: v.optional(v.number()),
+    sphereStockpile: v.optional(v.number()),
+    resistance: v.optional(v.number()),
+    rewardSpheres: v.optional(v.number()),
+    plateauType: v.optional(plateauType),
+    highground: v.optional(v.boolean()),
+    large: v.optional(v.boolean()),
+  })
+    .index("by_viewerPlayerId_and_targetType", ["viewerPlayerId", "targetType"])
+    .index("by_viewerPlayerId_and_targetPlayerId", ["viewerPlayerId", "targetPlayerId"])
+    .index("by_viewerPlayerId_and_plateauId", ["viewerPlayerId", "plateauId"]),
 });

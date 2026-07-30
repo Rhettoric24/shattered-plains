@@ -53,7 +53,7 @@ Common commands:
 ```bash
 npm start
 npm run build
-npx convex dev
+npm run dev
 git status
 ```
 

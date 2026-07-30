@@ -54,6 +54,8 @@ const refs = {
   listPlayers: "players:listPlayers",
   upgradeBuilding: "buildings:upgradeBuilding",
   trainUnit: "army:trainUnit",
+  getArdentiaStatus: "ardentia:getStatus",
+  recruitConclave: "ardentia:recruitConclave",
   launchSphereRaid: "raids:launchSphereRaid",
   listVisibleRaids: "raids:listVisibleRaids",
   forceResolveRaid: "raids:forceResolveRaid",
@@ -77,6 +79,7 @@ const refs = {
   markInboxRead: "messages:markInboxRead",
   markMessageRead: "messages:markMessageRead",
   listEvents: "game:listEvents",
+  listDossiers: "intelligence:listDossiers",
 };
 
 async function createAccount() {
@@ -200,11 +203,18 @@ async function load(options = {}) {
       return;
     }
 
-    const [raids, plateaus, plateauRun, inbox] = await Promise.all([
+    const [raids, plateaus, plateauRun, inbox, intelligence, ardentia] = await Promise.all([
       client.query(refs.listVisibleRaids, {}),
       client.query(refs.listPlateaus, {}),
       client.query(refs.getCurrentPlateauRun, {}),
       client.query(refs.listInbox, {}),
+      // Keep the rest of the dashboard usable while a local frontend build is
+      // briefly ahead of the Convex deployment during development.
+      client.query(refs.listDossiers, {}).catch((error) => {
+        console.warn("Intelligence backend is not available yet.", error);
+        return { kingdoms: [], territories: [], watchtower: { level: 0, territoryLevel: 0, counterIntelligence: 0 } };
+      }),
+      client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })),
     ]);
 
     state = buildState({
@@ -215,6 +225,8 @@ async function load(options = {}) {
       plateaus,
       plateauRun,
       inbox,
+      intelligence,
+      ardentia,
       events,
       clock,
       adminStatus,
@@ -259,14 +271,13 @@ function buildState(data) {
   );
   const totalUnitsAtHome = sumUnits(playerUnits);
   const totalUnitsOwned = totalUnitsAtHome + sumUnits(unitsAway);
-  const watchtowerBonus = 1 + (playerBuildings.watchtower || 0) * data.config.watchtowerDefensePerLevel;
   const availableStats = data.dashboard.armyStats;
   const playerRows = data.players.map((entry) => ({
     id: entry._id,
     _id: entry._id,
     name: entry.name,
     acres: entry.acres,
-    homePower: entry._id === player._id ? availableStats.power * watchtowerBonus : null,
+    homePower: entry._id === player._id ? availableStats.power : null,
   }));
 
   return {
@@ -290,7 +301,7 @@ function buildState(data) {
       totalUnits: totalUnitsOwned,
       totalAvailableUnits: totalUnitsAtHome,
       power: availableStats.power,
-      homePower: availableStats.power * watchtowerBonus,
+      homePower: availableStats.power,
     },
     players: playerRows,
     playerMap: Object.fromEntries(playerRows.map((entry) => [entry.id, entry])),
@@ -311,6 +322,8 @@ function buildState(data) {
     isAdmin: Boolean(data.adminStatus?.isAdmin),
     adminEmail: data.adminStatus?.email || null,
     alerts: [],
+    intelligence: data.intelligence || { kingdoms: [], territories: [], watchtower: { level: 0, territoryLevel: 0, counterIntelligence: 0 } },
+    ardentia: data.ardentia || { owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 },
     log: data.events.map((event) => ({ text: event.text, at: event.createdAt, kind: event.kind || "world", gameDate: event.gameDate || null })),
   };
 }
@@ -333,6 +346,7 @@ function render() {
   renderTopProvisions();
   renderBuildings();
   renderUnits();
+  renderConclaveControls();
   renderSelects();
   renderInboxBadge();
   renderRaidUnitInputs("sphere-raid-units");
@@ -345,6 +359,7 @@ function render() {
   renderPlateaus();
   renderPlateau();
   renderInbox();
+  renderIntelligence();
   renderLog();
   renderOverview();
   renderWorldAlerts();
@@ -502,14 +517,16 @@ function showView(view) {
 }
 
 function renderBuildings() {
-  const visibleBuildings = Object.entries(state.config.buildings).filter(([key]) => key === "market" || key === "soulcastBunker");
+  const visibleBuildings = Object.entries(state.config.buildings).filter(([key]) => key === "market" || key === "watchtower" || key === "ardentMonastery" || key === "soulcastBunker");
   $("buildings").innerHTML = visibleBuildings.map(([key, building]) => {
     const level = state.me.buildings[key] || building.level || 0;
     const nextCost = Number(building?.nextCost || 0);
     const affordable = state.me.spheres >= nextCost;
     const values = buildingEffectValues(key, level);
     const name = key === "market" ? "Warcamp Market" : building?.name || key;
-    return '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>' + escapeHtml(name) + '</strong><span>Level ' + level + '</span></div><span class="status-badge ' + (affordable ? 'ready' : 'blocked') + '">' + (affordable ? 'Affordable' : 'Need ' + number(nextCost - state.me.spheres)) + '</span></div><small>' + escapeHtml(building?.description || "") + '</small><div class="effect-comparison"><div><span>Current effect</span><strong>' + escapeHtml(values.current) + '</strong></div><div><span>After upgrade</span><strong>' + escapeHtml(values.next) + '</strong></div></div><div class="cost-line"><span>Upgrade cost</span><strong>' + number(nextCost) + ' Spheres</strong></div><button data-building="' + key + '" data-building-name="' + escapeHtml(name) + '" data-building-cost="' + nextCost + '"' + (affordable ? '' : ' disabled') + '>Upgrade to Level ' + (level + 1) + '</button></article>';
+    const maxed = Number(building.maxLevel || 0) > 0 && level >= Number(building.maxLevel);
+    const status = maxed ? "Mastered" : affordable ? "Affordable" : "Need " + number(nextCost - state.me.spheres);
+    return '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>' + escapeHtml(name) + '</strong><span>Level ' + level + '</span></div><span class="status-badge ' + (!maxed && affordable ? 'ready' : 'blocked') + '">' + status + '</span></div><small>' + escapeHtml(building?.description || "") + '</small><div class="effect-comparison"><div><span>Current effect</span><strong>' + escapeHtml(values.current) + '</strong></div><div><span>' + (maxed ? 'Status' : 'After upgrade') + '</span><strong>' + escapeHtml(maxed ? 'Maximum level' : values.next) + '</strong></div></div>' + (maxed ? '' : '<div class="cost-line"><span>Upgrade cost</span><strong>' + number(nextCost) + ' Spheres</strong></div><button data-building="' + key + '" data-building-name="' + escapeHtml(name) + '" data-building-cost="' + nextCost + '"' + (affordable ? '' : ' disabled') + '>Upgrade to Level ' + (level + 1) + '</button>') + '</article>';
   }).join("");
   document.querySelectorAll("[data-building]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -528,6 +545,26 @@ function buildingEffectValues(key, level) {
     const perLevel = configValue("marketSpheresPerLevelPerGameDay", 250);
     return { current: "+" + number(level * perLevel) + " Spheres/day", next: "+" + number((level + 1) * perLevel) + " Spheres/day", gain: "+" + number(perLevel) + " per day" };
   }
+  if (key === "watchtower") {
+    const effects = [
+      "No passive territory survey",
+      "Reveals neutral plateau types and attributes",
+      "Adds broad resistance ranges",
+      "Adds narrow resistance estimates and +1 Counter-Intelligence",
+    ];
+    return {
+      current: effects[Math.min(3, level)],
+      next: effects[Math.min(3, level + 1)],
+    };
+  }
+  if (key === "ardentMonastery") {
+    const capacity = Math.max(0, Math.min(3, level));
+    const nextCapacity = Math.max(0, Math.min(3, level + 1));
+    return {
+      current: capacity ? "Supports " + capacity + " Scout Conclave" + (capacity === 1 ? "" : "s") : "Scout Conclaves unavailable",
+      next: "Supports " + nextCapacity + " Scout Conclave" + (nextCapacity === 1 ? "" : "s"),
+    };
+  }
   const current = soulcastBunkerCapacity(level);
   const next = soulcastBunkerCapacity(level + 1);
   return { current: number(current) + " Provisions", next: number(next) + " Provisions", gain: "+" + number(next - current) + " capacity" };
@@ -535,7 +572,7 @@ function buildingEffectValues(key, level) {
 
 function renderUnits() {
   renderArmyStatus();
-  $("unit-roster").innerHTML = activeUnitEntries().map(([key, unit]) => {
+  const unitCards = activeUnitEntries().map(([key, unit]) => {
     const unlocked = Boolean(state.config.unlockedUnits[key]);
     const count = state.me.units[key] || 0;
     const available = state.me.availableUnits[key] || 0;
@@ -543,9 +580,50 @@ function renderUnits() {
     const resourceName = unit.gemheartCost ? "Gemheart" + (resourceCost === 1 ? "" : "s") : "Spheres";
     const provisionCost = unit.provisionsCost || 0;
     const draft = Math.max(0, Math.floor(Number(lastSelections.recruitment[key]) || 0));
-    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">' + number(available) + ' ready / ' + number(count) + ' owned</span></div><div class="unit-stat-grid"><button type="button" class="stat-cell" title="' + statTooltip("power") + '"><span>Power</span><strong>' + formatStat(unit.power) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("speed") + '"><span>Speed</span><strong>' + formatStat(unit.speed) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("plunder") + '"><span>Plunder</span><strong>' + formatStat(unit.plunder || 0) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("survival") + '"><span>Survival</span><strong>' + formatPercent(unit.survival || 0) + '</strong></button></div>' + (key === "shardbearer" ? '<p class="rule-callout">Shardbearer present: total army Power doubles once.</p>' : '') + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div><div class="quantity-builder"><div class="quick-add"><button type="button" data-recruit-add="1">+1</button><button type="button" data-recruit-add="10">+10</button><button type="button" data-recruit-add="50">+50</button><button type="button" data-recruit-add="100">+100</button></div><label>Quantity<input data-recruit-quantity type="number" min="0" value="' + draft + '"></label><div class="quantity-corrections"><button type="button" class="secondary" data-recruit-minus>−1</button><button type="button" class="secondary" data-recruit-clear>Clear</button></div></div><div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button></article>';
+    const contribution = (value) => Number(value || 0) > 0 ? "+" + formatStat(value) : formatStat(value);
+    const shardbearerSupportPower = Number(state.config.armyRules?.shardbearerSupportPowerPerUnit || 100);
+    const breakthrough = key === "shardbearer"
+      ? '<p class="rule-callout">Breakthrough: doubles up to ' + number(shardbearerSupportPower) + ' supporting Power per Shardbearer.</p>'
+      : '';
+    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">' + number(available) + ' ready / ' + number(count) + ' owned</span></div><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div><div class="unit-stat-grid"><button type="button" class="stat-cell" title="' + statTooltip("power") + '"><span>Power</span><strong>' + contribution(unit.power) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("speed") + '"><span>Speed</span><strong>' + contribution(unit.speed) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("plunder") + '"><span>Plunder</span><strong>' + contribution(unit.plunder) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("survivability") + '"><span>Survivability</span><strong>' + contribution(unit.survivability) + '</strong></button></div>' + breakthrough + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div><div class="quantity-builder"><div class="quick-add"><button type="button" data-recruit-add="1">+1</button><button type="button" data-recruit-add="10">+10</button><button type="button" data-recruit-add="50">+50</button><button type="button" data-recruit-add="100">+100</button></div><label>Quantity<input data-recruit-quantity type="number" min="0" value="' + draft + '"></label><div class="quantity-corrections"><button type="button" class="secondary" data-recruit-minus>−1</button><button type="button" class="secondary" data-recruit-clear>Clear</button></div></div><div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button></article>';
   }).join("");
+  const monasteryLevel = Number(state.me.buildings.ardentMonastery || 0);
+  const ardentia = state.ardentia;
+  const rules = state.config.ardentiaRules || { recruitmentCost: 2000, provisionsCost: 10 };
+  const canRecruit = monasteryLevel > 0 && ardentia.owned < ardentia.capacity && state.me.spheres >= rules.recruitmentCost && state.me.provisions.remaining >= rules.provisionsCost;
+  const conclaveCard = monasteryLevel > 0
+    ? '<article class="upgrade-card unit-card conclave-card"><div class="card-heading"><div><strong>Ardentia Scout Conclave</strong><span>Field intelligence specialists</span></div><span class="status-badge">' + number(ardentia.ready) + ' ready / ' + number(ardentia.owned) + ' formed</span></div><div class="unit-identity"><p>Accompanies an army to improve the resulting intelligence report. The Conclave does not add combat Power.</p><small><strong>Capacity:</strong> ' + number(ardentia.owned) + ' / ' + number(ardentia.capacity) + ' supported by Ardent Monastery level ' + monasteryLevel + '.</small></div><div class="unit-costs"><span><small>Formation cost</small><strong>' + number(rules.recruitmentCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rules.provisionsCost) + '</strong></span></div><p class="rule-callout">One Conclave may accompany each expedition. It always has at least a 25% chance to complete its investigation and is never permanently destroyed.</p><button type="button" data-recruit-conclave' + (canRecruit ? '' : ' disabled') + '>' + (ardentia.owned >= ardentia.capacity ? 'Monastery capacity reached' : 'Form Scout Conclave') + '</button></article>'
+    : '';
+  $("unit-roster").innerHTML = unitCards + conclaveCard;
   attachRecruitmentControls();
+  const recruitConclave = document.querySelector("[data-recruit-conclave]");
+  if (recruitConclave) {
+    recruitConclave.addEventListener("click", () => action(() => client.mutation(refs.recruitConclave, {})));
+  }
+}
+
+function renderConclaveControls() {
+  const monasteryLevel = Number(state.me.buildings.ardentMonastery || 0);
+  const ready = Number(state.ardentia?.ready || 0);
+  [
+    ["neutral-conclave-option", "neutral-conclave"],
+    ["player-conclave-option", "player-conclave"],
+  ].forEach(([wrapperId, checkboxId]) => {
+    const wrapper = $(wrapperId);
+    const checkbox = $(checkboxId);
+    if (!wrapper || !checkbox) return;
+    wrapper.classList.toggle("hidden", monasteryLevel < 1);
+    wrapper.classList.toggle("unavailable", ready < 1);
+    checkbox.disabled = ready < 1;
+    if (ready < 1) checkbox.checked = false;
+    const detail = wrapper.querySelector("small");
+    if (detail && monasteryLevel > 0) {
+      const base = checkboxId === "neutral-conclave"
+        ? "Improves the resulting report by one Intelligence level if the Conclave completes its investigation."
+        : "Improves the resulting rival dossier by one Intelligence level if the Conclave completes its investigation.";
+      detail.textContent = base + " Minimum success chance: 25%. " + ready + " ready.";
+    }
+  });
 }
 
 function renderArmyStatus() {
@@ -683,6 +761,9 @@ function attachPreviewListeners() {
     $(id).addEventListener("input", renderRaidPreviews);
     $(id).addEventListener("change", renderRaidPreviews);
   });
+  ["neutral-conclave", "player-conclave"].forEach((id) => {
+    if ($(id)) $(id).addEventListener("change", renderRaidPreviews);
+  });
   previewListenersReady = true;
 }
 
@@ -713,11 +794,17 @@ function previewMarkup(units, type, planner) {
   const target = type === "spheres" ? sphereTargetPreview() : type === "plateau" ? plateauTargetPreview(stats) : type === "neutralSiege" ? neutralSiegePreview(stats) : type === "playerSiege" ? playerSiegePreview(stats) : "Choose a target";
   const timingTitle = isPlayerSiege ? "Player sieges are fixed at one real hour. Army Speed does not shorten them." : speedBreakdown(units, stats, travel);
   const rewardLabel = type === "plateau" ? "Reward capacity" : "Max Plunder";
+  const conclaveAttached = type === "neutralSiege"
+    ? Boolean($("neutral-conclave")?.checked)
+    : type === "playerSiege"
+      ? Boolean($("player-conclave")?.checked)
+      : false;
   return '<div class="outlook-heading"><span>Mission outlook</span><strong>' + escapeHtml(target) + '</strong></div><div class="outlook-grid">' +
     outlookCell("Power", formatStat(stats.power), powerBreakdown(units, stats)) +
     outlookCell(rewardLabel, type === "plateau" ? "Event pool" : number(stats.plunder) + " Spheres", plunderBreakdown(units, stats)) +
     outlookCell("Time committed", formatDuration(travel), timingTitle) +
-    outlookCell("Survival", stats.survivalLabel, stats.survivalDetails) +
+    outlookCell("Survivability", signedStat(stats.survivability), survivabilityBreakdown(units, stats)) +
+    (conclaveAttached ? outlookCell("Investigation", "Conclave attached", "Success follows this army's final casualty risk, with a minimum 25% and maximum 95% chance. The exact chance is revealed after resolution.") : "") +
     '</div>';
 }
 
@@ -727,7 +814,7 @@ function outlookCell(label, value, details) {
 
 function powerBreakdown(units, stats) {
   const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + formatStat(unit.power) + " " + unit.name);
-  if (Number(units.shardbearer || 0) > 0) lines.push("Shardbearer multiplier: ×2 once");
+  if (Number(units.shardbearer || 0) > 0) lines.push("Bounded Breakthrough bonus: +" + formatStat(stats.breakthroughPower));
   lines.push("Final Power: " + formatStat(stats.power));
   return lines.join("\n");
 }
@@ -739,11 +826,26 @@ function plunderBreakdown(units, stats) {
 }
 
 function speedBreakdown(units, stats, travel) {
-  return "Army Speed: " + formatStat(stats.speed) + "\nBridged Plateau reduction: " + number(bridgedTravelReductionPercent()) + "%\nTotal mission duration: " + formatDuration(travel);
+  const constant = configValue("statDiminishingConstant", 100);
+  const formula = stats.speed >= 0
+    ? "Base Time × " + constant + " ÷ (" + constant + " + " + formatStat(stats.speed) + ")"
+    : "Base Time × (1 + " + formatStat(Math.abs(stats.speed)) + " ÷ " + constant + ")";
+  return "Speed contributions sum to " + signedStat(stats.speed) + ".\nFormula: " + formula + "\nBridged Plateau reduction: " + number(bridgedTravelReductionPercent()) + "%\nFinal duration: " + formatDuration(travel);
+}
+
+function survivabilityBreakdown(units, stats) {
+  const constant = configValue("statDiminishingConstant", 100);
+  const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + signedStat(unit.survivability) + " from " + unit.name);
+  lines.push("Army Survivability: " + signedStat(stats.survivability));
+  lines.push(stats.survivability >= 0
+    ? "Final casualties = Base casualties × " + constant + " ÷ (" + constant + " + Survivability)"
+    : "Final casualties = Base casualties × (1 + |Survivability| ÷ " + constant + ")");
+  lines.push("Base casualties = 25% × Enemy Power ÷ Your Power, bounded from 3% to 80%.");
+  return lines.join("\n");
 }
 
 function sphereTargetPreview() {
-  const averageDefense = (configValue("parshendiSphereRaidMinDefense", 4) + configValue("parshendiSphereRaidMaxDefense", 16)) / 2;
+  const averageDefense = (configValue("parshendiSphereRaidMinDefense", 1) + configValue("parshendiSphereRaidMaxDefense", 4)) / 2;
   const averageReward = (configValue("parshendiSphereRaidMinReward", 250) + configValue("parshendiSphereRaidMaxReward", 650)) / 2;
   return "Estimated resistance: " + neutralDefenseLabel(averageDefense) + "\nEstimated reward: " + plateauRunLootLabel(averageReward);
 }
@@ -760,7 +862,7 @@ function plateauTargetPreview(stats) {
 function neutralSiegePreview(stats) {
   const target = state.plateaus.neutral.find((plateau) => plateau.id === $("neutral-plateau-target").value);
   if (!target) return "Choose a neutral plateau";
-  return "Parshendi defense: " + neutralDefenseLabel(target.neutralDefenseRemaining) + "\nYour Power: " + formatStat(stats.power);
+  return "Parshendi resistance: " + formatIntelValue(target.resistance) + "\nYour Power: " + formatStat(stats.power);
 }
 
 function playerSiegePreview(stats) {
@@ -859,7 +961,7 @@ function siegeCard(siege) {
     : escapeHtml(siege.attackerName) + " vs Parshendi";
   const attackerText = isAttacker
     ? "Your attack power " + formatStat(siege.attackerPower)
-    : "Attacker force " + operationPowerLabel(siege.attackerPower);
+    : "Attacker force " + formatIntelValue(siege.attackerIntel);
   const committedText = siege.targetType === "player"
     ? isDefender
       ? (siege.defenderCommittedAt ? "Your defenders are committed" : "No defenders committed yet")
@@ -873,7 +975,8 @@ function siegeCard(siege) {
       ? "Defenses unknown"
       : "Parshendi hold " + neutralDefenseLabel(plateau?.neutralDefenseRemaining || 0);
   const defenderPanel = isDefender && siege.targetType === "player" ? siegeDefenderPanel(siege, plateau) : "";
-  return '<article class="list-item raid-item siege-card"><strong>' + title + '</strong><span>' + escapeHtml(plateau?.name || "Unknown plateau") + '</span><small>' + attackerText + '. ' + committedText + '. ' + defenseText + '. Resolves in ' + formatDuration(remaining) + '.</small>' + defenderPanel + '</article>';
+  const conclaveText = isAttacker && siege.ardentiaConclave ? ' Ardentia Scout Conclave attached.' : '';
+  return '<article class="list-item raid-item siege-card"><strong>' + title + '</strong><span>' + escapeHtml(plateau?.name || "Unknown plateau") + '</span><small>' + attackerText + '. ' + committedText + '. ' + defenseText + '.' + conclaveText + ' Resolves in ' + formatDuration(remaining) + '.</small>' + defenderPanel + '</article>';
 }
 
 function siegeDefenderPanel(siege, plateau) {
@@ -1026,10 +1129,33 @@ function renderInbox() {
     const preview = message.text.length > 110 ? message.text.slice(0, 107) + "…" : message.text;
     return '<details class="list-item message-item ' + readClass + '" data-message-id="' + message.id + '"' + (message.read ? '' : ' data-unread="true"') + '><summary><div><span class="event-kind">' + category + '</span><strong>' + escapeHtml(message.subject) + '</strong><small>' + escapeHtml(preview) + '</small></div><time>' + relativeTime(message.at) + '</time></summary><div class="message-body"><p>' + escapeHtml(message.text) + '</p><small>From ' + escapeHtml(from) + ' · ' + new Date(message.at).toLocaleString() + '</small></div></details>';
   }).join("") : '<div class="empty">No messages yet.</div>';
-  list.querySelectorAll("details[data-unread='true']").forEach((details) => details.addEventListener("toggle", () => {
+  list.querySelectorAll("details[data-unread='true']").forEach((details) => details.addEventListener("toggle", async () => {
     if (!details.open) return;
     details.removeAttribute("data-unread");
-    action(() => client.mutation(refs.markMessageRead, { messageId: details.dataset.messageId }));
+    details.classList.remove("unread");
+    details.classList.add("read");
+
+    const message = state.inbox.find((entry) => entry.id === details.dataset.messageId);
+    const wasUnread = Boolean(message && !message.read);
+    if (wasUnread) {
+      message.read = true;
+      state.unreadCount = Math.max(0, Number(state.unreadCount || 0) - 1);
+      renderInboxBadge();
+    }
+
+    try {
+      await client.mutation(refs.markMessageRead, { messageId: details.dataset.messageId });
+    } catch (error) {
+      details.setAttribute("data-unread", "true");
+      details.classList.remove("read");
+      details.classList.add("unread");
+      if (wasUnread) {
+        message.read = false;
+        state.unreadCount = Number(state.unreadCount || 0) + 1;
+      }
+      renderInboxBadge();
+      alert(friendlyError(error));
+    }
   }, { once: true }));
 }
 
@@ -1113,7 +1239,7 @@ function unitStatsTooltip(unit) {
     "Power: " + formatStat(unit.power) + " - " + statTooltip("power") + "\n" +
     "Speed: " + formatStat(unit.speed) + " - " + statTooltip("speed") + "\n" +
     "Plunder: " + formatStat(unit.plunder || 0) + " - " + statTooltip("plunder") + "\n" +
-    "Survival: " + formatPercent(unit.survival || 0) + " - " + statTooltip("survival")
+    "Survivability: " + signedStat(unit.survivability) + " - " + statTooltip("survivability")
   );
 }
 
@@ -1160,10 +1286,10 @@ function plateauBonusLabel(plateau) {
 }
 
 function neutralDefenseLabel(power) {
-  if (power <= 25) return "Vulnerable";
-  if (power <= 55) return "Guarded";
-  if (power <= 90) return "Defended";
-  if (power <= 140) return "Fortified";
+  if (power <= 50) return "Vulnerable";
+  if (power <= 100) return "Guarded";
+  if (power <= 150) return "Defended";
+  if (power <= 220) return "Fortified";
   return "Impregnable";
 }
 
@@ -1179,15 +1305,110 @@ function operationSpeedLabel(speed) {
   return "swift";
 }
 
+function formatIntelValue(presentation) {
+  if (!presentation) return "Unknown";
+  if (presentation.mode === "label") return presentation.label;
+  if (presentation.mode === "range") return presentation.min + "–" + (presentation.max === null ? presentation.min + "+" : presentation.max);
+  if (presentation.mode === "estimate") return "about " + presentation.min + "–" + presentation.max;
+  if (presentation.mode === "exact") return number(presentation.value) + " (snapshot)";
+  return "Unknown";
+}
+
+function intelLevelName(level) {
+  return ["Rumor", "Survey", "Assessment", "Confirmed report", "Operational intelligence", "Active dossier"][Math.max(0, Math.min(5, level))];
+}
+
+function intelligenceSourceName(source) {
+  return ({ player_raid: "Raid observations", neutral_expedition: "Expedition report", watchtower: "Watchtower", ardent: "Ardent report" })[source] || "Unknown source";
+}
+
+function intelligenceReportAge(timestamp) {
+  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60000));
+  if (minutes < 60) return minutes + "m ago";
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + "h ago";
+  return Math.floor(hours / 24) + "d ago";
+}
+
+function intelligenceTooltip(report) {
+  return "Effective intelligence: " + report.effectiveLevel + " — " + intelLevelName(report.effectiveLevel) + "\n" +
+    "Your source: " + intelligenceSourceName(report.source) + "\n" +
+    "Observed: " + new Date(report.observedAt).toLocaleString() + "\n" +
+    "Freshness: " + report.freshness + "\n" +
+    "Reports lose one precision level every 6 hours. Opposing counter-intelligence is not disclosed.";
+}
+
+function renderIntelligence() {
+  const kingdomContainer = $("kingdom-dossiers");
+  const territoryContainer = $("territory-reports");
+  if (!kingdomContainer || !territoryContainer) return;
+  const kingdoms = state.intelligence?.kingdoms || [];
+  const territories = state.intelligence?.territories || [];
+  const watchtower = state.intelligence?.watchtower || { level: 0, territoryLevel: 0, counterIntelligence: 0 };
+  const watchtowerStatus = $("watchtower-intelligence-status");
+  if (watchtowerStatus) {
+    const coverage = ["No passive surveys", "Plateau identities revealed", "Broad resistance ranges", "Narrow resistance estimates"][Math.min(3, watchtower.level)] || "No passive surveys";
+    watchtowerStatus.innerHTML = pulseItem("Watchtower", "Level " + watchtower.level) + pulseItem("Territory coverage", coverage) + pulseItem("Counter-Intelligence", watchtower.counterIntelligence ? "+" + watchtower.counterIntelligence : "None");
+  }
+
+  kingdomContainer.innerHTML = kingdoms.length ? kingdoms.map((report) => {
+    const power = formatIntelValue(report.militaryPower);
+    const narrative = report.militaryPower?.mode === "exact"
+      ? "Our observers recorded military strength " + number(report.militaryPower.value) + ". Treat this as a dated snapshot."
+      : "Our observers describe " + report.targetName + " as " + (report.militaryPower?.label || "uncertain").toLowerCase() + ".";
+    return '<article class="dossier-card" tabindex="0" title="' + escapeHtml(intelligenceTooltip(report)) + '"><div class="card-heading"><div><strong>' + escapeHtml(report.targetName) + '</strong><span>' + escapeHtml(intelLevelName(report.effectiveLevel)) + '</span></div><span class="freshness-badge ' + report.freshness + '">' + intelligenceReportAge(report.observedAt) + '</span></div><p>' + escapeHtml(narrative) + '</p><div class="dossier-facts"><span>Military</span><strong>' + escapeHtml(power) + '</strong></div><small>Source: ' + escapeHtml(intelligenceSourceName(report.source)) + ' · Tap or hover for report mechanics</small></article>';
+  }).join("") : '<div class="empty-intelligence"><strong>No kingdom dossiers yet.</strong><span>Completed raids against rival warcamps will begin building your records.</span></div>';
+
+  territoryContainer.innerHTML = territories.length ? territories.map((report) => {
+    const resistance = formatIntelValue(report.resistance);
+    const attributes = [report.highground ? "Highground" : "", report.large ? "Large" : ""].filter(Boolean).join(", ") || "No unusual attributes observed";
+    const narrative = "The expedition reported " + (report.resistance?.label || "uncertain").toLowerCase() + " resistance at " + report.targetName + ".";
+    const destination = report.plateauId
+      ? ' data-territory-plateau="' + escapeHtml(report.plateauId) + '" role="link"'
+      : '';
+    const actionHint = report.plateauId ? ' · Open in Plateaus' : '';
+    return '<article class="dossier-card territory-report-link" tabindex="0"' + destination + ' title="' + escapeHtml(intelligenceTooltip(report)) + '"><div class="card-heading"><div><strong>' + escapeHtml(report.targetName) + '</strong><span>' + escapeHtml(intelLevelName(report.effectiveLevel)) + '</span></div><span class="freshness-badge ' + report.freshness + '">' + intelligenceReportAge(report.observedAt) + '</span></div><p>' + escapeHtml(narrative) + '</p><div class="dossier-facts"><span>Resistance</span><strong>' + escapeHtml(resistance) + '</strong><span>Observed identity</span><strong>' + escapeHtml(report.plateauType || "Unknown") + '</strong><span>Attributes</span><strong>' + escapeHtml(attributes) + '</strong></div><small>Source: ' + escapeHtml(intelligenceSourceName(report.source)) + actionHint + '</small></article>';
+  }).join("") : '<div class="empty-intelligence"><strong>No territory reports yet.</strong><span>Completed neutral expeditions will be recorded here.</span></div>';
+
+  territoryContainer.querySelectorAll("[data-territory-plateau]").forEach((card) => {
+    const openReport = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openPlateauTarget(card.dataset.territoryPlateau);
+    };
+    card.addEventListener("click", openReport);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") openReport(event);
+    });
+  });
+}
+
+function openPlateauTarget(plateauId) {
+  if (!plateauId) return;
+  const neutral = state.plateaus.neutral.some((plateau) => plateau.id === plateauId);
+  const rival = state.plateaus.rivals.some((plateau) => plateau.id === plateauId);
+  if (neutral) lastSelections.neutralPlateau = plateauId;
+  if (rival) lastSelections.playerPlateau = plateauId;
+  if (!neutral && !rival) holdingsExpanded = true;
+  showView("plateaus");
+  renderSelects();
+  renderPlateaus();
+  const select = neutral ? $("neutral-plateau-target") : rival ? $("player-plateau-target") : null;
+  if (select) {
+    select.value = plateauId;
+    select.focus();
+  }
+}
+
 function externalDefenseText(raid) {
   if (!raid.defensePower) return "";
   return ", opposition " + neutralDefenseLabel(raid.defensePower);
 }
 
 function plateauRunDifficultyLabel(power) {
-  if (power <= 100) return "Manageable";
-  if (power <= 180) return "Dangerous";
-  if (power <= 280) return "Brutal";
+  if (power <= 20) return "Manageable";
+  if (power <= 36) return "Dangerous";
+  if (power <= 56) return "Brutal";
   return "Overwhelming";
 }
 
@@ -1224,6 +1445,9 @@ function normalizeBuildingObject(buildings, rules) {
 function buildingCost(rule, currentLevel) {
   if (Array.isArray(rule.levelCosts)) {
     return rule.levelCosts[currentLevel] || rule.levelCosts[rule.levelCosts.length - 1] || rule.baseCost || 0;
+  }
+  if (Number(rule.costMultiplier) > 0) {
+    return Math.round((rule.baseCost || 0) * Math.pow(Number(rule.costMultiplier), currentLevel));
   }
   return (rule.baseCost || 0) * (currentLevel + 1);
 }
@@ -1293,13 +1517,19 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
     gemheartProgress: plateau.gemheartProgress || null,
     neutralDefenseRemaining: plateau.neutralDefenseRemaining || 0,
     activeSiegeId: plateau.activeSiegeId || null,
+    resistance: plateau.resistance || null,
+    intelligenceLevel: Number(plateau.intelligenceLevel || 0),
   });
   const mine = (plateaus?.mine || []).map((plateau) => decorate(plateau, true));
-  const neutral = (plateaus?.neutral || []).map((plateau, index) => ({
-    ...decorate(plateau, false),
-    label: "Neutral Plateau " + (index + 1) + " - " + neutralDefenseLabel(plateau.neutralDefenseRemaining || 0),
-    neutralDefenseRemaining: plateau.neutralDefenseRemaining || 0,
-  }));
+  const neutral = (plateaus?.neutral || []).map((plateau, index) => {
+    const identityVisible = Boolean(plateau.type);
+    const decorated = decorate(plateau, identityVisible);
+    return {
+      ...decorated,
+      label: (identityVisible ? decorated.name : "Neutral Plateau " + (index + 1)) + " — " + formatIntelValue(plateau.resistance),
+      resistance: plateau.resistance,
+    };
+  });
   const rivals = (plateaus?.rivals || []).map((plateau) => decorate(plateau, true));
   const all = [...mine, ...neutral, ...rivals];
   const byId = Object.fromEntries(all.map((plateau) => [plateau.id, plateau]));
@@ -1321,6 +1551,7 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
       attackerUnits: siege.attackerUnits,
       unitSummary: unitSummary(siege.attackerUnits, unitsConfig),
       attackerPower: siege.attackerPower,
+      attackerIntel: siege.attackerIntel || null,
       attackerSpeed: siege.attackerSpeed,
       defenderUnits: normalizeUnitObject(siege.defenderUnits || {}, Object.keys(unitsConfig)),
       defenderPower: siege.defenderPower || 0,
@@ -1329,6 +1560,7 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
       fortifyPercent: siege.fortifyPercent,
       emergencyDefensePercent: siege.emergencyDefensePercent || 0,
       emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent || 0,
+      ardentiaConclave: Boolean(siege.ardentiaConclave),
       resolveAt: siege.resolveAt,
     })),
   };
@@ -1369,20 +1601,18 @@ function raidStats(units) {
     const unit = state.config.units[key];
     if (!unit) return total;
     total.power += count * unit.power;
-    total.weightedSpeed += count * unit.speed;
-    total.quantityPressure += count * (unit.speed - configValue("speedNeutralPoint", 4)) * configValue("speedQuantityFactor", 1 / 60);
+    if (key !== "shardbearer") total.supportingPower += count * unit.power;
+    total.speed += count * unit.speed;
     total.plunder += count * (unit.plunder || 0);
+    total.survivability += count * (unit.survivability || 0);
     total.total += count;
-    if (count > 0) {
-      total.included.push({ key, unit });
-    }
     return total;
-  }, { power: 0, weightedSpeed: 0, quantityPressure: 0, speed: 0, plunder: 0, total: 0, included: [] });
-  stats.speed = stats.total ? stats.weightedSpeed / stats.total + stats.quantityPressure : 0;
-  if ((units.shardbearer || 0) > 0) stats.power *= 2;
-  const survival = survivalProfile(stats.included);
-  stats.survivalLabel = survival.label;
-  stats.survivalDetails = survival.details;
+  }, { power: 0, supportingPower: 0, breakthroughPower: 0, speed: 0, plunder: 0, survivability: 0, total: 0 });
+  stats.breakthroughPower = Math.min(
+    stats.supportingPower,
+    Number(units.shardbearer || 0) * Number(state.config.armyRules?.shardbearerSupportPowerPerUnit || 100),
+  );
+  stats.power += stats.breakthroughPower;
   return stats;
 }
 
@@ -1392,15 +1622,12 @@ function bridgedTravelReductionPercent() {
 
 function travelMinutes(speed, includeBridged = false) {
   const base = configValue("raidTravelGameDays", 1) * configValue("realMsPerGameDay", 3600000);
-  const effectiveSpeed = Math.max(
-    -configValue("maxTravelPenaltyPercent", 50),
-    Math.min(speed, configValue("maxTravelReductionPercent", 50)),
-  );
-  const multiplier = effectiveSpeed >= 0
-    ? 1 - effectiveSpeed / 100
-    : 1 + Math.abs(effectiveSpeed) / 100;
+  const constant = configValue("statDiminishingConstant", 100);
+  const multiplier = speed >= 0
+    ? constant / (constant + speed)
+    : 1 + Math.abs(speed) / constant;
   const bridgedMultiplier = includeBridged ? 1 - bridgedTravelReductionPercent() / 100 : 1;
-  return Math.ceil((base * multiplier * bridgedMultiplier) / 60000);
+  return Math.max(1, Math.ceil((base * multiplier * bridgedMultiplier) / 60000));
 }
 
 function fixedSiegeTravelMinutes() {
@@ -1482,6 +1709,11 @@ function formatStat(value) {
   return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
+function signedStat(value) {
+  const numeric = Number(value || 0);
+  return (numeric > 0 ? "+" : "") + formatStat(numeric);
+}
+
 function formatPercent(value) {
   return ((Number(value || 0) * 100).toLocaleString(undefined, { maximumFractionDigits: 1 })) + "%";
 }
@@ -1491,29 +1723,12 @@ function modifierLabel(value, prefix) {
   return numeric > 0 ? prefix + number(numeric) + "%" : "No bonus";
 }
 
-function survivalProfile(included) {
-  if (!included.length) return { label: "No units selected", details: "Select at least one ready unit to see its Survival profile." };
-  const lowest = Math.min(...included.map((entry) => Number(entry.unit.survival || 0)));
-  const label =
-    lowest >= 0.995
-      ? "Exceptional"
-      : lowest >= 0.97
-        ? "Durable"
-        : lowest >= 0.93
-          ? "Steady"
-          : lowest >= 0.8
-            ? "Risky"
-            : "Fragile";
-  const details = included.map((entry) => entry.unit.name + ": " + formatPercent(entry.unit.survival || 0)).join(", ");
-  return { label, details };
-}
-
 function statTooltip(stat) {
   const tips = {
-    power: "Power determines the winner of combat. Armies with at least one Shardbearer have total Power doubled once.",
-    speed: "Speed changes travel time. Army Speed uses average unit speed plus quantity pressure: many fast units speed travel up, while many slow units can slow it down. Travel reduction and penalty are capped.",
-    plunder: "Plunder is the maximum number of spheres this army can recover from sphere rewards.",
-    survival: "Survival is a unit's chance to survive when exposed to casualties. Power decides victory; Survival decides cost.",
+    power: "Add every unit's Power. Shardbearers also add a bounded Breakthrough bonus by doubling up to 100 supporting Power each.",
+    speed: "Add every unit's Speed. Positive Speed shortens missions with diminishing returns; negative Speed lengthens them.",
+    plunder: "Add every unit's Plunder. The total is the maximum number of Spheres the army can carry home.",
+    survivability: "Add every unit's Survivability. It changes casualties after relative Power determines the base casualty rate.",
   };
   return tips[stat] || "";
 }
@@ -1613,12 +1828,18 @@ $("sphere-form").addEventListener("submit", (event) => {
 $("neutral-siege-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!$("neutral-plateau-target").value) return alert("Choose a neutral plateau.");
-  action(() => client.mutation(refs.launchNeutralSiege, { plateauId: $("neutral-plateau-target").value, units: validatedRaidUnits("neutral-siege-units") }));
+  action(async () => {
+    await client.mutation(refs.launchNeutralSiege, { plateauId: $("neutral-plateau-target").value, units: validatedRaidUnits("neutral-siege-units"), ardentiaConclave: Boolean($("neutral-conclave")?.checked) });
+    $("neutral-conclave").checked = false;
+  });
 });
 $("player-siege-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!$("player-plateau-target").value) return alert("Choose an enemy plateau.");
-  action(() => client.mutation(refs.launchPlayerSiege, { plateauId: $("player-plateau-target").value, units: validatedRaidUnits("player-siege-units") }));
+  action(async () => {
+    await client.mutation(refs.launchPlayerSiege, { plateauId: $("player-plateau-target").value, units: validatedRaidUnits("player-siege-units"), ardentiaConclave: Boolean($("player-conclave")?.checked) });
+    $("player-conclave").checked = false;
+  });
 });
 $("plateau-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -1672,7 +1893,10 @@ $("finish-plateau").addEventListener("click", () => {
   if (!state.plateauRun) return alert("No Plateau Run is open.");
   action(() => client.mutation(refs.forceResolvePlateauRun, { plateauRunId: state.plateauRun.id }));
 });
-$("backfill-plateaus").addEventListener("click", () => action(() => client.mutation(refs.backfillPlateaus, {})));
+$("backfill-plateaus").addEventListener("click", () => action(async () => {
+  const result = await client.mutation(refs.backfillPlateaus, {});
+  alert("Plateau maintenance complete. " + number(result.defensesRetuned || 0) + " neutral defenses retuned; " + number(result.neutralCreated || 0) + " neutral plateaus created.");
+}));
 if ($("reset-world-keep-accounts")) {
   $("reset-world-keep-accounts").addEventListener("click", () => {
     const confirmText = window.prompt(

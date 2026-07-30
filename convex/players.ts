@@ -96,6 +96,7 @@ async function createPlayerForAuth(
     acres: STARTING_RULES.acres,
     spheres: STARTING_RULES.spheres,
     gemhearts: STARTING_RULES.gemhearts,
+    ardentiaConclaves: 0,
     units: emptyUnits(),
     buildings: emptyBuildings(),
     lastEconomyAt: now,
@@ -234,6 +235,7 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
       plateauCounts,
       ownedUnits,
       plateauAttributes.large,
+      player.ardentiaConclaves ?? 0,
     ),
     plateauAttributes,
     plateauBonuses: {

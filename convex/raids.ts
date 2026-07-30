@@ -4,13 +4,17 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
+import { recordKingdomReport } from "./intelligenceHelpers";
 import { plateauCountsForPlayer } from "./plateauHelpers";
 import {
   applySurvivalLosses,
+  baseCasualtyRate,
   casualtySummary,
   COMBAT_RULES,
   effectivePower,
   normalizeUnits,
+  resistanceLabel,
+  rewardLabel,
   totalUnits,
   travelMsForUnits,
   UNIT_RULES,
@@ -333,12 +337,9 @@ export const resolveRaid = internalMutation({
       const defense =
         COMBAT_RULES.openDefenseBase + acres * COMBAT_RULES.openDefensePerAcre;
       won = raid.power >= defense && acres > 0;
-      const losses = won
-        ? Math.ceil(totalUnits(raid.units) * 0.15)
-        : Math.ceil(totalUnits(raid.units) * 0.45);
       const lossResult = applySurvivalLosses(
         normalizeUnits(raid.units),
-        losses,
+        baseCasualtyRate(raid.power, defense),
         `${raid._id}:open:${now}`,
       );
       survivors = lossResult.survivors;
@@ -366,12 +367,9 @@ export const resolveRaid = internalMutation({
       const reward =
         raid.rewardSpheres ?? COMBAT_RULES.parshendiSphereRaidMinReward;
       won = raid.power >= defense;
-      const losses = won
-        ? Math.ceil(totalUnits(raid.units) * 0.08)
-        : Math.ceil(totalUnits(raid.units) * 0.25);
       const lossResult = applySurvivalLosses(
         normalizeUnits(raid.units),
-        losses,
+        baseCasualtyRate(raid.power, defense),
         `${raid._id}:spheres:${now}`,
       );
       survivors = lossResult.survivors;
@@ -385,8 +383,8 @@ export const resolveRaid = internalMutation({
         lastActiveAt: now,
       });
       resultText = won
-        ? `${attacker.name} raided Parshendi spheres. Attack Power ${raid.power}, Defense Power ${defense}. Available ${reward}, plunder ${plunder}, recovered ${recovered}, left behind ${leftBehind}. Casualties: ${casualtySummary(lossResult.casualties)}.`
-        : `${attacker.name} failed a Parshendi sphere raid. Attack Power ${raid.power}, Defense Power ${defense}. Casualties: ${casualtySummary(lossResult.casualties)}.`;
+        ? `${attacker.name} overcame ${resistanceLabel(defense).toLowerCase()} resistance and recovered ${recovered} spheres from a ${rewardLabel(reward).toLowerCase()} cache.${leftBehind > 0 ? " Some spheres were left behind because the army lacked Plunder." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`
+        : `${attacker.name} failed against ${resistanceLabel(defense).toLowerCase()} resistance during a sphere raid. Casualties: ${casualtySummary(lossResult.casualties)}.`;
     }
 
     if (raid.targetType === "player") {
@@ -400,27 +398,18 @@ export const resolveRaid = internalMutation({
         });
         resultText = `${attacker.name}'s raid found no target.`;
       } else {
-        const defenseBonus =
-          1 +
-          defender.buildings.watchtower * COMBAT_RULES.watchtowerDefensePerLevel;
-        const homePower = effectivePower(defender.units) * defenseBonus;
+        const homePower = effectivePower(defender.units);
         const acres = Math.min(raid.acres ?? 1, Math.max(0, defender.acres - 1));
         won = raid.power > homePower && acres > 0;
-        const attackerLosses = won
-          ? Math.ceil(totalUnits(raid.units) * 0.22)
-          : Math.ceil(totalUnits(raid.units) * 0.55);
-        const defenderLosses = won
-          ? Math.ceil(totalUnits(defender.units) * 0.18)
-          : Math.ceil(totalUnits(defender.units) * 0.08);
         const attackerLossResult = applySurvivalLosses(
           normalizeUnits(raid.units),
-          attackerLosses,
+          baseCasualtyRate(raid.power, homePower),
           `${raid._id}:player:attacker:${now}`,
         );
         survivors = attackerLossResult.survivors;
         const defenderLossResult = applySurvivalLosses(
           normalizeUnits(defender.units),
-          defenderLosses,
+          baseCasualtyRate(homePower, raid.power),
           `${raid._id}:player:defender:${now}`,
         );
 
@@ -435,16 +424,24 @@ export const resolveRaid = internalMutation({
           lastActiveAt: now,
         });
 
+        await recordKingdomReport(ctx, {
+          viewerPlayerId: attacker._id,
+          target: defender,
+          source: "player_raid",
+          level: won ? 2 : 1,
+          observedAt: now,
+        });
+
         await ctx.db.insert("messages", {
           toPlayerId: defender._id,
           kind: "system",
           subject: won ? "Raid Lost" : "Defense Held",
-          body: `${won ? `${attacker.name} seized ${acres} acres from your warcamp.` : `Your warcamp held against ${attacker.name}.`} Attack Power ${raid.power}, Defense Power ${homePower}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`,
+          body: `${won ? `${attacker.name} seized ${acres} acres from your warcamp.` : `Your warcamp held against ${attacker.name}.`} Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`,
           createdAt: now,
         });
         resultText = won
-          ? `${attacker.name} seized ${acres} acres from ${defender.name}. Attack Power ${raid.power}, Defense Power ${homePower}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`
-          : `${defender.name} held against ${attacker.name}. Attack Power ${raid.power}, Defense Power ${homePower}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
+          ? `${attacker.name} seized ${acres} acres from ${defender.name}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}. A new assessment is available in Intelligence.`
+          : `${defender.name} held against ${attacker.name}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}. A new assessment is available in Intelligence.`;
       }
     }
 

@@ -60,6 +60,7 @@
             <button class="nav-button" type="button" data-view="raids">Raids</button>
             <button class="nav-button" type="button" data-view="plateaus">Plateaus <span class="nav-state-dot hidden" id="siege-nav-state" aria-label="Siege needs attention"></span></button>
             <button class="nav-button" type="button" data-view="plateau">Plateau Runs <span class="nav-state-dot hidden" id="run-nav-state" aria-label="Plateau Run open"></span></button>
+            <button class="nav-button" type="button" data-view="intelligence">Intelligence</button>
             <button class="nav-button" type="button" data-view="inbox">Inbox <span id="inbox-badge" class="nav-badge hidden">0</span></button>
             <button class="nav-button hidden" type="button" data-view="testing" data-admin-only="true">Testing</button>
             <button class="nav-button hidden" type="button" data-view="chronicle" data-admin-only="true">Chronicle</button>
@@ -149,6 +150,10 @@
                   <label>Select Units</label>
                   <div id="neutral-siege-units" class="unit-input-grid"></div>
                 </div>
+                <label id="neutral-conclave-option" class="conclave-attachment form-wide hidden">
+                  <input id="neutral-conclave" type="checkbox">
+                  <span><strong>Attach Ardentia Scout Conclave</strong><small>Improves the resulting report by one Intelligence level if the Conclave completes its investigation. Minimum success chance: 25%.</small></span>
+                </label>
                 <div id="neutral-siege-preview" class="attack-outlook form-wide"></div>
                 <button>Launch expedition</button>
               </form>
@@ -159,6 +164,10 @@
                   <label>Select Units</label>
                   <div id="player-siege-units" class="unit-input-grid"></div>
                 </div>
+                <label id="player-conclave-option" class="conclave-attachment form-wide hidden">
+                  <input id="player-conclave" type="checkbox">
+                  <span><strong>Attach Ardentia Scout Conclave</strong><small>Improves the resulting rival dossier by one Intelligence level if the Conclave completes its investigation. Minimum success chance: 25%.</small></span>
+                </label>
                 <div id="player-siege-preview" class="attack-outlook form-wide"></div>
                 <button>Start siege</button>
               </form>
@@ -192,6 +201,32 @@
               <p class="eyebrow">Roster</p>
               <h2>Committed warcamps</h2>
               <div id="plateau-participants" class="list"></div>
+            </section>
+          </section>
+
+          <section class="view" id="view-intelligence" data-title="Reports and dossiers" data-eyebrow="Intelligence">
+            <section class="panel full-panel">
+              <div class="section-heading">
+                <p class="eyebrow">Observation network</p>
+                <h2>Watchtower coverage</h2>
+              </div>
+              <div id="watchtower-intelligence-status" class="pulse-grid"></div>
+            </section>
+            <section class="panel full-panel">
+              <div class="section-heading">
+                <p class="eyebrow">War Room</p>
+                <h2>Kingdom dossiers</h2>
+                <p class="hint">Reports preserve what was observed at the listed time. As reports age, exact knowledge fades into estimates and qualitative judgments.</p>
+              </div>
+              <div id="kingdom-dossiers" class="intelligence-grid"></div>
+            </section>
+            <section class="panel full-panel">
+              <div class="section-heading">
+                <p class="eyebrow">The Plains</p>
+                <h2>Territory reports</h2>
+                <p class="hint">Completed neutral expeditions add reports here. Plateau identity remains recorded while tactical estimates grow stale.</p>
+              </div>
+              <div id="territory-reports" class="intelligence-grid"></div>
             </section>
           </section>
 
@@ -231,7 +266,7 @@
                 <button id="finish-sieges" type="button">Finish plateau sieges</button>
                 <button id="start-plateau" type="button">Start plateau run</button>
                 <button id="finish-plateau" type="button">Finish plateau run</button>
-                <button id="backfill-plateaus" type="button">Backfill plateaus</button>
+                <button id="backfill-plateaus" type="button">Retune / backfill plateaus</button>
                 <button id="reset-world-keep-accounts" class="danger-button" type="button">Reset world / keep accounts</button>
               </div>
               <p class="hint">These tools call Convex testing helpers. Economy is lazy-settled when you train, build, or open your dashboard. Resetting the world keeps login accounts and warcamp names, but wipes current gameplay state.</p>

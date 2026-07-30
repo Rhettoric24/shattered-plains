@@ -258,6 +258,7 @@ export async function grantGemheartPlateauIncome(
   ctx: MutationCtx,
   player: {
     _id: Id<"players">;
+    name?: string;
     gemhearts: number;
   },
   now: number,
@@ -274,6 +275,20 @@ export async function grantGemheartPlateauIncome(
     await ctx.db.patch(plateau._id, {
       lastGemheartAt: last + earned * PLATEAU_RULES.gemheartIntervalMs,
       updatedAt: now,
+    });
+  }
+
+  if (gemhearts > 0) {
+    await ctx.db.insert("messages", {
+      toPlayerId: player._id,
+      kind: "system",
+      subject: "Gemheart Plateau Yield",
+      body: `Your Gemheart Plateau holdings yielded ${gemhearts} Gemheart${gemhearts === 1 ? "" : "s"}. The 12-hour timer has restarted for the paying plateau${gemhearts === 1 ? "" : "s"}.`,
+      createdAt: now,
+    });
+    await ctx.db.insert("gameEvents", {
+      text: `${player.name ?? "A warcamp"} gained ${gemhearts} Gemheart${gemhearts === 1 ? "" : "s"} from Gemheart Plateau holdings.`,
+      createdAt: now,
     });
   }
 

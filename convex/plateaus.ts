@@ -5,6 +5,17 @@ import type { Id } from "./_generated/dataModel";
 import { requireAdmin } from "./admin";
 import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
+import { recordKingdomReport, recordTerritoryReport } from "./intelligenceHelpers";
+import {
+  ardentiaConclaveStatus,
+  conclaveResultNarrative,
+  resolveConclaveInvestigation,
+} from "./ardentiaHelpers";
+import {
+  effectiveIntelLevel,
+  presentIntelNumber,
+  watchtowerTerritoryLevel,
+} from "./intelligenceRules";
 import {
   createNeutralPlateaus,
   createStarterPlateaus,
@@ -16,6 +27,7 @@ import {
 } from "./plateauHelpers";
 import {
   applySurvivalLosses,
+  baseCasualtyRate,
   casualtySummary,
   emergencyDefenseCost,
   effectivePower,
@@ -23,6 +35,7 @@ import {
   identityPlateauType,
   normalizeUnits,
   PLATEAU_RULES,
+  resistanceLabel,
   STARTING_RULES,
   TIME_RULES,
   totalUnits,
@@ -72,11 +85,7 @@ function addUnits(current: UnitCounts, returned: UnitCounts) {
 }
 
 function applyLossRate(units: UnitCounts, lossRate: number, seed: string) {
-  return applySurvivalLosses(
-    normalizeUnits(units),
-    Math.ceil(totalUnits(units) * lossRate),
-    seed,
-  );
+  return applySurvivalLosses(normalizeUnits(units), lossRate, seed);
 }
 
 function validateUnlockedUnits(buildings: { barracks: number }, units: UnitCounts) {
@@ -90,6 +99,28 @@ function validateUnlockedUnits(buildings: { barracks: number }, units: UnitCount
       );
     }
   }
+}
+
+async function validateConclaveAttachment(
+  ctx: MutationCtx,
+  attacker: {
+    _id: Id<"players">;
+    ardentiaConclaves?: number;
+    buildings: { ardentMonastery?: number };
+  },
+  attached: boolean,
+) {
+  if (!attached) return false;
+  const status = await ardentiaConclaveStatus(
+    ctx,
+    attacker._id,
+    attacker.ardentiaConclaves ?? 0,
+    attacker.buildings.ardentMonastery ?? 0,
+  );
+  if (status.ready < 1) {
+    throw new Error("No Ardentia Scout Conclave is ready for this mission.");
+  }
+  return true;
 }
 
 function committedDefensePower(
@@ -216,27 +247,98 @@ export const listPlateaus = query({
       .query("sieges")
       .withIndex("by_status_resolve", (q) => q.eq("status", "pending"))
       .take(200);
+    const territoryReports = await ctx.db
+      .query("intelligenceReports")
+      .withIndex("by_viewerPlayerId_and_targetType", (q) =>
+        q.eq("viewerPlayerId", viewer._id).eq("targetType", "territory"),
+      )
+      .take(100);
+    const reportsByPlateau = new Map(
+      territoryReports
+        .filter((report) => report.plateauId)
+        .map((report) => [String(report.plateauId), report]),
+    );
+    const now = Date.now();
+    const watchtowerLevel = Math.min(3, viewer.buildings.watchtower ?? 0);
+    const passiveTerritoryLevel = watchtowerTerritoryLevel(watchtowerLevel);
 
     return {
       types: plateauTypes(),
       counts: await plateauCountsForPlayer(ctx, viewer._id),
-      mine: mine.map((plateau) => decoratePlateauForOwner(plateau, Date.now())),
-      neutral: neutral.filter((plateau) => !plateau.activeSiegeId),
+      mine: mine.map((plateau) => decoratePlateauForOwner(plateau, now)),
+      neutral: neutral.filter((plateau) => !plateau.activeSiegeId).map((plateau) => {
+        const report = reportsByPlateau.get(String(plateau._id));
+        const reportLevel = report
+          ? effectiveIntelLevel(report.level, report.observedAt, now)
+          : 0;
+        const intelligenceLevel = Math.max(passiveTerritoryLevel, reportLevel);
+        const identityKnown = watchtowerLevel >= 1 || Boolean(report);
+        return {
+          _id: plateau._id,
+          name: identityKnown ? plateau.name : "Unsurveyed Plateau",
+          status: plateau.status,
+          intelligenceLevel,
+          resistance: presentIntelNumber(plateau.neutralDefenseRemaining, intelligenceLevel),
+          ...(identityKnown
+            ? {
+                type: identityPlateauType(plateau.type),
+                highground: plateau.highground,
+                large: plateau.large ?? false,
+              }
+            : {}),
+        };
+      }),
       rivals: allOwned
         .filter((plateau) => plateau.ownerPlayerId !== viewer._id)
         .map((plateau) => ({
-          ...decoratePlateauForOwner(plateau, Date.now()),
+          ...decoratePlateauForOwner(plateau, now),
           ownerName: plateau.ownerPlayerId
             ? playerNames[plateau.ownerPlayerId] ?? "Unknown"
             : "Neutral",
         })),
-      sieges: activeSieges.map((siege) => ({
-        ...siege,
-        attackerName: playerNames[siege.attackerId] ?? "Unknown",
-        defenderName: siege.defenderId
-          ? playerNames[siege.defenderId] ?? "Unknown"
-          : "Parshendi",
-      })),
+      sieges: activeSieges.map((siege) => {
+        const isAttacker = siege.attackerId === viewer._id;
+        const isDefender = siege.defenderId === viewer._id;
+        const incomingLevel = isDefender ? passiveTerritoryLevel : 0;
+        return {
+          _id: siege._id,
+          plateauId: siege.plateauId,
+          attackerId: siege.attackerId,
+          ...(siege.defenderId ? { defenderId: siege.defenderId } : {}),
+          targetType: siege.targetType,
+          attackerName: playerNames[siege.attackerId] ?? "Unknown",
+          defenderName: siege.defenderId
+            ? playerNames[siege.defenderId] ?? "Unknown"
+            : "Parshendi",
+          attackerIntel: presentIntelNumber(siege.attackerPower, isAttacker ? 3 : incomingLevel),
+          ...(isAttacker
+            ? {
+                attackerUnits: siege.attackerUnits,
+                attackerPower: siege.attackerPower,
+                attackerSpeed: siege.attackerSpeed,
+                ardentiaConclave: Boolean(siege.ardentiaConclave),
+              }
+            : {}),
+          ...(isDefender
+            ? {
+                defenderUnits: siege.defenderUnits,
+                defenderPower: siege.defenderPower,
+                defenderSpeed: siege.defenderSpeed,
+                defenderCommittedAt: siege.defenderCommittedAt ?? null,
+                fortifyPercent: siege.fortifyPercent,
+                emergencyDefensePercent: siege.emergencyDefensePercent,
+                emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent,
+              }
+            : {}),
+          departAt: siege.departAt,
+          resolveAt: siege.resolveAt,
+          status: siege.status,
+        };
+      }),
+      watchtower: {
+        level: watchtowerLevel,
+        territoryLevel: passiveTerritoryLevel,
+      },
     };
   },
 });
@@ -245,6 +347,7 @@ export const launchNeutralSiege = mutation({
   args: {
     plateauId: v.id("plateaus"),
     units: unitCounts,
+    ardentiaConclave: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const attacker = await requireCurrentPlayer(ctx);
@@ -259,6 +362,11 @@ export const launchNeutralSiege = mutation({
     const units = cleanUnits(args.units);
     if (totalUnits(units) < 1) throw new Error("Send at least one unit.");
     validateUnlockedUnits(attacker.buildings, units);
+    const ardentiaConclave = await validateConclaveAttachment(
+      ctx,
+      attacker,
+      Boolean(args.ardentiaConclave),
+    );
 
     const now = Date.now();
     const plateauCounts = await plateauCountsForPlayer(ctx, attacker._id);
@@ -274,6 +382,7 @@ export const launchNeutralSiege = mutation({
       fortifyPercent: 0,
       emergencyDefensePercent: 0,
       emergencyDefenseSpheresSpent: 0,
+      ardentiaConclave,
       departAt: now,
       resolveAt,
       status: "pending",
@@ -304,6 +413,7 @@ export const launchPlayerSiege = mutation({
   args: {
     plateauId: v.id("plateaus"),
     units: unitCounts,
+    ardentiaConclave: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const attacker = await requireCurrentPlayer(ctx);
@@ -324,6 +434,11 @@ export const launchPlayerSiege = mutation({
     const units = cleanUnits(args.units);
     if (totalUnits(units) < 1) throw new Error("Send at least one unit.");
     validateUnlockedUnits(attacker.buildings, units);
+    const ardentiaConclave = await validateConclaveAttachment(
+      ctx,
+      attacker,
+      Boolean(args.ardentiaConclave),
+    );
 
     const now = Date.now();
     const resolveAt = now + siegeTravelMs();
@@ -342,6 +457,7 @@ export const launchPlayerSiege = mutation({
       fortifyPercent: 0,
       emergencyDefensePercent: 0,
       emergencyDefenseSpheresSpent: 0,
+      ardentiaConclave,
       departAt: now,
       resolveAt,
       status: "pending",
@@ -355,11 +471,25 @@ export const launchPlayerSiege = mutation({
       activeSiegeId: siegeId,
       updatedAt: now,
     });
+    const defenderWatchtowerLevel = Math.min(3, defender.buildings.watchtower ?? 0);
+    const watchtowerAssessment = defenderWatchtowerLevel > 0
+      ? presentIntelNumber(
+          effectivePower(units),
+          watchtowerTerritoryLevel(defenderWatchtowerLevel),
+        )
+      : null;
+    const assessmentText = watchtowerAssessment
+      ? watchtowerAssessment.mode === "label"
+        ? ` Watchtower assessment: ${watchtowerAssessment.label}.`
+        : watchtowerAssessment.mode === "range" || watchtowerAssessment.mode === "estimate"
+          ? ` Watchtower assessment: ${watchtowerAssessment.label} (${watchtowerAssessment.min}-${watchtowerAssessment.max} Power).`
+          : ` Watchtower assessment: ${watchtowerAssessment.label} (${watchtowerAssessment.value} Power).`
+      : "";
     await ctx.db.insert("messages", {
       toPlayerId: defender._id,
       kind: "system",
       subject: "Plateau Siege",
-      body: `${attacker.name} has started a siege against ${plateau.name}.`,
+      body: `${attacker.name} has started a siege against ${plateau.name}.${assessmentText}`,
       createdAt: now,
     });
   await insertGameEvent(ctx, {
@@ -495,12 +625,33 @@ export const backfillPlateaus = mutation({
     const players = await ctx.db.query("players").take(200);
     let starterCreated = 0;
     let migrated = 0;
+    let defensesRetuned = 0;
     const existingPlateaus = await ctx.db.query("plateaus").take(300);
     for (const plateau of existingPlateaus) {
       const type = identityPlateauType(plateau.type);
       const updates: any = {};
       if (type !== plateau.type) updates.type = type;
       if (plateau.large === undefined) updates.large = false;
+      if (
+        plateau.status === "neutral" &&
+        plateau.neutralDefenseInitial < PLATEAU_RULES.neutralDefenseMin
+      ) {
+        const legacyProgress = plateau.neutralDefenseInitial > 0
+          ? plateau.neutralDefenseRemaining / plateau.neutralDefenseInitial
+          : 1;
+        const legacyPosition = Math.max(
+          0,
+          Math.min(1, (plateau.neutralDefenseInitial - 7) / (16 - 7)),
+        );
+        const nextInitial = Math.round(
+          PLATEAU_RULES.neutralDefenseMin +
+            legacyPosition *
+              (PLATEAU_RULES.neutralDefenseMax - PLATEAU_RULES.neutralDefenseMin),
+        );
+        updates.neutralDefenseInitial = nextInitial;
+        updates.neutralDefenseRemaining = Math.max(1, Math.round(nextInitial * legacyProgress));
+        defensesRetuned += 1;
+      }
       if (Object.keys(updates).length > 0) {
         await ctx.db.patch(plateau._id, { ...updates, updatedAt: now });
         migrated += 1;
@@ -518,11 +669,11 @@ export const backfillPlateaus = mutation({
 
   await insertGameEvent(ctx, {
       kind: "world",
-      text: `Plateau backfill created ${starterCreated} starter plateaus and ${neutralCreated} neutral plateaus.`,
+      text: `Plateau backfill created ${starterCreated} starter plateaus and ${neutralCreated} neutral plateaus, and retuned ${defensesRetuned} neutral defenses.`,
       createdAt: now,
     });
 
-    return { starterCreated, neutralCreated, migrated };
+    return { starterCreated, neutralCreated, migrated, defensesRetuned };
   },
 });
 
@@ -555,10 +706,29 @@ export const resolveSiege = internalMutation({
       won = siege.attackerPower >= plateau.neutralDefenseRemaining;
       const lossResult = applyLossRate(
         siege.attackerUnits,
-        won ? PLATEAU_RULES.neutralWinLossRate : PLATEAU_RULES.neutralLossLossRate,
+        baseCasualtyRate(siege.attackerPower, plateau.neutralDefenseRemaining),
         `${siege._id}:neutral:${now}`,
       );
       survivors = lossResult.survivors;
+      const investigation = resolveConclaveInvestigation(
+        Boolean(siege.ardentiaConclave),
+        lossResult.finalCasualtyRate,
+        `${siege._id}:neutral:${now}`,
+      );
+      await recordTerritoryReport(ctx, {
+        viewerPlayerId: attacker._id,
+        plateau,
+        source: investigation.succeeded ? "ardent" : "neutral_expedition",
+        level: 2 + (investigation.succeeded ? 1 : 0),
+        observedAt: now,
+      });
+      const investigationText = investigation.attached
+        ? conclaveResultNarrative({
+            succeeded: investigation.succeeded,
+            won,
+            successChance: investigation.successChance,
+          })
+        : "";
 
       if (won) {
         await ctx.db.patch(plateau._id, {
@@ -570,7 +740,7 @@ export const resolveSiege = internalMutation({
           activeSiegeId: undefined,
           updatedAt: now,
         });
-        resultText = `${attacker.name} claimed ${plateauTypeName(plateau.type)}. Attack Power ${siege.attackerPower}, Defense Power ${plateau.neutralDefenseRemaining}. Casualties: ${casualtySummary(lossResult.casualties)}.`;
+        resultText = `${attacker.name} claimed ${plateauTypeName(plateau.type)} against ${resistanceLabel(plateau.neutralDefenseRemaining).toLowerCase()} resistance. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
       } else {
         await ctx.db.patch(plateau._id, {
           neutralDefenseRemaining: Math.max(
@@ -580,7 +750,7 @@ export const resolveSiege = internalMutation({
           activeSiegeId: undefined,
           updatedAt: now,
         });
-        resultText = `${attacker.name} weakened the Parshendi defense on a neutral plateau. Attack Power ${siege.attackerPower}, Defense Power ${plateau.neutralDefenseRemaining}. Casualties: ${casualtySummary(lossResult.casualties)}.`;
+        resultText = `${attacker.name} weakened ${resistanceLabel(plateau.neutralDefenseRemaining).toLowerCase()} Parshendi resistance on a neutral plateau. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
       }
 
       await ctx.db.patch(attacker._id, {
@@ -600,10 +770,6 @@ export const resolveSiege = internalMutation({
       } else {
         const defenderUnits = normalizeUnits(siege.defenderUnits ?? emptyUnits());
         const emergencyDefensePercent = siege.emergencyDefensePercent ?? 0;
-        const defenderBasePower = committedDefenseBasePower(
-          defenderUnits,
-          plateau,
-        );
         const defenderPower = committedDefensePower(
           defenderUnits,
           plateau,
@@ -612,17 +778,32 @@ export const resolveSiege = internalMutation({
         won = siege.attackerPower > defenderPower;
         const attackerLossResult = applyLossRate(
           siege.attackerUnits,
-          won
-            ? PLATEAU_RULES.siegeWinAttackerLossRate
-            : PLATEAU_RULES.siegeLossAttackerLossRate,
+          baseCasualtyRate(siege.attackerPower, defenderPower),
           `${siege._id}:player:attacker:${now}`,
         );
         survivors = attackerLossResult.survivors;
+        const investigation = resolveConclaveInvestigation(
+          Boolean(siege.ardentiaConclave),
+          attackerLossResult.finalCasualtyRate,
+          `${siege._id}:player:${now}`,
+        );
+        await recordKingdomReport(ctx, {
+          viewerPlayerId: attacker._id,
+          target: defender,
+          source: investigation.succeeded ? "ardent" : "player_raid",
+          level: (won ? 2 : 1) + (investigation.succeeded ? 1 : 0),
+          observedAt: now,
+        });
+        const investigationText = investigation.attached
+          ? conclaveResultNarrative({
+              succeeded: investigation.succeeded,
+              won,
+              successChance: investigation.successChance,
+            })
+          : "";
         const defenderLossResult = applyLossRate(
           defenderUnits,
-          won
-            ? PLATEAU_RULES.siegeWinDefenderLossRate
-            : PLATEAU_RULES.siegeLossDefenderLossRate,
+          baseCasualtyRate(defenderPower, siege.attackerPower),
           `${siege._id}:player:defender:${now}`,
         );
 
@@ -635,6 +816,7 @@ export const resolveSiege = internalMutation({
           lastActiveAt: now,
         });
 
+        let defenderResultText = "";
         if (won) {
           await ctx.db.patch(plateau._id, {
             ownerPlayerId: attacker._id,
@@ -643,20 +825,21 @@ export const resolveSiege = internalMutation({
             activeSiegeId: undefined,
             updatedAt: now,
           });
-          resultText = `${attacker.name} captured ${plateau.name} from ${defender.name}. Attack Power ${siege.attackerPower}, Committed Defense Power ${defenderBasePower}, Emergency Defenses +${emergencyDefensePercent}%, Final Defense ${defenderPower}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
+          defenderResultText = `${attacker.name} captured ${plateau.name} from ${defender.name}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
         } else {
           await ctx.db.patch(plateau._id, {
             activeSiegeId: undefined,
             updatedAt: now,
           });
-          resultText = `${defender.name} held ${plateau.name} against ${attacker.name}. Attack Power ${siege.attackerPower}, Committed Defense Power ${defenderBasePower}, Emergency Defenses +${emergencyDefensePercent}%, Final Defense ${defenderPower}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
+          defenderResultText = `${defender.name} held ${plateau.name} against ${attacker.name}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
         }
+        resultText = defenderResultText + investigationText;
 
         await ctx.db.insert("messages", {
           toPlayerId: defender._id,
           kind: "system",
           subject: won ? "Plateau Lost" : "Siege Held",
-          body: resultText,
+          body: defenderResultText,
           createdAt: now,
         });
       }

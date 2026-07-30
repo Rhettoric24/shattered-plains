@@ -22,6 +22,7 @@ import {
 
 type AnyCtx = QueryCtx | MutationCtx;
 type GameplayTable =
+  | "intelligenceReports"
   | "plateauCommitments"
   | "plateauRuns"
   | "raids"
@@ -100,6 +101,7 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
   const now = Date.now();
   const players = await ctx.db.query("players").take(200);
   const deleted = {
+    intelligenceReports: await deleteGameplayTable(ctx, "intelligenceReports"),
     plateauCommitments: await deleteGameplayTable(ctx, "plateauCommitments"),
     plateauRuns: await deleteGameplayTable(ctx, "plateauRuns"),
     raids: await deleteGameplayTable(ctx, "raids"),
@@ -122,6 +124,7 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
       acres: STARTING_RULES.acres,
       spheres: STARTING_RULES.spheres,
       gemhearts: STARTING_RULES.gemhearts,
+      ardentiaConclaves: 0,
       units: emptyUnits(),
       buildings: emptyBuildings(),
       lastEconomyAt: now,

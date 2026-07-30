@@ -67,6 +67,15 @@ const server = http.createServer((request, response) => {
   });
 });
 
+server.on("error", (error) => {
+  if (error && error.code === "EADDRINUSE") {
+    console.error(`Port ${port} is already in use. Stop the older preview or run with a different PORT.`);
+    process.exitCode = 1;
+    return;
+  }
+  throw error;
+});
+
 server.listen(port, host, () => {
   console.log(`Shattered Plains Convex client: http://${host}:${port}/`);
   console.log(`Serving ${root}`);

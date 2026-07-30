@@ -9,6 +9,8 @@
  */
 
 import type * as admin from "../admin.js";
+import type * as ardentia from "../ardentia.js";
+import type * as ardentiaHelpers from "../ardentiaHelpers.js";
 import type * as army from "../army.js";
 import type * as auth from "../auth.js";
 import type * as buildings from "../buildings.js";
@@ -16,8 +18,12 @@ import type * as config from "../config.js";
 import type * as crons from "../crons.js";
 import type * as economy from "../economy.js";
 import type * as economyHelpers from "../economyHelpers.js";
+import type * as eventHelpers from "../eventHelpers.js";
 import type * as game from "../game.js";
 import type * as http from "../http.js";
+import type * as intelligence from "../intelligence.js";
+import type * as intelligenceHelpers from "../intelligenceHelpers.js";
+import type * as intelligenceRules from "../intelligenceRules.js";
 import type * as messages from "../messages.js";
 import type * as ownership from "../ownership.js";
 import type * as plateauHelpers from "../plateauHelpers.js";
@@ -36,6 +42,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
+  ardentia: typeof ardentia;
+  ardentiaHelpers: typeof ardentiaHelpers;
   army: typeof army;
   auth: typeof auth;
   buildings: typeof buildings;
@@ -43,8 +51,12 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   economy: typeof economy;
   economyHelpers: typeof economyHelpers;
+  eventHelpers: typeof eventHelpers;
   game: typeof game;
   http: typeof http;
+  intelligence: typeof intelligence;
+  intelligenceHelpers: typeof intelligenceHelpers;
+  intelligenceRules: typeof intelligenceRules;
   messages: typeof messages;
   ownership: typeof ownership;
   plateauHelpers: typeof plateauHelpers;

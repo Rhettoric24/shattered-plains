@@ -7,15 +7,18 @@ import { requireCurrentPlayer } from "./ownership";
 import { plateauCountsForPlayer } from "./plateauHelpers";
 import {
   applySurvivalLosses,
+  baseCasualtyRate,
   casualtySummary,
   effectivePower,
   bridgedTravelReduction,
   normalizeUnits,
+  missionRiskLabel,
   PLATEAU_RUN_RULES,
   PLATEAU_RUN_SCHEDULE,
   totalUnits,
   UNIT_RULES,
   unitPlunder,
+  rewardLabel,
   unitSpeed,
   travelMsForUnits,
   type UnitCounts,
@@ -154,7 +157,7 @@ async function createPlateauRun(
       toPlayerId: player._id,
       kind: "system",
       subject: "Plateau Run Open",
-      body: `A Plateau Run has opened. Difficulty ${difficulty}, sphere pool ${spherePool}.`,
+      body: `A Plateau Run has opened. The mission appears ${missionRiskLabel(difficulty).toLowerCase()}, with a ${rewardLabel(spherePool).toLowerCase()} sphere pool.`,
       createdAt: now,
     });
   }
@@ -405,6 +408,7 @@ export const resolvePlateauRun = internalMutation({
       (sum, entry) => sum + entry.effectivePower,
       0,
     );
+    const runBaseCasualtyRate = baseCasualtyRate(combinedPower, run.difficulty);
     const won = combinedPower >= run.difficulty;
 
     if (!won) {
@@ -413,7 +417,7 @@ export const resolvePlateauRun = internalMutation({
         if (!player) continue;
         const lossResult = applySurvivalLosses(
           entry.units,
-          Math.ceil(totalUnits(entry.units) * PLATEAU_RUN_RULES.failedRunLossRate),
+          runBaseCasualtyRate,
           `${run._id}:${entry._id}:failed:${now}`,
         );
         await ctx.db.patch(player._id, {
@@ -424,7 +428,7 @@ export const resolvePlateauRun = internalMutation({
           toPlayerId: player._id,
           kind: "system",
           subject: "Plateau Run Failed",
-          body: `The combined force reached ${combinedPower.toFixed(2)} power and failed against difficulty ${run.difficulty}. Casualties: ${casualtySummary(lossResult.casualties)}.`,
+          body: `The combined force failed against ${missionRiskLabel(run.difficulty).toLowerCase()} opposition. Casualties: ${casualtySummary(lossResult.casualties)}.`,
           createdAt: now,
         });
       }
@@ -456,7 +460,7 @@ export const resolvePlateauRun = internalMutation({
 
       const lossResult = applySurvivalLosses(
         entry.units,
-        Math.ceil(totalUnits(entry.units) * PLATEAU_RUN_RULES.successfulRunLossRate),
+        runBaseCasualtyRate,
         `${run._id}:${entry._id}:success:${now}`,
       );
       const isWinner = entry._id === winner._id;
@@ -482,7 +486,7 @@ export const resolvePlateauRun = internalMutation({
         subject: isWinner ? "Gemheart Claimed" : "Plateau Run Reward",
         body: isWinner
           ? `Your warcamp claimed ${run.gemheartReward} Gemheart from the Plateau Run. Casualties: ${casualtySummary(lossResult.casualties)}.`
-          : `Your warcamp recovered ${sphereShare} spheres from the Plateau Run. Available ${availableSphereShare}, plunder ${plunder}, left behind ${leftBehind}. Casualties: ${casualtySummary(lossResult.casualties)}.`,
+          : `Your warcamp recovered ${sphereShare} spheres from the Plateau Run.${leftBehind > 0 ? " Some spheres were left behind because the army lacked Plunder." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`,
         createdAt: now,
       });
     }

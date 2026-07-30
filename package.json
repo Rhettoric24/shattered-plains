@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "build": "node scripts/build-site.mjs",
-    "start": "node outputs/convex-static-server.js",
+    "start": "npm run build && node outputs/convex-static-server.js",
+    "dev": "npx convex dev",
     "preview": "npm run build && node outputs/convex-static-server.js dist",
     "convex:dev": "npx convex dev",
     "convex:deploy": "npx convex deploy"
