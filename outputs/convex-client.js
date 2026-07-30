@@ -1549,29 +1549,34 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
     neutral,
     rivals,
     byId,
-    sieges: (plateaus?.sieges || []).map((siege) => ({
-      id: siege._id,
-      plateauId: siege.plateauId,
-      attackerId: siege.attackerId,
-      defenderId: siege.defenderId || null,
-      targetType: siege.targetType,
-      attackerName: siege.attackerName,
-      defenderName: siege.defenderName,
-      attackerUnits: siege.attackerUnits,
-      unitSummary: unitSummary(siege.attackerUnits, unitsConfig),
-      attackerPower: siege.attackerPower,
-      attackerIntel: siege.attackerIntel || null,
-      attackerSpeed: siege.attackerSpeed,
-      defenderUnits: normalizeUnitObject(siege.defenderUnits || {}, Object.keys(unitsConfig)),
-      defenderPower: siege.defenderPower || 0,
-      defenderSpeed: siege.defenderSpeed || 0,
-      defenderCommittedAt: siege.defenderCommittedAt || null,
-      fortifyPercent: siege.fortifyPercent,
-      emergencyDefensePercent: siege.emergencyDefensePercent || 0,
-      emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent || 0,
-      ardentiaConclave: Boolean(siege.ardentiaConclave),
-      resolveAt: siege.resolveAt,
-    })),
+    sieges: (plateaus?.sieges || []).map((siege) => {
+      const attackerUnitsKnown = Boolean(siege.attackerUnits);
+      const attackerUnits = normalizeUnitObject(siege.attackerUnits || {}, Object.keys(unitsConfig));
+      return {
+        id: siege._id,
+        plateauId: siege.plateauId,
+        attackerId: siege.attackerId,
+        defenderId: siege.defenderId || null,
+        targetType: siege.targetType,
+        attackerName: siege.attackerName,
+        defenderName: siege.defenderName,
+        attackerUnits,
+        attackerUnitsKnown,
+        unitSummary: attackerUnitsKnown ? unitSummary(attackerUnits, unitsConfig) : "Force details unknown",
+        attackerPower: siege.attackerPower || 0,
+        attackerIntel: siege.attackerIntel || null,
+        attackerSpeed: siege.attackerSpeed || 0,
+        defenderUnits: normalizeUnitObject(siege.defenderUnits || {}, Object.keys(unitsConfig)),
+        defenderPower: siege.defenderPower || 0,
+        defenderSpeed: siege.defenderSpeed || 0,
+        defenderCommittedAt: siege.defenderCommittedAt || null,
+        fortifyPercent: siege.fortifyPercent,
+        emergencyDefensePercent: siege.emergencyDefensePercent || 0,
+        emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent || 0,
+        ardentiaConclave: Boolean(siege.ardentiaConclave),
+        resolveAt: siege.resolveAt,
+      };
+    }),
   };
 }
 
@@ -1598,8 +1603,8 @@ function decoratePlateauRun(plateauRun, unitsConfig) {
   };
 }
 
-function unitSummary(units, unitsConfig) {
-  const parts = Object.entries(units)
+function unitSummary(units = {}, unitsConfig = {}) {
+  const parts = Object.entries(units || {})
     .filter(([, count]) => count > 0)
     .map(([key, count]) => number(count) + " " + (unitsConfig[key]?.name || key));
   return parts.length ? parts.join(", ") : "No units";
