@@ -40,8 +40,8 @@ export function presentIntelNumber(value: number | undefined, level: number) {
 }
 
 export function watchtowerTerritoryLevel(buildingLevel: number) {
-  if (buildingLevel >= 3) return 2;
-  if (buildingLevel >= 2) return 1;
+  if (buildingLevel >= 2) return 2;
+  if (buildingLevel >= 1) return 1;
   return 0;
 }
 

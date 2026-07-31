@@ -19,6 +19,7 @@ let tooltipTimer = null;
 let inboxFilter = "all";
 let holdingsExpanded = false;
 let latestLoadRequest = 0;
+let loadedPlateauCommitmentId = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -74,6 +75,7 @@ const refs = {
   getCurrentPlateauRun: "plateauRuns:getCurrent",
   startPlateauRun: "plateauRuns:startPlateauRun",
   joinPlateauRun: "plateauRuns:joinPlateauRun",
+  cancelPlateauRunCommitment: "plateauRuns:cancelPlateauRunCommitment",
   forceResolvePlateauRun: "plateauRuns:forceResolvePlateauRun",
   listInbox: "messages:listInbox",
   sendMessage: "messages:sendMessage",
@@ -581,8 +583,9 @@ function renderUnits() {
   renderArmyStatus();
   const unitCards = activeUnitEntries().map(([key, unit]) => {
     const unlocked = Boolean(state.config.unlockedUnits[key]);
-    const count = state.me.units[key] || 0;
     const available = state.me.availableUnits[key] || 0;
+    const away = state.me.unitsAway[key] || 0;
+    const count = available + away;
     const resourceCost = unit.gemheartCost || unit.cost || 0;
     const resourceName = unit.gemheartCost ? "Gemheart" + (resourceCost === 1 ? "" : "s") : "Spheres";
     const provisionCost = unit.provisionsCost || 0;
@@ -592,7 +595,7 @@ function renderUnits() {
     const breakthrough = key === "shardbearer"
       ? '<p class="rule-callout">Breakthrough: doubles up to ' + number(shardbearerSupportPower) + ' supporting Power per Shardbearer.</p>'
       : '';
-    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">' + number(available) + ' ready / ' + number(count) + ' owned</span></div><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div><div class="unit-stat-grid"><button type="button" class="stat-cell" title="' + statTooltip("power") + '"><span>Power</span><strong>' + contribution(unit.power) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("speed") + '"><span>Speed</span><strong>' + contribution(unit.speed) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("plunder") + '"><span>Plunder</span><strong>' + contribution(unit.plunder) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("survivability") + '"><span>Survivability</span><strong>' + contribution(unit.survivability) + '</strong></button></div>' + breakthrough + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div><div class="quantity-builder"><div class="quick-add"><button type="button" data-recruit-add="1">+1</button><button type="button" data-recruit-add="10">+10</button><button type="button" data-recruit-add="50">+50</button><button type="button" data-recruit-add="100">+100</button></div><label>Quantity<input data-recruit-quantity type="number" min="0" value="' + draft + '"></label><div class="quantity-corrections"><button type="button" class="secondary" data-recruit-minus>−1</button><button type="button" class="secondary" data-recruit-clear>Clear</button></div></div><div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button></article>';
+    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">Ready: ' + number(available) + ' · Away: ' + number(away) + ' · Owned: ' + number(count) + '</span></div><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div><div class="unit-stat-grid"><button type="button" class="stat-cell" title="' + statTooltip("power") + '"><span>Power</span><strong>' + contribution(unit.power) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("speed") + '"><span>Speed</span><strong>' + contribution(unit.speed) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("plunder") + '"><span>Plunder</span><strong>' + contribution(unit.plunder) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("survivability") + '"><span>Survivability</span><strong>' + contribution(unit.survivability) + '</strong></button></div>' + breakthrough + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div><div class="quantity-builder"><div class="quick-add"><button type="button" data-recruit-add="1">+1</button><button type="button" data-recruit-add="10">+10</button><button type="button" data-recruit-add="50">+50</button><button type="button" data-recruit-add="100">+100</button></div><label>Quantity<input data-recruit-quantity type="number" min="0" value="' + draft + '"></label><div class="quantity-corrections"><button type="button" class="secondary" data-recruit-minus>−1</button><button type="button" class="secondary" data-recruit-clear>Clear</button></div></div><div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button></article>';
   }).join("");
   const monasteryLevel = Number(state.me.buildings.ardentMonastery || 0);
   const ardentia = state.ardentia;
@@ -729,8 +732,11 @@ function renderRaidUnitInputs(containerId) {
   container.querySelectorAll("input[data-unit]").forEach((input) => {
     currentValues[input.dataset.unit] = input.value;
   });
+  const currentCommitment = containerId === "plateau-run-units"
+    ? state.plateauRun?.participants.find((entry) => entry.playerId === state.me.id)
+    : null;
   container.innerHTML = Object.entries(state.config.unlockedUnits).map(([key, unit]) => {
-    const available = state.me.availableUnits[key] || 0;
+    const available = Number(state.me.availableUnits[key] || 0) + Number(currentCommitment?.units?.[key] || 0);
     const existing = currentValues[key] ?? lastSelections.attackUnits?.[plannerId]?.[key] ?? "0";
     return '<label class="unit-input" title="' + unitStatsTooltip(unit) + '"><span>' + escapeHtml(unit.name) + '<small>Available ' + number(available) + '</small></span><input data-unit="' + key + '" type="number" min="0" max="' + available + '" value="' + existing + '"></label>';
   }).join("");
@@ -748,8 +754,11 @@ function validatedRaidUnits(containerId) {
   const units = readRaidUnits(containerId);
   const selected = sumUnits(units);
   if (!selected) throw new Error("Choose at least one ready unit before confirming this mission.");
+  const currentCommitment = containerId === "plateau-run-units"
+    ? state.plateauRun?.participants.find((entry) => entry.playerId === state.me.id)
+    : null;
   for (const [key, count] of Object.entries(units)) {
-    const available = Number(state.me.availableUnits[key] || 0);
+    const available = Number(state.me.availableUnits[key] || 0) + Number(currentCommitment?.units?.[key] || 0);
     if (count > available) {
       const unitName = state.config.units[key]?.name || key;
       throw new Error(`Only ${number(available)} ${unitName} are ready; remove ${number(count - available)} from this mission.`);
@@ -806,11 +815,13 @@ function previewMarkup(units, type, planner) {
     : type === "playerSiege"
       ? Boolean($("player-conclave")?.checked)
       : false;
+  const intelOutlook = type === "playerSiege" ? playerSiegeIntelOutlook(conclaveAttached) : null;
   return '<div class="outlook-heading"><span>Mission outlook</span><strong>' + escapeHtml(target) + '</strong></div><div class="outlook-grid">' +
     outlookCell("Power", formatStat(stats.power), powerBreakdown(units, stats)) +
     outlookCell(rewardLabel, type === "plateau" ? "Event pool" : number(stats.plunder) + " Spheres", plunderBreakdown(units, stats)) +
     outlookCell("Time committed", formatDuration(travel), timingTitle) +
     outlookCell("Survivability", signedStat(stats.survivability), survivabilityBreakdown(units, stats)) +
+    (intelOutlook ? outlookCell("Intelligence", intelOutlook.value, intelOutlook.details) : "") +
     (conclaveAttached ? outlookCell("Investigation", "Conclave attached", "Success follows this army's final casualty risk, with a minimum 25% and maximum 95% chance. The exact chance is revealed after resolution.") : "") +
     '</div>';
 }
@@ -838,6 +849,18 @@ function speedBreakdown(units, stats, travel) {
     ? "Base Time × " + constant + " ÷ (" + constant + " + " + formatStat(stats.speed) + ")"
     : "Base Time × (1 + " + formatStat(Math.abs(stats.speed)) + " ÷ " + constant + ")";
   return "Speed contributions sum to " + signedStat(stats.speed) + ".\nFormula: " + formula + "\nBridged Plateau reduction: " + number(bridgedTravelReductionPercent()) + "%\nFinal duration: " + formatDuration(travel);
+}
+
+function playerSiegeIntelOutlook(conclaveAttached) {
+  const target = state.plateaus.rivals.find((plateau) => plateau.id === $("player-plateau-target").value);
+  const report = target?.ownerPlayerId
+    ? state.intelligence?.kingdoms?.find((entry) => entry.targetPlayerId === target.ownerPlayerId)
+    : null;
+  const level = Number(report?.effectiveLevel || 0);
+  return {
+    value: "Level " + level + (conclaveAttached ? " · +1 possible" : ""),
+    details: "Current kingdom dossier: " + intelLevelName(level) + "." + (conclaveAttached ? " A successful Conclave investigation raises the mission report by one level." : " Attach a ready Conclave to attempt a stronger report."),
+  };
 }
 
 function survivabilityBreakdown(units, stats) {
@@ -875,8 +898,9 @@ function neutralSiegePreview(stats) {
 function playerSiegePreview(stats) {
   const target = state.plateaus.rivals.find((plateau) => plateau.id === $("player-plateau-target").value);
   if (!target) return "Choose an enemy plateau";
+  const identity = target.type === "unknown" ? "Plateau identity unknown." : target.typeName + " identified.";
   const highground = target.highground ? " Highground terrain observed." : "";
-  return target.ownerName + " holds " + target.name + "." + highground + " Your power " + formatStat(stats.power) + ".";
+  return target.ownerName + " holds " + target.name + ". " + identity + highground + " Your power " + formatStat(stats.power) + ".";
 }
 
 function renderRaids() {
@@ -891,8 +915,8 @@ function renderPlateaus() {
   renderPlateauBonusSummary();
   renderGroupedHoldings();
   renderRaidPreviews();
-  const urgent = state.plateaus.sieges.filter((siege) => siege.defenderId === state.me.id && !siege.defenderCommittedAt);
-  const routine = state.plateaus.sieges.filter((siege) => !urgent.includes(siege));
+  const urgent = state.plateaus.sieges.filter((siege) => siege.defenderId === state.me.id);
+  const routine = state.plateaus.sieges.filter((siege) => siege.defenderId !== state.me.id);
   $("active-sieges").innerHTML = routine.length ? routine.map(siegeCard).join("") : '<div class="empty">No other active plateau sieges.</div>';
   $("urgent-sieges-panel").classList.toggle("hidden", urgent.length < 1);
   $("urgent-sieges").innerHTML = urgent.map(siegeCard).join("");
@@ -1072,6 +1096,7 @@ function renderPlateau() {
   if (!status || !participants) return;
   const run = state.plateauRun;
   if (!run) {
+    loadedPlateauCommitmentId = null;
     const next = nextPlateauRunOpening();
     status.innerHTML = '<div class="plateau-card schedule-card"><strong>Next Plateau Run</strong><span>' + escapeHtml(next.label) + '</span><small>Opens in ' + formatDuration(next.minutes) + '. Daily schedule: ' + plateauRunSchedule().map((entry) => entry.label).join(" · ") + ' Mountain.</small></div>';
     participants.innerHTML = '<div class="empty">No committed warcamps.</div>';
@@ -1082,6 +1107,19 @@ function renderPlateau() {
   $("plateau-run-commit-panel").classList.remove("hidden");
   $("plateau-run-roster-panel").classList.remove("hidden");
   const remaining = Math.max(0, Math.ceil((run.joinUntil - Date.now()) / 60000));
+  const myCommitment = run.participants.find((entry) => entry.playerId === state.me.id) || null;
+  if (myCommitment && loadedPlateauCommitmentId !== myCommitment.id) {
+    lastSelections.attackUnits.plateau = { ...myCommitment.units };
+    loadedPlateauCommitmentId = myCommitment.id;
+    $("plateau-run-units").querySelectorAll("input[data-unit]").forEach((input) => {
+      input.value = String(Number(myCommitment.units?.[input.dataset.unit] || 0));
+    });
+    renderRaidPreviews();
+  } else if (!myCommitment) {
+    loadedPlateauCommitmentId = null;
+  }
+  $("plateau-run-submit").textContent = myCommitment ? "Update commitment" : "Commit to plateau run";
+  $("cancel-plateau-commitment").classList.toggle("hidden", !myCommitment);
   status.innerHTML = '<div class="plateau-card"><strong>Join window open</strong><span>' + formatDuration(remaining) + ' left</span><small>Difficulty ' + plateauRunDifficultyLabel(run.difficultyPower) + '. Loot: ' + number(run.gemheartReward) + ' Gemheart and a ' + plateauRunLootLabel(run.spherePool) + ' sphere pool.</small></div>';
   participants.innerHTML = run.participants.length ? run.participants.map((entry) => {
     const bonus = entry.joinOrderSpeedBonus ? " +" + Math.round(entry.joinOrderSpeedBonus * 100) + "% join speed" : "";
@@ -1515,7 +1553,7 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
   const normalizePlateauType = (type) => type === "training" ? "bridged" : type === "ancient_ruins" ? "ancient" : type;
   const decorate = (plateau, visible = true) => ({
     id: plateau._id,
-    name: visible ? plateau.name : "Unclaimed Plateau",
+    name: plateau.name || (visible ? "Unknown Plateau" : "Unsurveyed Plateau"),
     type: visible ? normalizePlateauType(plateau.type) : "unknown",
     typeName: visible ? (plateau.typeName || typeNames[normalizePlateauType(plateau.type)] || plateau.type) : "Unknown reward",
     ownerName: plateau.ownerName || "Neutral",
@@ -1539,7 +1577,7 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
       resistance: plateau.resistance,
     };
   });
-  const rivals = (plateaus?.rivals || []).map((plateau) => decorate(plateau, true));
+  const rivals = (plateaus?.rivals || []).map((plateau) => decorate(plateau, Boolean(plateau.type)));
   const all = [...mine, ...neutral, ...rivals];
   const byId = Object.fromEntries(all.map((plateau) => [plateau.id, plateau]));
 
@@ -1589,8 +1627,10 @@ function decoratePlateauRun(plateauRun, unitsConfig) {
     spherePool: plateauRun.run.spherePool,
     gemheartReward: plateauRun.run.gemheartReward,
     participants: plateauRun.commitments.map((entry) => ({
+      id: entry._id,
       playerId: entry.playerId,
       playerName: entry.playerName,
+      units: normalizeUnitObject(entry.units || {}, Object.keys(unitsConfig)),
       unitSummary: unitSummary(entry.units, unitsConfig),
       power: entry.power,
       speed: entry.speed,
@@ -1859,6 +1899,14 @@ $("plateau-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!state.plateauRun) return alert("No Plateau Run is open.");
   action(() => client.mutation(refs.joinPlateauRun, { plateauRunId: state.plateauRun.id, units: validatedRaidUnits("plateau-run-units") }));
+});
+$("cancel-plateau-commitment").addEventListener("click", () => {
+  if (!state.plateauRun) return;
+  if (!window.confirm("Withdraw your army from this Plateau Run? All committed units will return immediately.")) return;
+  lastSelections.attackUnits.plateau = {};
+  loadedPlateauCommitmentId = null;
+  $("plateau-run-units").querySelectorAll("input[data-unit]").forEach((input) => { input.value = "0"; });
+  action(() => client.mutation(refs.cancelPlateauRunCommitment, { plateauRunId: state.plateauRun.id }));
 });
 $("message-form").addEventListener("submit", (event) => {
   event.preventDefault();

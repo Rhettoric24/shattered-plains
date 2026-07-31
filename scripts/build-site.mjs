@@ -91,9 +91,10 @@ const sourceHtml = await fs.readFile(
   "utf8",
 );
 const configScript = `<script>window.SHATTERED_PLAINS_CONFIG = ${JSON.stringify({ convexUrl })};</script>`;
+const buildId = Date.now().toString(36);
 const html = sourceHtml.replace(
   '<script type="module" src="convex-client.js"></script>',
-  `${configScript}\n    <script type="module" src="convex-client.js"></script>`,
+  `${configScript}\n    <script type="module" src="convex-client.js?v=${buildId}"></script>`,
 );
 
 await fs.writeFile(path.join(dist, "index.html"), html);

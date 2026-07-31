@@ -4,7 +4,11 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
-import { recordKingdomReport } from "./intelligenceHelpers";
+import {
+  casualtyIntelSummary,
+  currentKingdomIntelLevel,
+  recordKingdomReport,
+} from "./intelligenceHelpers";
 import { plateauCountsForPlayer } from "./plateauHelpers";
 import {
   applySurvivalLosses,
@@ -424,24 +428,31 @@ export const resolveRaid = internalMutation({
           lastActiveAt: now,
         });
 
+        const attackerReportLevel = won ? 2 : 1;
         await recordKingdomReport(ctx, {
           viewerPlayerId: attacker._id,
           target: defender,
           source: "player_raid",
-          level: won ? 2 : 1,
+          level: attackerReportLevel,
           observedAt: now,
         });
+        const defenderIntelLevel = await currentKingdomIntelLevel(
+          ctx,
+          defender._id,
+          attacker,
+          now,
+        );
 
         await ctx.db.insert("messages", {
           toPlayerId: defender._id,
           kind: "system",
           subject: won ? "Raid Lost" : "Defense Held",
-          body: `${won ? `${attacker.name} seized ${acres} acres from your warcamp.` : `Your warcamp held against ${attacker.name}.`} Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}.`,
+          body: `${won ? `${attacker.name} seized ${acres} acres from your warcamp.` : `Your warcamp held against ${attacker.name}.`} Your casualties: ${casualtySummary(defenderLossResult.casualties)}. ${casualtyIntelSummary(attackerLossResult.casualties, defenderIntelLevel)} Intelligence reflects what your warcamp could confirm.`,
           createdAt: now,
         });
         resultText = won
-          ? `${attacker.name} seized ${acres} acres from ${defender.name}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}. A new assessment is available in Intelligence.`
-          : `${defender.name} held against ${attacker.name}. Attacker casualties: ${casualtySummary(attackerLossResult.casualties)}. Defender casualties: ${casualtySummary(defenderLossResult.casualties)}. A new assessment is available in Intelligence.`;
+          ? `${attacker.name} seized ${acres} acres from ${defender.name}. Your casualties: ${casualtySummary(attackerLossResult.casualties)}. ${casualtyIntelSummary(defenderLossResult.casualties, attackerReportLevel)} A new assessment is available in Intelligence.`
+          : `${defender.name} held against ${attacker.name}. Your casualties: ${casualtySummary(attackerLossResult.casualties)}. ${casualtyIntelSummary(defenderLossResult.casualties, attackerReportLevel)} A new assessment is available in Intelligence.`;
       }
     }
 
@@ -456,9 +467,11 @@ export const resolveRaid = internalMutation({
       body: resultText,
       createdAt: now,
     });
-  await insertGameEvent(ctx, {
+    await insertGameEvent(ctx, {
       kind: "raid",
-      text: resultText,
+      text: raid.targetType === "player"
+        ? `${attacker.name}'s raid ${won ? "succeeded" : "was repelled"}.`
+        : resultText,
       createdAt: now,
     });
 

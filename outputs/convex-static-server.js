@@ -34,7 +34,7 @@ const server = http.createServer((request, response) => {
           response.end("Not found");
           return;
         }
-        response.writeHead(200, { "Content-Type": contentTypes[".html"] });
+        response.writeHead(200, { "Content-Type": contentTypes[".html"], "Cache-Control": "no-store" });
         response.end(data);
       });
       return;
@@ -62,6 +62,7 @@ const server = http.createServer((request, response) => {
 
     response.writeHead(200, {
       "Content-Type": contentTypes[path.extname(requestedPath)] || "application/octet-stream",
+      "Cache-Control": "no-store",
     });
     response.end(data);
   });

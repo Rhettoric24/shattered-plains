@@ -51,6 +51,7 @@ export const listDossiers = query({
           effectiveIntelLevel(report.level, report.observedAt, now) - counterIntelligence,
         );
       return {
+          targetPlayerId: report.targetPlayerId ?? null,
           targetName: target?.name ?? "Unknown warcamp",
         source: report.source,
         observedAt: report.observedAt,
@@ -73,9 +74,9 @@ export const listDossiers = query({
         effectiveLevel: level,
           freshness: intelligenceFreshness(report.observedAt, now),
           resistance: presentIntelNumber(report.resistance, level),
-        plateauType: report.plateauType ?? null,
-        highground: report.highground ?? false,
-        large: report.large ?? false,
+        plateauType: level >= 1 ? report.plateauType ?? null : null,
+        highground: level >= 1 ? report.highground ?? false : false,
+        large: level >= 1 ? report.large ?? false : false,
       };
     }));
 

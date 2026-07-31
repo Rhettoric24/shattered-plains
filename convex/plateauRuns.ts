@@ -6,6 +6,7 @@ import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
 import { plateauCountsForPlayer } from "./plateauHelpers";
 import {
+  addUnits,
   applySurvivalLosses,
   baseCasualtyRate,
   casualtySummary,
@@ -292,17 +293,16 @@ export const joinPlateauRun = mutation({
         q.eq("plateauRunId", run._id).eq("playerId", player._id),
       )
       .unique();
-    if (existingCommitment) {
-      throw new Error("You have already joined this Plateau Run.");
-    }
-
     const units = cleanUnits(args.units);
     if (totalUnits(units) < 1) {
       throw new Error("Commit at least one unit.");
     }
     validateUnlockedUnits(player.buildings, units);
 
-    const remainingUnits = subtractUnits(player.units, units);
+    const availableUnits = existingCommitment
+      ? addUnits(player.units, existingCommitment.units)
+      : player.units;
+    const remainingUnits = subtractUnits(availableUnits, units);
     const power = effectivePower(units);
     const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
     const bridgedReduction = bridgedTravelReduction(plateauCounts);
@@ -317,24 +317,65 @@ export const joinPlateauRun = mutation({
       lastActiveAt: now,
     });
 
-    const commitmentId = await ctx.db.insert("plateauCommitments", {
-      plateauRunId: run._id,
-      playerId: player._id,
+    const commitment = {
       units,
       power,
       speed,
       bridgedTravelReductionPercent: Math.round(bridgedReduction * 100),
       travelMinutes,
-      committedAt: now,
-    });
+    };
+    const commitmentId = existingCommitment
+      ? existingCommitment._id
+      : await ctx.db.insert("plateauCommitments", {
+          plateauRunId: run._id,
+          playerId: player._id,
+          ...commitment,
+          committedAt: now,
+        });
+    if (existingCommitment) {
+      await ctx.db.patch(existingCommitment._id, commitment);
+    }
 
   await insertGameEvent(ctx, {
       kind: "plateau_run",
-      text: `${player.name} committed forces to the Plateau Run.`,
+      text: `${player.name} ${existingCommitment ? "updated" : "committed"} forces for the Plateau Run.`,
       createdAt: now,
     });
 
-    return { commitmentId, power, speed, travelMinutes };
+    return { commitmentId, power, speed, travelMinutes, updated: Boolean(existingCommitment) };
+  },
+});
+
+export const cancelPlateauRunCommitment = mutation({
+  args: {
+    plateauRunId: v.id("plateauRuns"),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const run = await ctx.db.get(args.plateauRunId);
+    if (!run || run.status !== "open" || now > run.closesAt) {
+      throw new Error("This Plateau Run has already begun.");
+    }
+    const player = await requireCurrentPlayer(ctx);
+    const commitment = await ctx.db
+      .query("plateauCommitments")
+      .withIndex("by_run_player", (q) =>
+        q.eq("plateauRunId", run._id).eq("playerId", player._id),
+      )
+      .unique();
+    if (!commitment) throw new Error("You have no commitment to cancel.");
+
+    await ctx.db.patch(player._id, {
+      units: addUnits(player.units, commitment.units),
+      lastActiveAt: now,
+    });
+    await ctx.db.delete(commitment._id);
+    await insertGameEvent(ctx, {
+      kind: "plateau_run",
+      text: `${player.name} withdrew from the Plateau Run before it began.`,
+      createdAt: now,
+    });
+    return { cancelled: true };
   },
 });
 

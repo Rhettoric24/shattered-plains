@@ -1,12 +1,50 @@
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { effectivePower } from "./rules";
+import { casualtySummary, effectivePower } from "./rules";
+import { effectiveIntelLevel, watchtowerCounterIntelligence } from "./intelligenceRules";
 
 type ReportSource =
   | "player_raid"
   | "neutral_expedition"
   | "watchtower"
   | "ardent";
+
+export async function currentKingdomIntelLevel(
+  ctx: MutationCtx,
+  viewerPlayerId: Id<"players">,
+  target: Doc<"players">,
+  now: number,
+) {
+  const report = await ctx.db
+    .query("intelligenceReports")
+    .withIndex("by_viewerPlayerId_and_targetPlayerId", (q) =>
+      q.eq("viewerPlayerId", viewerPlayerId).eq("targetPlayerId", target._id),
+    )
+    .unique();
+  if (!report) return 0;
+  return Math.max(
+    0,
+    effectiveIntelLevel(report.level, report.observedAt, now) -
+      watchtowerCounterIntelligence(target.buildings.watchtower ?? 0),
+  );
+}
+
+export function casualtyIntelSummary(
+  casualties: Record<string, number>,
+  level: number,
+) {
+  const total = Object.values(casualties).reduce((sum, count) => sum + Number(count || 0), 0);
+  if (level <= 0) return "Enemy casualties could not be confirmed.";
+  if (level === 1) {
+    const label = total === 0 ? "no visible" : total <= 5 ? "light" : total <= 20 ? "moderate" : "heavy";
+    return `Observers report ${label} enemy losses.`;
+  }
+  if (level === 2) {
+    const radius = Math.max(2, Math.ceil(total * 0.25));
+    return `Enemy losses are estimated at ${Math.max(0, total - radius)}–${total + radius} units.`;
+  }
+  return `Enemy casualties: ${casualtySummary(casualties)}.`;
+}
 
 export async function recordKingdomReport(
   ctx: MutationCtx,
