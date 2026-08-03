@@ -152,12 +152,8 @@
                   <label>Select Units</label>
                   <div id="neutral-siege-units" class="unit-input-grid"></div>
                 </div>
-                <label id="neutral-conclave-option" class="conclave-attachment form-wide hidden">
-                  <input id="neutral-conclave" type="checkbox">
-                  <span><strong>Attach Ardentia Scout Conclave</strong><small>Improves the resulting report by one Intelligence level if the Conclave completes its investigation. Minimum success chance: 25%.</small></span>
-                </label>
                 <div id="neutral-siege-preview" class="attack-outlook form-wide"></div>
-                <label class="form-wide">Specific Conclave<select id="neutral-conclave-select"></select></label>
+                <label class="form-wide">Scout Conclave<select id="neutral-conclave-select"></select></label>
                 <button>Launch expedition</button>
               </form>
               <form id="player-siege-form" class="attack-planner expedition-panel" data-expedition-panel="rival" data-attack-planner="rival">
@@ -167,12 +163,8 @@
                   <label>Select Units</label>
                   <div id="player-siege-units" class="unit-input-grid"></div>
                 </div>
-                <label id="player-conclave-option" class="conclave-attachment form-wide hidden">
-                  <input id="player-conclave" type="checkbox">
-                  <span><strong>Attach Ardentia Scout Conclave</strong><small>Improves the resulting rival dossier by one Intelligence level if the Conclave completes its investigation. Minimum success chance: 25%.</small></span>
-                </label>
                 <div id="player-siege-preview" class="attack-outlook form-wide"></div>
-                <label class="form-wide">Specific Conclave<select id="player-conclave-select"></select></label>
+                <label class="form-wide">Scout Conclave<select id="player-conclave-select"></select></label>
                 <button>Start siege</button>
               </form>
             </section>
@@ -217,7 +209,7 @@
             </section>
           </section>
 
-          <section class="view" id="view-intelligence" data-title="Reports and dossiers" data-eyebrow="Intelligence">
+          <section class="view" id="view-intelligence" data-title="Territory reports" data-eyebrow="Intelligence">
             <section class="panel full-panel">
               <div class="section-heading">
                 <p class="eyebrow">Observation network</p>
@@ -225,14 +217,7 @@
               </div>
               <div id="watchtower-intelligence-status" class="pulse-grid"></div>
             </section>
-            <section class="panel full-panel">
-              <div class="section-heading">
-                <p class="eyebrow">War Room</p>
-                <h2>Kingdom dossiers</h2>
-                <p class="hint">Reports preserve what was observed at the listed time. As reports age, exact knowledge fades into estimates and qualitative judgments.</p>
-              </div>
-              <div id="kingdom-dossiers" class="intelligence-grid"></div>
-            </section>
+            <div id="kingdom-dossiers" class="hidden" aria-hidden="true"></div>
             <section class="panel full-panel">
               <div class="section-heading">
                 <p class="eyebrow">The Plains</p>

@@ -630,6 +630,16 @@ function renderUnits() {
 }
 
 function renderConclaveControls() {
+  const conclaves = state.ardentia?.conclaves || [];
+  const readyConclavesOnly = conclaves.filter((entry) => !entry.missionId);
+  const awayConclaves = conclaves.filter((entry) => entry.missionId);
+  ["sphere-conclave", "neutral-conclave-select", "player-conclave-select", "plateau-conclave"].forEach((id) => {
+    const select = $(id);
+    if (!select) return;
+    select.innerHTML = '<option value="">No Conclave</option>' + readyConclavesOnly.map((entry) => '<option value="' + entry._id + '">' + escapeHtml(entry.name) + ' · Rank ' + entry.rank + '</option>').join("") + awayConclaves.map((entry) => '<option disabled>' + escapeHtml(entry.name) + ' · Away on mission</option>').join("");
+    select.disabled = conclaves.length < 1;
+  });
+  return;
   const monasteryLevel = Number(state.me.buildings.ardentMonastery || 0);
   const ready = Number(state.ardentia?.ready || 0);
   [
@@ -869,9 +879,9 @@ function previewMarkup(units, type, planner) {
   const timingTitle = isPlayerSiege ? "Player sieges are fixed at one real hour. Army Speed does not shorten them." : speedBreakdown(units, stats, travel);
   const rewardLabel = type === "plateau" ? "Reward capacity" : "Max Plunder";
   const conclaveAttached = type === "neutralSiege"
-    ? Boolean($("neutral-conclave")?.checked)
+    ? Boolean($("neutral-conclave-select")?.value)
     : type === "playerSiege"
-      ? Boolean($("player-conclave")?.checked)
+      ? Boolean($("player-conclave-select")?.value)
       : false;
   const intelOutlook = type === "playerSiege" ? playerSiegeIntelOutlook(conclaveAttached) : null;
   return '<div class="outlook-heading"><span>Mission outlook</span><strong>' + escapeHtml(target) + '</strong></div><div class="outlook-grid">' +
@@ -910,6 +920,10 @@ function speedBreakdown(units, stats, travel) {
 }
 
 function playerSiegeIntelOutlook(conclaveAttached) {
+  return {
+    value: conclaveAttached ? "Conclave selected" : "No Conclave",
+    details: conclaveAttached ? "The selected Conclave will attempt a field investigation during the siege." : "Select a ready Conclave to conduct a field investigation.",
+  };
   const target = state.plateaus.rivals.find((plateau) => plateau.id === $("player-plateau-target").value);
   const report = target?.ownerPlayerId
     ? state.intelligence?.kingdoms?.find((entry) => entry.targetPlayerId === target.ownerPlayerId)
@@ -1941,16 +1955,14 @@ $("neutral-siege-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!$("neutral-plateau-target").value) return alert("Choose a neutral plateau.");
   action(async () => {
-    await client.mutation(refs.launchNeutralSiege, { plateauId: $("neutral-plateau-target").value, units: validatedRaidUnits("neutral-siege-units"), ...($("neutral-conclave-select")?.value ? { conclaveId: $("neutral-conclave-select").value } : { ardentiaConclave: Boolean($("neutral-conclave")?.checked) }) });
-    $("neutral-conclave").checked = false;
+    await client.mutation(refs.launchNeutralSiege, { plateauId: $("neutral-plateau-target").value, units: validatedRaidUnits("neutral-siege-units"), ...($("neutral-conclave-select")?.value ? { conclaveId: $("neutral-conclave-select").value } : {}) });
   });
 });
 $("player-siege-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!$("player-plateau-target").value) return alert("Choose an enemy plateau.");
   action(async () => {
-    await client.mutation(refs.launchPlayerSiege, { plateauId: $("player-plateau-target").value, units: validatedRaidUnits("player-siege-units"), ...($("player-conclave-select")?.value ? { conclaveId: $("player-conclave-select").value } : { ardentiaConclave: Boolean($("player-conclave")?.checked) }) });
-    $("player-conclave").checked = false;
+    await client.mutation(refs.launchPlayerSiege, { plateauId: $("player-plateau-target").value, units: validatedRaidUnits("player-siege-units"), ...($("player-conclave-select")?.value ? { conclaveId: $("player-conclave-select").value } : {}) });
   });
 });
 $("plateau-form").addEventListener("submit", (event) => {
