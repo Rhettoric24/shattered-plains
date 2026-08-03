@@ -1,4 +1,5 @@
-import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { settlePlayerEconomy } from "./economyHelpers";
 import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
@@ -21,7 +22,7 @@ export const getStatus = query({
 });
 
 export const recruitConclave = mutation({
-  args: {},
+  args: { name: v.optional(v.string()) },
   handler: async (ctx) => {
     const current = await requireCurrentPlayer(ctx);
     const { player } = await settlePlayerEconomy(ctx, current);
@@ -56,6 +57,13 @@ export const recruitConclave = mutation({
       throw new Error(`Not enough Provisions. Forming this Conclave would use ${provisions.used}/${provisions.capacity}.`);
     }
     const now = Date.now();
+    const sequence = status.owned + 1;
+    const name = (args.name ?? `Scout Conclave ${["I", "II", "III"][sequence - 1] ?? sequence}`).trim();
+    if (name.length < ARDENTIA_RULES.nameMinLength || name.length > ARDENTIA_RULES.nameMaxLength) throw new Error(`Conclave names must be ${ARDENTIA_RULES.nameMinLength}–${ARDENTIA_RULES.nameMaxLength} characters.`);
+    const normalizedName = name.toLowerCase();
+    const duplicate = await ctx.db.query("ardentConclaves").withIndex("by_ownerPlayerId_and_normalizedName", (q) => q.eq("ownerPlayerId", player._id).eq("normalizedName", normalizedName)).unique();
+    if (duplicate) throw new Error("You already have a Conclave with that name.");
+    const conclaveId = await ctx.db.insert("ardentConclaves", { ownerPlayerId: player._id, name, normalizedName, xp: 0, createdAt: now, updatedAt: now });
     await ctx.db.patch(player._id, {
       ardentiaConclaves: nextOwned,
       spheres: player.spheres - ARDENTIA_RULES.recruitmentCost,
@@ -66,6 +74,41 @@ export const recruitConclave = mutation({
       text: `${player.name} formed an Ardentia Scout Conclave.`,
       createdAt: now,
     });
-    return { recruited: true, owned: nextOwned, provisions };
+    return { recruited: true, owned: nextOwned, conclaveId, provisions };
+  },
+});
+
+export const renameConclave = mutation({
+  args: { conclaveId: v.id("ardentConclaves"), name: v.string() },
+  handler: async (ctx, args) => {
+    const player = await requireCurrentPlayer(ctx);
+    const conclave = await ctx.db.get(args.conclaveId);
+    if (!conclave || conclave.ownerPlayerId !== player._id) throw new Error("Conclave not found.");
+    const name = args.name.trim();
+    if (name.length < ARDENTIA_RULES.nameMinLength || name.length > ARDENTIA_RULES.nameMaxLength) throw new Error(`Conclave names must be ${ARDENTIA_RULES.nameMinLength}–${ARDENTIA_RULES.nameMaxLength} characters.`);
+    const normalizedName = name.toLowerCase();
+    const duplicate = await ctx.db.query("ardentConclaves").withIndex("by_ownerPlayerId_and_normalizedName", (q) => q.eq("ownerPlayerId", player._id).eq("normalizedName", normalizedName)).unique();
+    if (duplicate && duplicate._id !== conclave._id) throw new Error("You already have a Conclave with that name.");
+    await ctx.db.patch(conclave._id, { name, normalizedName, updatedAt: Date.now() });
+    return { renamed: true, name };
+  },
+});
+
+export const backfillIndividualConclaves = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const players = await ctx.db.query("players").take(200);
+    let created = 0;
+    for (const player of players) {
+      const existing = await ctx.db.query("ardentConclaves").withIndex("by_ownerPlayerId", (q) => q.eq("ownerPlayerId", player._id)).take(10);
+      const wanted = Math.max(0, Math.min(3, Math.floor(player.ardentiaConclaves ?? 0)));
+      for (let index = existing.length; index < wanted; index += 1) {
+        const name = `Scout Conclave ${["I", "II", "III"][index]}`;
+        const now = Date.now();
+        await ctx.db.insert("ardentConclaves", { ownerPlayerId: player._id, name, normalizedName: name.toLowerCase(), xp: 0, createdAt: now, updatedAt: now });
+        created += 1;
+      }
+    }
+    return { created };
   },
 });

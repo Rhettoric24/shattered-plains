@@ -24,7 +24,49 @@ export const ARDENTIA_RULES = {
   maxPerMission: 1,
   minimumSuccessChance: 0.25,
   maximumSuccessChance: 0.95,
+  monasteryAncientPlateausRequired: 2,
+  rankThresholds: [0, 500, 1000, 1500, 2000],
+  nameMinLength: 2,
+  nameMaxLength: 32,
+  missionXpBands: [75, 100, 125, 150],
 } as const;
+
+export const RESEARCH_RULES = {
+  speedCapPercent: 30,
+  monasterySpeedPerLevelPercent: 1,
+  ancientPlateausPerSpeedPercent: 2,
+  durationsMs: [60 * 60 * 1000, 4 * 60 * 60 * 1000, 12 * 60 * 60 * 1000],
+  sphereCosts: [1000, 3000, 7500],
+  projects: {
+    bridgeEngineering: { name: "Bridge Engineering", library: "Military", ancient: [0, 1, 2], gemhearts: [0, 0, 0], effects: [2, 4, 6], effect: "effective Speed" },
+    packHarnessDesign: { name: "Pack Harness Design", library: "Military", ancient: [0, 1, 2], gemhearts: [0, 0, 0], effects: [10, 20, 30], effect: "% Chull Plunder" },
+    painrialMedicine: { name: "Painrial Medicine", library: "Military", ancient: [0, 1, 2], gemhearts: [0, 1, 2], effects: [5, 10, 15], effect: "% casualty reduction" },
+    soulcastArmor: { name: "Soulcast Armor", library: "Military", ancient: [0, 1, 2], gemhearts: [0, 1, 2], effects: [0.1, 0.2, 0.3], effect: "Power per Spearman" },
+    siegeEngineering: { name: "Siege Engineering", library: "Military", ancient: [0, 1, 2], gemhearts: [0, 0, 1], effects: [8, 16, 24], effect: "% Emergency Defense cost reduction" },
+    gemCutting: { name: "Gem Cutting", library: "Commerce", ancient: [1, 2, 3], gemhearts: [1, 2, 3], effects: [11.5, 11, 10], effect: "hour Gemheart interval" },
+    soulcasting: { name: "Soulcasting", library: "Commerce", ancient: [0, 1, 2], gemhearts: [0, 1, 1], effects: [5, 10, 15], effect: "% building cost reduction" },
+    marketEconomics: { name: "Market Economics", library: "Commerce", ancient: [0, 0, 1], gemhearts: [0, 0, 1], effects: [10, 20, 30], effect: "% Market income" },
+  },
+} as const;
+
+export type ResearchProjectKey = keyof typeof RESEARCH_RULES.projects;
+
+export function researchLevel(completed: Record<string, number> | undefined, project: ResearchProjectKey) {
+  return Math.max(0, Math.min(3, Math.floor(completed?.[project] ?? 0)));
+}
+
+export function researchEffect(completed: Record<string, number> | undefined, project: ResearchProjectKey) {
+  const level = researchLevel(completed, project);
+  return level > 0 ? RESEARCH_RULES.projects[project].effects[level - 1] : 0;
+}
+
+export function conclaveRank(xp: number) {
+  let rank = 1;
+  for (let index = 0; index < ARDENTIA_RULES.rankThresholds.length; index += 1) {
+    if (xp >= ARDENTIA_RULES.rankThresholds[index]) rank = index + 1;
+  }
+  return rank;
+}
 
 export const STARTING_RULES = {
   acres: 20,
@@ -534,37 +576,38 @@ export function shardbearerBreakthroughBonus(units: Partial<UnitCounts>) {
   );
 }
 
-export function effectivePower(units: Partial<UnitCounts>) {
+export function effectivePower(units: Partial<UnitCounts>, completed?: Record<string, number>) {
   const normalized = normalizeUnits(units);
-  return basePower(normalized) + shardbearerBreakthroughBonus(normalized);
+  return basePower(normalized) + normalized.spearman * Number(researchEffect(completed, "soulcastArmor")) + shardbearerBreakthroughBonus(normalized);
 }
 
-export function unitPlunder(units: Partial<UnitCounts>) {
+export function unitPlunder(units: Partial<UnitCounts>, completed?: Record<string, number>) {
   const normalized = normalizeUnits(units);
   return unitKeys().reduce(
-    (sum, key) => sum + normalized[key] * UNIT_RULES[key].plunder,
+    (sum, key) => sum + normalized[key] * UNIT_RULES[key].plunder * (key === "chull" ? 1 + Number(researchEffect(completed, "packHarnessDesign")) / 100 : 1),
     0,
   );
 }
 
-export function emergencyDefenseCost(percent: number) {
+export function emergencyDefenseCost(percent: number, completed?: Record<string, number>) {
   const cappedPercent = Math.max(
     0,
     Math.min(PLATEAU_RULES.emergencyDefenseMaxPercent, Math.floor(percent)),
   );
-  return Math.round(
+  return Math.round((
     PLATEAU_RULES.emergencyDefenseMaxCost *
       (cappedPercent / PLATEAU_RULES.emergencyDefenseMaxPercent) **
-        PLATEAU_RULES.emergencyDefenseCostExponent,
-  );
+        PLATEAU_RULES.emergencyDefenseCostExponent
+  ) * (1 - Number(researchEffect(completed, "siegeEngineering")) / 100));
 }
 
 export function travelMsForUnits(
   units: Partial<UnitCounts>,
   plateauCounts: PlateauCounts = emptyPlateauCounts(),
+  completed?: Record<string, number>,
 ) {
   const baseMs = TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
-  const speed = unitSpeed(units);
+  const speed = unitSpeed(units) + Number(researchEffect(completed, "bridgeEngineering"));
   const constant = TIME_RULES.statDiminishingConstant;
   const travelMultiplier =
     speed >= 0 ? constant / (constant + speed) : 1 + Math.abs(speed) / constant;
@@ -588,6 +631,7 @@ export function applySurvivalLosses(
   units: Partial<UnitCounts>,
   baseCasualtyRate: number,
   seed: string,
+  completed?: Record<string, number>,
 ) {
   const normalized = normalizeUnits(units);
   const survivors = { ...normalized };
@@ -603,7 +647,7 @@ export function applySurvivalLosses(
   const finalCasualtyRate = casualtyRateAfterSurvivability(
     baseCasualtyRate,
     unitSurvivability(normalized),
-  );
+  ) * (1 - Number(researchEffect(completed, "painrialMedicine")) / 100);
   const expectedCasualties = unitPool.length * finalCasualtyRate;
   const wholeCasualties = Math.floor(expectedCasualties);
   const fractionalCasualty =
@@ -687,7 +731,7 @@ export function survivalProfile(units: Partial<UnitCounts>) {
   };
 }
 
-export function calculateArmyStats(units: Partial<UnitCounts>) {
+export function calculateArmyStats(units: Partial<UnitCounts>, completed?: Record<string, number>) {
   const normalized = normalizeUnits(units);
   const base = basePower(normalized);
   const speed = unitSpeed(normalized);
@@ -699,8 +743,8 @@ export function calculateArmyStats(units: Partial<UnitCounts>) {
     totalUnits: totalUnits(normalized),
     basePower: base,
     speed,
-    power: base + breakthroughPower,
-    plunder: unitPlunder(normalized),
+    power: effectivePower(normalized, completed),
+    plunder: unitPlunder(normalized, completed),
     survivability,
     survivalLabel: survival.label,
     survivalDetails: survival.details,
@@ -712,6 +756,7 @@ export function incomePerGameDay(player: {
   acres: number;
   buildings: { market: number };
   plateauCounts?: PlateauCounts;
+  completedResearch?: Record<string, number>;
 }) {
   return incomeBreakdown(player).totalIncomePerDay;
 }
@@ -720,11 +765,13 @@ export function incomeBreakdown(player: {
   acres: number;
   buildings: { market: number };
   plateauCounts?: PlateauCounts;
+  completedResearch?: Record<string, number>;
 }) {
   const counts = player.plateauCounts ?? emptyPlateauCounts();
   const baseKingdomIncomePerDay = ECONOMY_RULES.baseSphereIncomePerGameDay;
-  const marketIncomePerDay =
-    player.buildings.market * ECONOMY_RULES.marketSpheresPerLevelPerGameDay;
+  const marketIncomePerDay = player.buildings.market *
+    ECONOMY_RULES.marketSpheresPerLevelPerGameDay *
+    (1 + Number(researchEffect(player.completedResearch, "marketEconomics")) / 100);
   const passiveIncomeBeforeMultiplier =
     baseKingdomIncomePerDay + marketIncomePerDay;
   const sphereBonus = sphereIncomeBonus(counts);
@@ -749,6 +796,7 @@ export function pendingEconomy(player: {
   acres: number;
   buildings: { market: number };
   plateauCounts?: PlateauCounts;
+  completedResearch?: Record<string, number>;
   lastEconomyAt?: number;
   createdAt: number;
 }, now: number) {
@@ -770,12 +818,14 @@ export function calculateBuildingStats(
   acres: number,
   buildings: BuildingLevels,
   plateauCounts: PlateauCounts = emptyPlateauCounts(),
+  completedResearch?: Record<string, number>,
 ) {
   const acreIncomePerDay = plateauIncomePerGameDay(plateauCounts);
   const income = incomeBreakdown({
     acres,
     buildings,
     plateauCounts,
+    completedResearch,
   });
   const soulcastBunkerLevel = buildings.soulcastBunker ?? 0;
 

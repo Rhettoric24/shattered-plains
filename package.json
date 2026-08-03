@@ -9,6 +9,7 @@
     "preview": "npm run build && node outputs/convex-static-server.js dist",
     "convex:dev": "npx convex dev",
     "convex:deploy": "npx convex deploy"
+    ,"test": "vitest run"
   },
   "dependencies": {
     "@convex-dev/auth": "latest",
@@ -16,5 +17,10 @@
   },
   "allowScripts": {
     "esbuild@0.27.0": true
+  },
+  "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
+    "convex-test": "^0.0.54",
+    "vitest": "^4.1.10"
   }
 }

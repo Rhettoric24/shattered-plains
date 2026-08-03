@@ -10,6 +10,7 @@ import {
   PLATEAU_RUN_SCHEDULE,
   STARTING_RULES,
   TIME_RULES,
+  RESEARCH_RULES,
   UNIT_RULES,
 } from "./rules";
 
@@ -29,6 +30,7 @@ export const getGameConfig = query({
       statDiminishingConstant: TIME_RULES.statDiminishingConstant,
       armyRules: ARMY_RULES,
       ardentiaRules: ARDENTIA_RULES,
+      researchRules: RESEARCH_RULES,
       spheresPerAcrePerGameDay: ECONOMY_RULES.spheresPerAcrePerGameDay,
       plateauRules: PLATEAU_RULES,
       marketSpheresPerLevelPerGameDay:

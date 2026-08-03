@@ -10,10 +10,13 @@ import {
 import { ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import {
   BUILDING_RULES,
+  ARDENTIA_RULES,
   calculateBuildingStats,
   getBuildingCost,
   pendingEconomy,
+  researchEffect,
 } from "./rules";
+import { completedResearch } from "./researchHelpers";
 
 const buildingKey = v.union(
   v.literal("market"),
@@ -48,18 +51,22 @@ export const getBuildings = query({
     const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
     const plateauAttributes = await plateauAttributeCountsForPlayer(ctx, player._id);
     const ownedUnits = await ownedUnitsIncludingAway(ctx, player._id, player.units);
+    const completed = await completedResearch(ctx, player._id);
     const effects = calculateBuildingStats(
       player.acres,
       player.buildings,
       plateauCounts,
+      completed,
     );
-    const pending = pendingEconomy({ ...player, plateauCounts }, Date.now());
+    const pending = pendingEconomy({ ...player, plateauCounts, completedResearch: completed }, Date.now());
 
     return {
       spheres: player.spheres,
       effectiveSpheres: player.spheres + pending.income,
       pendingIncome: pending.income,
       buildings: decorateBuildings(player.buildings),
+      monasteryAncientPlateausRequired: ARDENTIA_RULES.monasteryAncientPlateausRequired,
+      ancientPlateausOwned: plateauCounts.ancient,
       effects: {
         baseKingdomIncomePerDay: effects.baseKingdomIncomePerDay,
         marketIncomePerDay: effects.marketIncomePerDay,
@@ -95,7 +102,13 @@ export const upgradeBuilding = mutation({
     if ("maxLevel" in rule && currentLevel >= rule.maxLevel) {
       throw new Error(`${rule.name} has reached its maximum level.`);
     }
-    const cost = getBuildingCost(args.building, currentLevel);
+    const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
+    if (args.building === "ardentMonastery" && plateauCounts.ancient < ARDENTIA_RULES.monasteryAncientPlateausRequired) {
+      throw new Error(`Own ${ARDENTIA_RULES.monasteryAncientPlateausRequired} Ancient Plateaus before constructing or upgrading the Ardent Monastery.`);
+    }
+    const completed = await completedResearch(ctx, player._id);
+    const baseCost = getBuildingCost(args.building, currentLevel);
+    const cost = Math.round(baseCost * (1 - Number(researchEffect(completed, "soulcasting")) / 100));
 
     if (settledPlayer.spheres < cost) {
       throw new Error(

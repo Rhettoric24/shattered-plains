@@ -22,6 +22,8 @@ import {
 
 type AnyCtx = QueryCtx | MutationCtx;
 type GameplayTable =
+  | "ardentConclaves"
+  | "playerResearch"
   | "intelligenceReports"
   | "plateauCommitments"
   | "plateauRuns"
@@ -101,6 +103,8 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
   const now = Date.now();
   const players = await ctx.db.query("players").take(200);
   const deleted = {
+    ardentConclaves: await deleteGameplayTable(ctx, "ardentConclaves"),
+    playerResearch: await deleteGameplayTable(ctx, "playerResearch"),
     intelligenceReports: await deleteGameplayTable(ctx, "intelligenceReports"),
     plateauCommitments: await deleteGameplayTable(ctx, "plateauCommitments"),
     plateauRuns: await deleteGameplayTable(ctx, "plateauRuns"),
@@ -397,5 +401,28 @@ export const resetWorldKeepAccounts = mutation({
     }
 
     return await performWorldResetKeepAccounts(ctx);
+  },
+});
+
+export const backfillResearchSystem = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    await ctx.scheduler.runAfter(0, internal.ardentia.backfillIndividualConclaves, {});
+    return { scheduled: true };
+  },
+});
+
+export const finishActiveResearch = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const players = await ctx.db.query("players").take(200);
+    for (const player of players) {
+      const state = await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", player._id)).unique();
+      if (state?.activeProject) await ctx.db.patch(state._id, { accumulatedBaseMs: Number.MAX_SAFE_INTEGER, lastAdvancedAt: Date.now() });
+      await ctx.scheduler.runAfter(0, internal.research.completeActive, { playerId: player._id });
+    }
+    return { scheduled: players.length };
   },
 });

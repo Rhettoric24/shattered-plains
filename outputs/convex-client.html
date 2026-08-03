@@ -57,6 +57,7 @@
             <button class="nav-button active" type="button" data-view="overview">Overview</button>
             <button class="nav-button" type="button" data-view="buildings">Buildings</button>
             <button class="nav-button" type="button" data-view="army">Army</button>
+            <button class="nav-button" type="button" data-view="research">Research</button>
             <button class="nav-button" type="button" data-view="raids">Raids</button>
             <button class="nav-button" type="button" data-view="plateaus">Plateaus <span class="nav-state-dot hidden" id="siege-nav-state" aria-label="Siege needs attention"></span></button>
             <button class="nav-button" type="button" data-view="plateau">Plateau Runs <span class="nav-state-dot hidden" id="run-nav-state" aria-label="Plateau Run open"></span></button>
@@ -126,6 +127,7 @@
                   <div id="sphere-raid-units" class="unit-input-grid"></div>
                 </div>
                 <div id="sphere-raid-preview" class="attack-outlook form-wide"></div>
+                <label class="form-wide">Scout Conclave<select id="sphere-conclave"></select></label>
                 <button>Launch sphere raid</button>
               </form>
             </section>
@@ -155,6 +157,7 @@
                   <span><strong>Attach Ardentia Scout Conclave</strong><small>Improves the resulting report by one Intelligence level if the Conclave completes its investigation. Minimum success chance: 25%.</small></span>
                 </label>
                 <div id="neutral-siege-preview" class="attack-outlook form-wide"></div>
+                <label class="form-wide">Specific Conclave<select id="neutral-conclave-select"></select></label>
                 <button>Launch expedition</button>
               </form>
               <form id="player-siege-form" class="attack-planner expedition-panel" data-expedition-panel="rival" data-attack-planner="rival">
@@ -169,6 +172,7 @@
                   <span><strong>Attach Ardentia Scout Conclave</strong><small>Improves the resulting rival dossier by one Intelligence level if the Conclave completes its investigation. Minimum success chance: 25%.</small></span>
                 </label>
                 <div id="player-siege-preview" class="attack-outlook form-wide"></div>
+                <label class="form-wide">Specific Conclave<select id="player-conclave-select"></select></label>
                 <button>Start siege</button>
               </form>
             </section>
@@ -194,6 +198,7 @@
                   <div id="plateau-run-units" class="unit-input-grid"></div>
                 </div>
                 <div id="plateau-run-preview" class="attack-outlook form-wide"></div>
+                <label class="form-wide">Scout Conclave<select id="plateau-conclave"></select></label>
                 <div class="inline-actions form-wide"><button id="plateau-run-submit">Commit to plateau run</button><button id="cancel-plateau-commitment" type="button" class="secondary hidden">Cancel commitment</button></div>
               </form>
             </section>
@@ -201,6 +206,14 @@
               <p class="eyebrow">Roster</p>
               <h2>Committed warcamps</h2>
               <div id="plateau-participants" class="list"></div>
+            </section>
+          </section>
+
+          <section class="view" id="view-research" data-title="Ardent scholarship" data-eyebrow="Research">
+            <section class="panel full-panel">
+              <p class="eyebrow">The Ardentia</p>
+              <h2>Research libraries</h2>
+              <div id="research-content"></div>
             </section>
           </section>
 

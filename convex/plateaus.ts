@@ -13,9 +13,13 @@ import {
 } from "./intelligenceHelpers";
 import {
   ardentiaConclaveStatus,
+  assignConclave,
   conclaveResultNarrative,
+  missionXpBudget,
+  releaseConclave,
   resolveConclaveInvestigation,
 } from "./ardentiaHelpers";
+import { completedResearch, reconcileResearch } from "./researchHelpers";
 import {
   effectiveIntelLevel,
   presentIntelNumber,
@@ -90,8 +94,8 @@ function addUnits(current: UnitCounts, returned: UnitCounts) {
   return next;
 }
 
-function applyLossRate(units: UnitCounts, lossRate: number, seed: string) {
-  return applySurvivalLosses(normalizeUnits(units), lossRate, seed);
+function applyLossRate(units: UnitCounts, lossRate: number, seed: string, completed?: Record<string, number>) {
+  return applySurvivalLosses(normalizeUnits(units), lossRate, seed, completed);
 }
 
 function validateUnlockedUnits(buildings: { barracks: number }, units: UnitCounts) {
@@ -133,12 +137,13 @@ function committedDefensePower(
   defenderUnits: UnitCounts,
   plateau: any,
   emergencyDefensePercent: number,
+  completed?: Record<string, number>,
 ) {
   const highgroundBonus = plateau.highground
     ? 1 + PLATEAU_RULES.highgroundDefenseBonus
     : 1;
   const emergencyBonus = 1 + emergencyDefensePercent / 100;
-  return effectivePower(defenderUnits) * highgroundBonus * emergencyBonus;
+  return effectivePower(defenderUnits, completed) * highgroundBonus * emergencyBonus;
 }
 
 function committedDefenseBasePower(defenderUnits: UnitCounts, plateau: any) {
@@ -212,8 +217,8 @@ async function purchaseEmergencyDefense(
     };
   }
 
-  const cost =
-    emergencyDefenseCost(targetPercent) - emergencyDefenseCost(currentPercent);
+  const completed = await completedResearch(ctx, defender._id);
+  const cost = emergencyDefenseCost(targetPercent, completed) - emergencyDefenseCost(currentPercent, completed);
   if (defender.spheres < cost) {
     throw new Error(`Not enough spheres. Need ${cost}.`);
   }
@@ -395,6 +400,7 @@ export const launchNeutralSiege = mutation({
     plateauId: v.id("plateaus"),
     units: unitCounts,
     ardentiaConclave: v.optional(v.boolean()),
+    conclaveId: v.optional(v.id("ardentConclaves")),
   },
   handler: async (ctx, args) => {
     const attacker = await requireCurrentPlayer(ctx);
@@ -409,7 +415,7 @@ export const launchNeutralSiege = mutation({
     const units = cleanUnits(args.units);
     if (totalUnits(units) < 1) throw new Error("Send at least one unit.");
     validateUnlockedUnits(attacker.buildings, units);
-    const ardentiaConclave = await validateConclaveAttachment(
+    const ardentiaConclave = args.conclaveId ? true : await validateConclaveAttachment(
       ctx,
       attacker,
       Boolean(args.ardentiaConclave),
@@ -417,19 +423,21 @@ export const launchNeutralSiege = mutation({
 
     const now = Date.now();
     const plateauCounts = await plateauCountsForPlayer(ctx, attacker._id);
-    const resolveAt = now + travelMsForUnits(units, plateauCounts);
+    const completed = await completedResearch(ctx, attacker._id);
+    const resolveAt = now + travelMsForUnits(units, plateauCounts, completed);
     const remainingUnits = subtractUnits(attacker.units, units);
     const siegeId = await ctx.db.insert("sieges", {
       plateauId: plateau._id,
       attackerId: attacker._id,
       targetType: "neutral",
       attackerUnits: units,
-      attackerPower: effectivePower(units),
+      attackerPower: effectivePower(units, completed),
       attackerSpeed: unitSpeed(units),
       fortifyPercent: 0,
       emergencyDefensePercent: 0,
       emergencyDefenseSpheresSpent: 0,
       ardentiaConclave,
+      ...(args.conclaveId ? { conclaveId: args.conclaveId } : {}),
       departAt: now,
       resolveAt,
       status: "pending",
@@ -443,6 +451,7 @@ export const launchNeutralSiege = mutation({
       activeSiegeId: siegeId,
       updatedAt: now,
     });
+    if (args.conclaveId) await assignConclave(ctx, attacker._id, args.conclaveId, "siege", String(siegeId));
   await insertGameEvent(ctx, {
       kind: "territory",
       text: `${attacker.name} launched an expedition toward a neutral plateau.`,
@@ -461,6 +470,7 @@ export const launchPlayerSiege = mutation({
     plateauId: v.id("plateaus"),
     units: unitCounts,
     ardentiaConclave: v.optional(v.boolean()),
+    conclaveId: v.optional(v.id("ardentConclaves")),
   },
   handler: async (ctx, args) => {
     const attacker = await requireCurrentPlayer(ctx);
@@ -481,13 +491,14 @@ export const launchPlayerSiege = mutation({
     const units = cleanUnits(args.units);
     if (totalUnits(units) < 1) throw new Error("Send at least one unit.");
     validateUnlockedUnits(attacker.buildings, units);
-    const ardentiaConclave = await validateConclaveAttachment(
+    const ardentiaConclave = args.conclaveId ? true : await validateConclaveAttachment(
       ctx,
       attacker,
       Boolean(args.ardentiaConclave),
     );
 
     const now = Date.now();
+    const completed = await completedResearch(ctx, attacker._id);
     const resolveAt = now + siegeTravelMs();
     const remainingUnits = subtractUnits(attacker.units, units);
     const siegeId = await ctx.db.insert("sieges", {
@@ -496,7 +507,7 @@ export const launchPlayerSiege = mutation({
       defenderId: defender._id,
       targetType: "player",
       attackerUnits: units,
-      attackerPower: effectivePower(units),
+      attackerPower: effectivePower(units, completed),
       attackerSpeed: unitSpeed(units),
       defenderUnits: emptyUnits(),
       defenderPower: 0,
@@ -505,6 +516,7 @@ export const launchPlayerSiege = mutation({
       emergencyDefensePercent: 0,
       emergencyDefenseSpheresSpent: 0,
       ardentiaConclave,
+      ...(args.conclaveId ? { conclaveId: args.conclaveId } : {}),
       departAt: now,
       resolveAt,
       status: "pending",
@@ -518,6 +530,7 @@ export const launchPlayerSiege = mutation({
       activeSiegeId: siegeId,
       updatedAt: now,
     });
+    if (args.conclaveId) await assignConclave(ctx, attacker._id, args.conclaveId, "siege", String(siegeId));
     const defenderWatchtowerLevel = Math.min(3, defender.buildings.watchtower ?? 0);
     const watchtowerAssessment = defenderWatchtowerLevel > 0
       ? presentIntelNumber(
@@ -745,6 +758,7 @@ export const resolveSiege = internalMutation({
     }
 
     const now = Date.now();
+    const attackerCompleted = await completedResearch(ctx, attacker._id);
     let won = false;
     let resultText = "";
     let survivors = siege.attackerUnits;
@@ -755,6 +769,7 @@ export const resolveSiege = internalMutation({
         siege.attackerUnits,
         baseCasualtyRate(siege.attackerPower, plateau.neutralDefenseRemaining),
         `${siege._id}:neutral:${now}`,
+        attackerCompleted,
       );
       survivors = lossResult.survivors;
       const investigation = resolveConclaveInvestigation(
@@ -762,6 +777,8 @@ export const resolveSiege = internalMutation({
         lossResult.finalCasualtyRate,
         `${siege._id}:neutral:${now}`,
       );
+      const conclaveXp = siege.conclaveId ? (investigation.succeeded ? missionXpBudget(plateau.neutralDefenseInitial) : Math.ceil(missionXpBudget(plateau.neutralDefenseInitial) / 2)) : 0;
+      await releaseConclave(ctx, siege.conclaveId, conclaveXp);
       await recordTerritoryReport(ctx, {
         viewerPlayerId: attacker._id,
         plateau,
@@ -787,6 +804,7 @@ export const resolveSiege = internalMutation({
           activeSiegeId: undefined,
           updatedAt: now,
         });
+        await reconcileResearch(ctx, attacker._id, now);
         resultText = `${attacker.name} claimed ${plateauTypeName(plateau.type)} against ${resistanceLabel(plateau.neutralDefenseRemaining).toLowerCase()} resistance. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
       } else {
         await ctx.db.patch(plateau._id, {
@@ -816,17 +834,20 @@ export const resolveSiege = internalMutation({
         resultText = `${attacker.name}'s siege found no defender.`;
       } else {
         const defenderUnits = normalizeUnits(siege.defenderUnits ?? emptyUnits());
+        const defenderCompleted = await completedResearch(ctx, defender._id);
         const emergencyDefensePercent = siege.emergencyDefensePercent ?? 0;
         const defenderPower = committedDefensePower(
           defenderUnits,
           plateau,
           emergencyDefensePercent,
+          defenderCompleted,
         );
         won = siege.attackerPower > defenderPower;
         const attackerLossResult = applyLossRate(
           siege.attackerUnits,
           baseCasualtyRate(siege.attackerPower, defenderPower),
           `${siege._id}:player:attacker:${now}`,
+          attackerCompleted,
         );
         survivors = attackerLossResult.survivors;
         const investigation = resolveConclaveInvestigation(
@@ -834,6 +855,8 @@ export const resolveSiege = internalMutation({
           attackerLossResult.finalCasualtyRate,
           `${siege._id}:player:${now}`,
         );
+        const conclaveXp = siege.conclaveId ? (investigation.succeeded ? missionXpBudget(defenderPower) : Math.ceil(missionXpBudget(defenderPower) / 2)) : 0;
+        await releaseConclave(ctx, siege.conclaveId, conclaveXp);
         const attackerReportLevel = (won ? 2 : 1) + (investigation.succeeded ? 1 : 0);
         await recordKingdomReport(ctx, {
           viewerPlayerId: attacker._id,
@@ -860,6 +883,7 @@ export const resolveSiege = internalMutation({
           defenderUnits,
           baseCasualtyRate(defenderPower, siege.attackerPower),
           `${siege._id}:player:defender:${now}`,
+          defenderCompleted,
         );
         const defenderIntelLevel = await currentKingdomIntelLevel(
           ctx,
@@ -886,6 +910,8 @@ export const resolveSiege = internalMutation({
             activeSiegeId: undefined,
             updatedAt: now,
           });
+          await reconcileResearch(ctx, attacker._id, now);
+          await reconcileResearch(ctx, defender._id, now);
           outcomeText = `${attacker.name} captured ${plateau.name} from ${defender.name}.`;
         } else {
           await ctx.db.patch(plateau._id, {

@@ -58,6 +58,9 @@ const refs = {
   trainUnit: "army:trainUnit",
   getArdentiaStatus: "ardentia:getStatus",
   recruitConclave: "ardentia:recruitConclave",
+  renameConclave: "ardentia:renameConclave",
+  getResearchStatus: "research:getStatus",
+  startResearch: "research:start",
   launchSphereRaid: "raids:launchSphereRaid",
   listVisibleRaids: "raids:listVisibleRaids",
   forceResolveRaid: "raids:forceResolveRaid",
@@ -209,7 +212,7 @@ async function load(options = {}) {
       return;
     }
 
-    const [raids, plateaus, plateauRun, inbox, intelligence, ardentia] = await Promise.all([
+    const [raids, plateaus, plateauRun, inbox, intelligence, ardentia, research] = await Promise.all([
       client.query(refs.listVisibleRaids, {}),
       client.query(refs.listPlateaus, {}),
       client.query(refs.getCurrentPlateauRun, {}),
@@ -221,6 +224,7 @@ async function load(options = {}) {
         return { kingdoms: [], territories: [], watchtower: { level: 0, territoryLevel: 0, counterIntelligence: 0 } };
       }),
       client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })),
+      client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })),
     ]);
 
     if (requestId !== latestLoadRequest) return;
@@ -235,6 +239,7 @@ async function load(options = {}) {
       inbox,
       intelligence,
       ardentia,
+      research,
       events,
       clock,
       adminStatus,
@@ -333,6 +338,7 @@ function buildState(data) {
     alerts: [],
     intelligence: data.intelligence || { kingdoms: [], territories: [], watchtower: { level: 0, territoryLevel: 0, counterIntelligence: 0 } },
     ardentia: data.ardentia || { owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 },
+    research: data.research,
     log: data.events.map((event) => ({ text: event.text, at: event.createdAt, kind: event.kind || "world", gameDate: event.gameDate || null })),
   };
 }
@@ -356,6 +362,7 @@ function render() {
   renderBuildings();
   renderUnits();
   renderConclaveControls();
+  renderResearch();
   renderSelects();
   renderInboxBadge();
   renderRaidUnitInputs("sphere-raid-units");
@@ -529,13 +536,17 @@ function renderBuildings() {
   const visibleBuildings = Object.entries(state.config.buildings).filter(([key]) => key === "market" || key === "watchtower" || key === "ardentMonastery" || key === "soulcastBunker");
   $("buildings").innerHTML = visibleBuildings.map(([key, building]) => {
     const level = state.me.buildings[key] ?? building.level ?? 0;
-    const nextCost = Number(building?.nextCost || 0);
+    const soulcastingLevel = Number(state.research?.completedLevels?.soulcasting || 0);
+    const soulcastingDiscount = soulcastingLevel * 5;
+    const nextCost = Math.round(Number(building?.nextCost || 0) * (1 - soulcastingDiscount / 100));
     const affordable = state.me.spheres >= nextCost;
+    const ancientOwned = state.plateaus.mine.filter((plateau) => plateau.type === "ancient" || plateau.type === "ancient_ruins").length;
+    const monasteryTerritoryReady = key !== "ardentMonastery" || ancientOwned >= Number(state.config.ardentiaRules?.monasteryAncientPlateausRequired || 2);
     const values = buildingEffectValues(key, level);
     const name = key === "market" ? "Warcamp Market" : building?.name || key;
     const maxed = Number(building.maxLevel || 0) > 0 && level >= Number(building.maxLevel);
-    const status = maxed ? "Mastered" : affordable ? "Affordable" : "Need " + number(nextCost - state.me.spheres);
-    return '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>' + escapeHtml(name) + '</strong><span>Level ' + level + '</span></div><span class="status-badge ' + (!maxed && affordable ? 'ready' : 'blocked') + '">' + status + '</span></div><small>' + escapeHtml(building?.description || "") + '</small><div class="effect-comparison"><div><span>Current effect</span><strong>' + escapeHtml(values.current) + '</strong></div><div><span>' + (maxed ? 'Status' : 'After upgrade') + '</span><strong>' + escapeHtml(maxed ? 'Maximum level' : values.next) + '</strong></div></div>' + (maxed ? '' : '<div class="cost-line"><span>Upgrade cost</span><strong>' + number(nextCost) + ' Spheres</strong></div><button data-building="' + key + '" data-building-name="' + escapeHtml(name) + '" data-building-cost="' + nextCost + '"' + (affordable ? '' : ' disabled') + '>Upgrade to Level ' + (level + 1) + '</button>') + '</article>';
+    const status = maxed ? "Mastered" : !monasteryTerritoryReady ? "Requires 2 Ancient Plateaus" : affordable ? "Affordable" : "Need " + number(nextCost - state.me.spheres);
+    return '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>' + escapeHtml(name) + '</strong><span>Level ' + level + '</span></div><span class="status-badge ' + (!maxed && affordable && monasteryTerritoryReady ? 'ready' : 'blocked') + '">' + status + '</span></div><small>' + escapeHtml(building?.description || "") + '</small><div class="effect-comparison"><div><span>Current effect</span><strong>' + escapeHtml(values.current) + '</strong></div><div><span>' + (maxed ? 'Status' : 'After upgrade') + '</span><strong>' + escapeHtml(maxed ? 'Maximum level' : values.next) + '</strong></div></div>' + (key === "ardentMonastery" && !maxed ? '<p class="rule-callout">Requires 2 currently owned Ancient Plateaus. Owned: ' + ancientOwned + '.</p>' : '') + (maxed ? '' : '<div class="cost-line"><span>Upgrade cost</span><strong>' + number(nextCost) + ' Spheres</strong></div><button data-building="' + key + '" data-building-name="' + escapeHtml(name) + '" data-building-cost="' + nextCost + '"' + (affordable && monasteryTerritoryReady ? '' : ' disabled') + '>Upgrade to Level ' + (level + 1) + '</button>') + '</article>';
   }).join("");
   document.querySelectorAll("[data-building]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -608,7 +619,11 @@ function renderUnits() {
   attachRecruitmentControls();
   const recruitConclave = document.querySelector("[data-recruit-conclave]");
   if (recruitConclave) {
-    recruitConclave.addEventListener("click", () => action(() => client.mutation(refs.recruitConclave, {})));
+    recruitConclave.addEventListener("click", () => {
+      const name = window.prompt("Name the new Scout Conclave (or leave blank for a numbered name)", "");
+      if (name === null) return;
+      action(() => client.mutation(refs.recruitConclave, name.trim() ? { name: name.trim() } : {}));
+    });
   }
 }
 
@@ -634,6 +649,43 @@ function renderConclaveControls() {
       detail.textContent = base + " Minimum success chance: 25%. " + ready + " ready.";
     }
   });
+  const readyConclaves = (state.ardentia?.conclaves || []).filter((entry) => !entry.missionId);
+  ["sphere-conclave", "neutral-conclave-select", "player-conclave-select", "plateau-conclave"].forEach((id) => {
+    const select = $(id);
+    if (!select) return;
+    select.innerHTML = '<option value="">No Conclave</option>' + readyConclaves.map((entry) => '<option value="' + entry._id + '">' + escapeHtml(entry.name) + ' · Rank ' + entry.rank + '</option>').join("");
+    select.disabled = readyConclaves.length < 1;
+  });
+}
+
+function renderResearch() {
+  const container = $("research-content");
+  if (!container) return;
+  const research = state.research || {};
+  if (!research.unlocked) {
+    container.innerHTML = '<div class="empty"><strong>The ardents seek room to grow.</strong><p>Scholars gather in borrowed corners of the warcamp, quietly asking for a permanent place where their studies can take root.</p></div>';
+    return;
+  }
+  const rules = research.rules || state.config.researchRules;
+  const active = research.active;
+  const activeHtml = active ? '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>Active Research</strong><span>' + escapeHtml(rules.projects[active.project]?.name || active.project) + ' · Level ' + active.level + '</span></div><span class="status-badge ' + (active.status === "paused" ? 'blocked' : 'ready') + '">' + escapeHtml(active.status) + '</span></div><p>Research speed +' + number(research.speed.total) + '% (Monastery +' + number(research.speed.monastery) + '%, Conclaves +' + number(research.speed.conclave) + '%, Ancient Plateaus +' + number(research.speed.ancient) + '%)</p><small>' + (active.projectedCompletionAt ? 'Expected ' + new Date(active.projectedCompletionAt).toLocaleString() : 'Paused until the territory requirement is restored.') + '</small></article>' : '<div class="empty">No research is active. Choose a project below.</div>';
+  const projects = Object.entries(rules.projects).map(([key, project]) => {
+    const level = Number(research.completedLevels?.[key] || 0);
+    const next = level + 1;
+    if (next > 3) return '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>' + escapeHtml(project.library) + '</span></div><span class="status-badge ready">Level III complete</span></div><p>' + escapeHtml(String(project.effects[2]) + ' ' + project.effect) + '</p></article>';
+    const spheres = rules.sphereCosts[next - 1];
+    const gems = project.gemhearts[next - 1];
+    const ancient = project.ancient[next - 1];
+    const canStart = !active && Number(state.me.buildings.ardentMonastery || 0) >= next && state.me.spheres >= spheres && state.me.gemhearts >= gems && Number(research.speed?.ancientCount || 0) >= ancient;
+    return '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>' + escapeHtml(project.library) + ' · Level ' + next + '</span></div><span class="status-badge ' + (canStart ? 'ready' : 'blocked') + '">' + (canStart ? 'Ready' : 'Requirements unmet') + '</span></div><p>Next effect: ' + escapeHtml(String(project.effects[next - 1]) + ' ' + project.effect) + '</p><div class="cost-line"><span>' + number(spheres) + ' Spheres · ' + number(gems) + ' Gemhearts</span><strong>' + number(ancient) + ' Ancient · Monastery ' + next + '</strong></div><button data-research-project="' + key + '"' + (canStart ? '' : ' disabled') + '>Research Level ' + next + '</button></article>';
+  }).join("");
+  const conclaves = (state.ardentia?.conclaves || []).map((entry) => '<article class="upgrade-card"><div class="card-heading"><div><strong>' + escapeHtml(entry.name) + '</strong><span>Rank ' + entry.rank + ' · ' + number(entry.xp) + ' XP</span></div><span class="status-badge ' + (entry.missionId ? 'blocked' : 'ready') + '">' + (entry.missionId ? 'Away' : 'Ready') + '</span></div><button class="secondary" data-rename-conclave="' + entry._id + '" data-conclave-name="' + escapeHtml(entry.name) + '">Rename</button></article>').join("");
+  container.innerHTML = '<div class="building-grid">' + activeHtml + '</div><h3>Conclaves</h3><div class="building-grid">' + (conclaves || '<div class="empty">Form a Scout Conclave from the Army page.</div>') + '</div><h3>Libraries</h3><div class="building-grid">' + projects + '</div>';
+  container.querySelectorAll("[data-research-project]").forEach((button) => button.addEventListener("click", () => action(() => client.mutation(refs.startResearch, { project: button.dataset.researchProject }))));
+  container.querySelectorAll("[data-rename-conclave]").forEach((button) => button.addEventListener("click", () => {
+    const name = window.prompt("Name this Scout Conclave", button.dataset.conclaveName);
+    if (name !== null) action(() => client.mutation(refs.renameConclave, { conclaveId: button.dataset.renameConclave, name }));
+  }));
 }
 
 function renderArmyStatus() {
@@ -1877,13 +1929,13 @@ $("logout").addEventListener("click", () => {
 });
 $("sphere-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  action(() => client.mutation(refs.launchSphereRaid, { units: validatedRaidUnits("sphere-raid-units") }));
+  action(() => client.mutation(refs.launchSphereRaid, { units: validatedRaidUnits("sphere-raid-units"), ...($("sphere-conclave")?.value ? { conclaveId: $("sphere-conclave").value } : {}) }));
 });
 $("neutral-siege-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!$("neutral-plateau-target").value) return alert("Choose a neutral plateau.");
   action(async () => {
-    await client.mutation(refs.launchNeutralSiege, { plateauId: $("neutral-plateau-target").value, units: validatedRaidUnits("neutral-siege-units"), ardentiaConclave: Boolean($("neutral-conclave")?.checked) });
+    await client.mutation(refs.launchNeutralSiege, { plateauId: $("neutral-plateau-target").value, units: validatedRaidUnits("neutral-siege-units"), ...($("neutral-conclave-select")?.value ? { conclaveId: $("neutral-conclave-select").value } : { ardentiaConclave: Boolean($("neutral-conclave")?.checked) }) });
     $("neutral-conclave").checked = false;
   });
 });
@@ -1891,14 +1943,14 @@ $("player-siege-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!$("player-plateau-target").value) return alert("Choose an enemy plateau.");
   action(async () => {
-    await client.mutation(refs.launchPlayerSiege, { plateauId: $("player-plateau-target").value, units: validatedRaidUnits("player-siege-units"), ardentiaConclave: Boolean($("player-conclave")?.checked) });
+    await client.mutation(refs.launchPlayerSiege, { plateauId: $("player-plateau-target").value, units: validatedRaidUnits("player-siege-units"), ...($("player-conclave-select")?.value ? { conclaveId: $("player-conclave-select").value } : { ardentiaConclave: Boolean($("player-conclave")?.checked) }) });
     $("player-conclave").checked = false;
   });
 });
 $("plateau-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!state.plateauRun) return alert("No Plateau Run is open.");
-  action(() => client.mutation(refs.joinPlateauRun, { plateauRunId: state.plateauRun.id, units: validatedRaidUnits("plateau-run-units") }));
+  action(() => client.mutation(refs.joinPlateauRun, { plateauRunId: state.plateauRun.id, units: validatedRaidUnits("plateau-run-units"), ...($("plateau-conclave")?.value ? { conclaveId: $("plateau-conclave").value } : {}) }));
 });
 $("cancel-plateau-commitment").addEventListener("click", () => {
   if (!state.plateauRun) return;

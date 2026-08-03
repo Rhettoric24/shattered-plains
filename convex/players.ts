@@ -24,6 +24,7 @@ import {
   STARTING_RULES,
   WORLD_KEY,
 } from "./rules";
+import { completedResearch } from "./researchHelpers";
 
 function normalizeName(name: string) {
   return name.trim().toLowerCase();
@@ -217,7 +218,8 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
     .withIndex("by_to_player", (q) => q.eq("toPlayerId", player._id))
     .collect();
 
-  const pending = pendingEconomy({ ...player, plateauCounts }, Date.now());
+  const completed = await completedResearch(ctx, player._id);
+  const pending = pendingEconomy({ ...player, plateauCounts, completedResearch: completed }, Date.now());
   const ownedUnits = await ownedUnitsIncludingAway(ctx, player._id, player.units);
 
   return {
@@ -229,7 +231,7 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
     ownedPlateauCount: owned.length,
     neutralPlateauCount: neutral.filter((plateau) => !plateau.activeSiegeId)
       .length,
-    armyStats: calculateArmyStats(player.units),
+    armyStats: calculateArmyStats(player.units, completed),
     provisions: provisionsStatus(
       player.buildings,
       plateauCounts,
@@ -248,6 +250,7 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
       player.acres,
       player.buildings,
       plateauCounts,
+      completed,
     ),
     incomingRaidCount: incomingRaids.length,
     outgoingRaidCount: outgoingRaids.length,

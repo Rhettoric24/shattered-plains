@@ -10,6 +10,9 @@ import {
   recordKingdomReport,
 } from "./intelligenceHelpers";
 import { plateauCountsForPlayer } from "./plateauHelpers";
+import { assignConclave, missionXpBudget, releaseConclave } from "./ardentiaHelpers";
+import { completedResearch } from "./researchHelpers";
+import type { Id } from "./_generated/dataModel";
 import {
   applySurvivalLosses,
   baseCasualtyRate,
@@ -96,6 +99,7 @@ async function createRaid(
     targetPlayerId?: any;
     units: UnitCounts;
     acres?: number;
+    conclaveId?: Id<"ardentConclaves">;
   },
 ) {
   const attacker = await ctx.db.get(args.attackerId);
@@ -127,8 +131,9 @@ async function createRaid(
   const now = Date.now();
   const departAt = now;
   const plateauCounts = await plateauCountsForPlayer(ctx, attacker._id);
-  const arriveAt = now + travelMsForUnits(units, plateauCounts);
-  const power = effectivePower(units);
+  const completed = await completedResearch(ctx, attacker._id);
+  const arriveAt = now + travelMsForUnits(units, plateauCounts, completed);
+  const power = effectivePower(units, completed);
   const speed = unitSpeed(units);
   const remainingUnits = subtractUnits(attacker.units, units);
   const acres =
@@ -173,6 +178,10 @@ async function createRaid(
     arriveAt,
     status: "pending",
   });
+  if (args.conclaveId) {
+    await assignConclave(ctx, attacker._id, args.conclaveId, "raid", String(raidId));
+    await ctx.db.patch(raidId, { conclaveId: args.conclaveId, ardentiaConclave: true });
+  }
 
   if (args.targetType === "player" && args.targetPlayerId) {
     await ctx.db.insert("messages", {
@@ -205,6 +214,7 @@ export const launchOpenAcreRaid = mutation({
   args: {
     acres: v.number(),
     units: unitCounts,
+    conclaveId: v.optional(v.id("ardentConclaves")),
   },
   handler: async (ctx, args) => {
     const attacker = await requireCurrentPlayer(ctx);
@@ -213,6 +223,7 @@ export const launchOpenAcreRaid = mutation({
       targetType: "open_acres",
       acres: args.acres,
       units: args.units,
+      conclaveId: args.conclaveId,
     });
   },
 });
@@ -220,6 +231,7 @@ export const launchOpenAcreRaid = mutation({
 export const launchSphereRaid = mutation({
   args: {
     units: unitCounts,
+    conclaveId: v.optional(v.id("ardentConclaves")),
   },
   handler: async (ctx, args) => {
     const attacker = await requireCurrentPlayer(ctx);
@@ -227,6 +239,7 @@ export const launchSphereRaid = mutation({
       attackerId: attacker._id,
       targetType: "parshendi_spheres",
       units: args.units,
+      conclaveId: args.conclaveId,
     });
   },
 });
@@ -236,6 +249,7 @@ export const launchPlayerRaid = mutation({
     targetPlayerId: v.id("players"),
     acres: v.number(),
     units: unitCounts,
+    conclaveId: v.optional(v.id("ardentConclaves")),
   },
   handler: async (ctx, args) => {
     const attacker = await requireCurrentPlayer(ctx);
@@ -245,6 +259,7 @@ export const launchPlayerRaid = mutation({
       targetPlayerId: args.targetPlayerId,
       acres: args.acres,
       units: args.units,
+      conclaveId: args.conclaveId,
     });
   },
 });
@@ -328,6 +343,7 @@ export const resolveRaid = internalMutation({
     }
 
     const now = Date.now();
+    const completed = await completedResearch(ctx, attacker._id);
     let won = false;
     let resultText = "";
     let survivors = raid.units;
@@ -345,6 +361,7 @@ export const resolveRaid = internalMutation({
         normalizeUnits(raid.units),
         baseCasualtyRate(raid.power, defense),
         `${raid._id}:open:${now}`,
+        completed,
       );
       survivors = lossResult.survivors;
 
@@ -375,9 +392,10 @@ export const resolveRaid = internalMutation({
         normalizeUnits(raid.units),
         baseCasualtyRate(raid.power, defense),
         `${raid._id}:spheres:${now}`,
+        completed,
       );
       survivors = lossResult.survivors;
-      const plunder = unitPlunder(normalizeUnits(raid.units));
+      const plunder = unitPlunder(normalizeUnits(raid.units), completed);
       const recovered = won ? Math.min(reward, plunder) : 0;
       const leftBehind = won ? Math.max(0, reward - recovered) : 0;
 
@@ -402,19 +420,22 @@ export const resolveRaid = internalMutation({
         });
         resultText = `${attacker.name}'s raid found no target.`;
       } else {
-        const homePower = effectivePower(defender.units);
+        const defenderCompleted = await completedResearch(ctx, defender._id);
+        const homePower = effectivePower(defender.units, defenderCompleted);
         const acres = Math.min(raid.acres ?? 1, Math.max(0, defender.acres - 1));
         won = raid.power > homePower && acres > 0;
         const attackerLossResult = applySurvivalLosses(
           normalizeUnits(raid.units),
           baseCasualtyRate(raid.power, homePower),
           `${raid._id}:player:attacker:${now}`,
+          completed,
         );
         survivors = attackerLossResult.survivors;
         const defenderLossResult = applySurvivalLosses(
           normalizeUnits(defender.units),
           baseCasualtyRate(homePower, raid.power),
           `${raid._id}:player:defender:${now}`,
+          defenderCompleted,
         );
 
         await ctx.db.patch(attacker._id, {
@@ -459,7 +480,9 @@ export const resolveRaid = internalMutation({
     await ctx.db.patch(raid._id, {
       status: "resolved",
       resolvedAt: now,
+      conclaveXpAwarded: raid.conclaveId ? (won ? missionXpBudget(raid.defensePower ?? raid.power) : Math.ceil(missionXpBudget(raid.defensePower ?? raid.power) / 2)) : undefined,
     });
+    if (raid.conclaveId) await releaseConclave(ctx, raid.conclaveId, won ? missionXpBudget(raid.defensePower ?? raid.power) : Math.ceil(missionXpBudget(raid.defensePower ?? raid.power) / 2));
     await ctx.db.insert("messages", {
       toPlayerId: attacker._id,
       kind: "system",

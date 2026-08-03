@@ -32,6 +32,8 @@ import type * as plateaus from "../plateaus.js";
 import type * as players from "../players.js";
 import type * as provisionHelpers from "../provisionHelpers.js";
 import type * as raids from "../raids.js";
+import type * as research from "../research.js";
+import type * as researchHelpers from "../researchHelpers.js";
 import type * as rules from "../rules.js";
 
 import type {
@@ -65,6 +67,8 @@ declare const fullApi: ApiFromModules<{
   players: typeof players;
   provisionHelpers: typeof provisionHelpers;
   raids: typeof raids;
+  research: typeof research;
+  researchHelpers: typeof researchHelpers;
   rules: typeof rules;
 }>;
 

@@ -65,6 +65,8 @@ export default defineSchema({
     defensePower: v.optional(v.number()),
     rewardSpheres: v.optional(v.number()),
     ardentiaConclave: v.optional(v.boolean()),
+    conclaveId: v.optional(v.id("ardentConclaves")),
+    conclaveXpAwarded: v.optional(v.number()),
     departAt: v.number(),
     arriveAt: v.number(),
     resolvedAt: v.optional(v.number()),
@@ -110,6 +112,8 @@ export default defineSchema({
     emergencyDefensePercent: v.optional(v.number()),
     emergencyDefenseSpheresSpent: v.optional(v.number()),
     ardentiaConclave: v.optional(v.boolean()),
+    conclaveId: v.optional(v.id("ardentConclaves")),
+    conclaveXpAwarded: v.optional(v.number()),
     departAt: v.number(),
     resolveAt: v.number(),
     resolvedAt: v.optional(v.number()),
@@ -161,11 +165,43 @@ export default defineSchema({
     speed: v.number(),
     bridgedTravelReductionPercent: v.optional(v.number()),
     travelMinutes: v.optional(v.number()),
+    conclaveId: v.optional(v.id("ardentConclaves")),
+    conclaveXpAwarded: v.optional(v.number()),
     committedAt: v.number(),
   })
     .index("by_run", ["plateauRunId"])
     .index("by_player", ["playerId"])
     .index("by_run_player", ["plateauRunId", "playerId"]),
+
+  ardentConclaves: defineTable({
+    ownerPlayerId: v.id("players"),
+    name: v.string(),
+    normalizedName: v.string(),
+    xp: v.number(),
+    missionKind: v.optional(v.union(
+      v.literal("raid"),
+      v.literal("siege"),
+      v.literal("plateau_run"),
+    )),
+    missionId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_ownerPlayerId", ["ownerPlayerId"])
+    .index("by_ownerPlayerId_and_normalizedName", ["ownerPlayerId", "normalizedName"]),
+
+  playerResearch: defineTable({
+    playerId: v.id("players"),
+    completedLevels: v.record(v.string(), v.number()),
+    activeProject: v.optional(v.string()),
+    activeLevel: v.optional(v.number()),
+    status: v.optional(v.union(v.literal("active"), v.literal("paused"))),
+    accumulatedBaseMs: v.optional(v.number()),
+    lastAdvancedAt: v.optional(v.number()),
+    projectedCompletionAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_playerId", ["playerId"]),
 
   gameState: defineTable({
     key: v.string(),

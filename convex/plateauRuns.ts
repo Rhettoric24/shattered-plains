@@ -5,6 +5,8 @@ import { requireAdmin } from "./admin";
 import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
 import { plateauCountsForPlayer } from "./plateauHelpers";
+import { assignConclave, missionXpBudget, releaseConclave } from "./ardentiaHelpers";
+import { completedResearch } from "./researchHelpers";
 import {
   addUnits,
   applySurvivalLosses,
@@ -274,6 +276,7 @@ export const joinPlateauRun = mutation({
   args: {
     plateauRunId: v.id("plateauRuns"),
     units: unitCounts,
+    conclaveId: v.optional(v.id("ardentConclaves")),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -303,13 +306,14 @@ export const joinPlateauRun = mutation({
       ? addUnits(player.units, existingCommitment.units)
       : player.units;
     const remainingUnits = subtractUnits(availableUnits, units);
-    const power = effectivePower(units);
+    const completed = await completedResearch(ctx, player._id);
+    const power = effectivePower(units, completed);
     const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
     const bridgedReduction = bridgedTravelReduction(plateauCounts);
-    const speed = unitSpeed(units) + bridgedReduction * 100;
+    const speed = unitSpeed(units) + Number(completed.bridgeEngineering ?? 0) * 2 + bridgedReduction * 100;
     const travelMinutes = Math.max(
       1,
-      Math.round(travelMsForUnits(units, plateauCounts) / 60000),
+      Math.round(travelMsForUnits(units, plateauCounts, completed) / 60000),
     );
 
     await ctx.db.patch(player._id, {
@@ -323,6 +327,7 @@ export const joinPlateauRun = mutation({
       speed,
       bridgedTravelReductionPercent: Math.round(bridgedReduction * 100),
       travelMinutes,
+      ...(args.conclaveId ? { conclaveId: args.conclaveId } : {}),
     };
     const commitmentId = existingCommitment
       ? existingCommitment._id
@@ -333,8 +338,10 @@ export const joinPlateauRun = mutation({
           committedAt: now,
         });
     if (existingCommitment) {
+      if (existingCommitment.conclaveId && existingCommitment.conclaveId !== args.conclaveId) await releaseConclave(ctx, existingCommitment.conclaveId);
       await ctx.db.patch(existingCommitment._id, commitment);
     }
+    if (args.conclaveId && existingCommitment?.conclaveId !== args.conclaveId) await assignConclave(ctx, player._id, args.conclaveId, "plateau_run", String(commitmentId));
 
   await insertGameEvent(ctx, {
       kind: "plateau_run",
@@ -369,6 +376,7 @@ export const cancelPlateauRunCommitment = mutation({
       units: addUnits(player.units, commitment.units),
       lastActiveAt: now,
     });
+    await releaseConclave(ctx, commitment.conclaveId);
     await ctx.db.delete(commitment._id);
     await insertGameEvent(ctx, {
       kind: "plateau_run",
@@ -451,16 +459,21 @@ export const resolvePlateauRun = internalMutation({
     );
     const runBaseCasualtyRate = baseCasualtyRate(combinedPower, run.difficulty);
     const won = combinedPower >= run.difficulty;
+    const conclaveXp = missionXpBudget(run.difficulty);
 
     if (!won) {
       for (const entry of finalEntries) {
         const player = await ctx.db.get(entry.playerId);
         if (!player) continue;
+        const completed = await completedResearch(ctx, player._id);
         const lossResult = applySurvivalLosses(
           entry.units,
           runBaseCasualtyRate,
           `${run._id}:${entry._id}:failed:${now}`,
+          completed,
         );
+        await releaseConclave(ctx, entry.conclaveId, conclaveXp);
+        await ctx.db.patch(entry._id, { conclaveXpAwarded: entry.conclaveId ? conclaveXp : undefined });
         await ctx.db.patch(player._id, {
           units: addUnits(player.units, lossResult.survivors),
           lastActiveAt: now,
@@ -498,11 +511,13 @@ export const resolvePlateauRun = internalMutation({
     for (const entry of finalEntries) {
       const player = await ctx.db.get(entry.playerId);
       if (!player) continue;
+      const completed = await completedResearch(ctx, player._id);
 
       const lossResult = applySurvivalLosses(
         entry.units,
         runBaseCasualtyRate,
         `${run._id}:${entry._id}:success:${now}`,
+        completed,
       );
       const isWinner = entry._id === winner._id;
       const availableSphereShare =
@@ -511,7 +526,9 @@ export const resolvePlateauRun = internalMutation({
           : finalEntries.length === 1
             ? run.spherePool
             : 0;
-      const plunder = unitPlunder(entry.units);
+      const plunder = unitPlunder(entry.units, completed);
+      await releaseConclave(ctx, entry.conclaveId, conclaveXp);
+      await ctx.db.patch(entry._id, { conclaveXpAwarded: entry.conclaveId ? conclaveXp : undefined });
       const sphereShare = Math.min(availableSphereShare, plunder);
       const leftBehind = Math.max(0, availableSphereShare - sphereShare);
 

@@ -1,6 +1,7 @@
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { ARDENTIA_RULES } from "./rules";
+import { ARDENTIA_RULES, conclaveRank } from "./rules";
+import { reconcileResearch } from "./researchHelpers";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -10,6 +11,11 @@ export async function ardentiaConclaveStatus(
   owned: number,
   monasteryLevel: number,
 ) {
+  const conclaves = await ctx.db.query("ardentConclaves").withIndex("by_ownerPlayerId", (q) => q.eq("ownerPlayerId", playerId)).take(10);
+  if (conclaves.length > 0) {
+    const capacity = Math.max(0, Math.floor(monasteryLevel)) * ARDENTIA_RULES.conclavesPerMonasteryLevel;
+    return { owned: conclaves.length, away: conclaves.filter((entry) => entry.missionId).length, ready: conclaves.filter((entry) => !entry.missionId).length, capacity, provisionsEach: ARDENTIA_RULES.provisionsCost, conclaves: conclaves.map((entry) => ({ ...entry, rank: conclaveRank(entry.xp) })) };
+  }
   const raids = await ctx.db
     .query("raids")
     .withIndex("by_attacker", (q) => q.eq("attackerId", playerId))
@@ -34,7 +40,34 @@ export async function ardentiaConclaveStatus(
     ready: Math.max(0, normalizedOwned - away),
     capacity,
     provisionsEach: ARDENTIA_RULES.provisionsCost,
+    conclaves: [],
   };
+}
+
+export async function assignConclave(ctx: MutationCtx, playerId: Id<"players">, conclaveId: Id<"ardentConclaves"> | undefined, missionKind: "raid" | "siege" | "plateau_run", missionId: string) {
+  if (!conclaveId) return undefined;
+  const conclave = await ctx.db.get(conclaveId);
+  if (!conclave || conclave.ownerPlayerId !== playerId) throw new Error("Choose one of your Scout Conclaves.");
+  if (conclave.missionId) throw new Error(`${conclave.name} is already away on a mission.`);
+  await ctx.db.patch(conclave._id, { missionKind, missionId, updatedAt: Date.now() });
+  return conclave._id;
+}
+
+export async function releaseConclave(ctx: MutationCtx, conclaveId: Id<"ardentConclaves"> | undefined, xp = 0) {
+  if (!conclaveId) return 0;
+  const conclave = await ctx.db.get(conclaveId);
+  if (!conclave) return 0;
+  await ctx.db.patch(conclave._id, { xp: conclave.xp + xp, missionKind: undefined, missionId: undefined, updatedAt: Date.now() });
+  if (xp > 0) await reconcileResearch(ctx, conclave.ownerPlayerId);
+  return xp;
+}
+
+export function missionXpBudget(difficulty: number) {
+  const bands = ARDENTIA_RULES.missionXpBands;
+  if (difficulty <= 50) return bands[0];
+  if (difficulty <= 100) return bands[1];
+  if (difficulty <= 200) return bands[2];
+  return bands[3];
 }
 
 function seededRoll(seed: string) {

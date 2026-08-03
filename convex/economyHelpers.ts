@@ -4,11 +4,13 @@ import {
   grantGemheartPlateauIncome,
   plateauCountsForPlayer,
 } from "./plateauHelpers";
+import { completedResearch } from "./researchHelpers";
 
 export async function settlePlayerEconomy(ctx: MutationCtx, player: any) {
   const now = Date.now();
   const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
-  const pending = pendingEconomy({ ...player, plateauCounts }, now);
+  const completed = await completedResearch(ctx, player._id);
+  const pending = pendingEconomy({ ...player, plateauCounts, completedResearch: completed }, now);
   const spheres = roundResource(player.spheres + pending.income);
   const gemheartIncome = await grantGemheartPlateauIncome(ctx, player, now);
 
