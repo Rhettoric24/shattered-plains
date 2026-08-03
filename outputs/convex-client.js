@@ -48,6 +48,8 @@ const refs = {
   signOut: "auth:signOut",
   isAdmin: "admin:isAdmin",
   resetWorldKeepAccounts: "admin:resetWorldKeepAccounts",
+  finishActiveResearch: "admin:finishActiveResearch",
+  backfillResearchSystem: "admin:backfillResearchSystem",
   bootstrapWorld: "game:bootstrapWorld",
   getClock: "game:getClock",
   getGameConfig: "config:getGameConfig",
@@ -2011,6 +2013,8 @@ $("backfill-plateaus").addEventListener("click", () => action(async () => {
   const result = await client.mutation(refs.backfillPlateaus, {});
   alert("Plateau maintenance complete. " + number(result.defensesRetuned || 0) + " neutral defenses retuned; " + number(result.neutralCreated || 0) + " neutral plateaus created.");
 }));
+$("finish-research").addEventListener("click", () => action(() => client.mutation(refs.finishActiveResearch, {})));
+$("backfill-research").addEventListener("click", () => action(() => client.mutation(refs.backfillResearchSystem, {})));
 if ($("reset-world-keep-accounts")) {
   $("reset-world-keep-accounts").addEventListener("click", async () => {
     const confirmText = window.prompt(
