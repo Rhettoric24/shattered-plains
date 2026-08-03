@@ -38,14 +38,14 @@ export const RESEARCH_RULES = {
   durationsMs: [60 * 60 * 1000, 4 * 60 * 60 * 1000, 12 * 60 * 60 * 1000],
   sphereCosts: [1000, 3000, 7500],
   projects: {
-    bridgeEngineering: { name: "Bridge Engineering", library: "Military", ancient: [0, 1, 2], gemhearts: [0, 0, 0], effects: [2, 4, 6], effect: "effective Speed" },
-    packHarnessDesign: { name: "Pack Harness Design", library: "Military", ancient: [0, 1, 2], gemhearts: [0, 0, 0], effects: [10, 20, 30], effect: "% Chull Plunder" },
-    painrialMedicine: { name: "Painrial Medicine", library: "Military", ancient: [0, 1, 2], gemhearts: [0, 1, 2], effects: [5, 10, 15], effect: "% casualty reduction" },
-    soulcastArmor: { name: "Soulcast Armor", library: "Military", ancient: [0, 1, 2], gemhearts: [0, 1, 2], effects: [0.1, 0.2, 0.3], effect: "Power per Spearman" },
-    siegeEngineering: { name: "Siege Engineering", library: "Military", ancient: [0, 1, 2], gemhearts: [0, 0, 1], effects: [8, 16, 24], effect: "% Emergency Defense cost reduction" },
-    gemCutting: { name: "Gem Cutting", library: "Commerce", ancient: [1, 2, 3], gemhearts: [1, 2, 3], effects: [11.5, 11, 10], effect: "hour Gemheart interval" },
-    soulcasting: { name: "Soulcasting", library: "Commerce", ancient: [0, 1, 2], gemhearts: [0, 1, 1], effects: [5, 10, 15], effect: "% building cost reduction" },
-    marketEconomics: { name: "Market Economics", library: "Commerce", ancient: [0, 0, 1], gemhearts: [0, 0, 1], effects: [10, 20, 30], effect: "% Market income" },
+    bridgeEngineering: { name: "Bridge Engineering", library: "Military", description: "Ardents and bridge crews refine construction, deployment, and crossing methods so armies move across the Plains with greater confidence and speed.", ancient: [0, 1, 2], gemhearts: [0, 0, 0], effects: [2, 4, 6], effect: "effective Speed" },
+    packHarnessDesign: { name: "Pack Harness Design", library: "Military", description: "Improved harnesses, loading practices, and chull handling let armies transport more wealth without abandoning their heavy logistical support.", ancient: [0, 1, 2], gemhearts: [0, 0, 0], effects: [10, 20, 30], effect: "% Chull Plunder" },
+    painrialMedicine: { name: "Painrial Medicine", library: "Military", description: "Battlefield surgeons adapt painrials for desperate marches and retreats, reducing the number of wounds that become deaths.", ancient: [0, 1, 2], gemhearts: [0, 1, 2], effects: [5, 10, 15], effect: "% casualty reduction" },
+    soulcastArmor: { name: "Soulcast Armor", library: "Military", description: "Standardized Soulcast armor components let disciplined spear formations strike and endure with greater force.", ancient: [0, 1, 2], gemhearts: [0, 1, 2], effects: [0.1, 0.2, 0.3], effect: "Power per Spearman" },
+    siegeEngineering: { name: "Siege Engineering", library: "Military", description: "Warcamp engineers study barricades, chokepoints, and temporary fortifications that turn narrow plateau approaches into weapons.", ancient: [0, 1, 2], gemhearts: [0, 0, 1], effects: [8, 16, 24], effect: "% Emergency Defense cost reduction" },
+    gemCutting: { name: "Gem Cutting", library: "Commerce", description: "Skilled gemcutters preserve more useful Stormlight within harvested gemhearts and prepare them more efficiently.", ancient: [1, 2, 3], gemhearts: [1, 2, 3], effects: [11.5, 11, 10], effect: "hour Gemheart interval" },
+    soulcasting: { name: "Soulcasting", library: "Commerce", description: "More efficient Soulcasting reduces waste in stone, lumber, metal, and other supplies used for major construction.", ancient: [0, 1, 2], gemhearts: [0, 1, 1], effects: [5, 10, 15], effect: "% building cost reduction" },
+    marketEconomics: { name: "Market Economics", library: "Commerce", description: "Ardents study taxation, merchant incentives, and the circulation of infused currency through the warcamp.", ancient: [0, 0, 1], gemhearts: [0, 0, 1], effects: [10, 20, 30], effect: "% Market income" },
   },
 } as const;
 

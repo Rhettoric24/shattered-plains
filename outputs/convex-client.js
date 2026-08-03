@@ -674,11 +674,15 @@ function renderResearch() {
   const projects = Object.entries(rules.projects).map(([key, project]) => {
     const level = Number(research.completedLevels?.[key] || 0);
     const next = level + 1;
-    if (next > 3) return '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>' + escapeHtml(project.library) + '</span></div><span class="status-badge ready">Level III complete</span></div><p>' + escapeHtml(String(project.effects[2]) + ' ' + project.effect) + '</p></article>';
+    if (next > 3) return '<article class="upgrade-card investment-card research-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>' + escapeHtml(project.library) + '</span></div><span class="status-badge ready">Level III complete</span></div><p class="research-description">' + escapeHtml(project.description || "") + '</p><p class="research-effect"><strong>Current effect:</strong> ' + escapeHtml(String(project.effects[2]) + ' ' + project.effect) + '</p></article>';
     const spheres = rules.sphereCosts[next - 1];
     const gems = project.gemhearts[next - 1];
     const ancient = project.ancient[next - 1];
+    const baseMinutes = Math.round(Number(rules.durationsMs[next - 1]) / 60000);
+    const adjustedMinutes = Math.max(1, Math.round(baseMinutes / (1 + Number(research.speed?.total || 0) / 100)));
+    const speedTooltip = 'Base duration: ' + formatDuration(baseMinutes) + '\nTotal research speed: +' + number(research.speed?.total || 0) + '%\nMonastery: +' + number(research.speed?.monastery || 0) + '%\nConclaves: +' + number(research.speed?.conclave || 0) + '%\nAncient Plateaus: +' + number(research.speed?.ancient || 0) + '%\nAdjusted duration = Base ÷ (1 + total speed).';
     const canStart = !active && Number(state.me.buildings.ardentMonastery || 0) >= next && state.me.spheres >= spheres && state.me.gemhearts >= gems && Number(research.speed?.ancientCount || 0) >= ancient;
+    return '<article class="upgrade-card investment-card research-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>' + escapeHtml(project.library) + ' · Level ' + next + '</span></div><span class="status-badge ' + (canStart ? 'ready' : 'blocked') + '">' + (canStart ? 'Ready' : 'Requirements unmet') + '</span></div><p class="research-description">' + escapeHtml(project.description || "") + '</p><p class="research-effect"><strong>Next effect:</strong> ' + escapeHtml(String(project.effects[next - 1]) + ' ' + project.effect) + '</p><div class="research-requirements"><div><span>Sphere cost</span><strong>' + number(spheres) + ' Spheres</strong></div><div><span>Gemheart cost</span><strong>' + number(gems) + ' Gemhearts</strong></div><div><span>Territory</span><strong>' + number(ancient) + ' Ancient Plateaus</strong></div><div><span>Monastery</span><strong>Level ' + next + '</strong></div></div><button type="button" class="research-time-cell" title="' + escapeHtml(speedTooltip) + '"><span>Research time</span><strong>' + formatDuration(baseMinutes) + '</strong><small>Adjusted: ' + formatDuration(adjustedMinutes) + ' with +' + number(research.speed?.total || 0) + '% speed</small></button><button data-research-project="' + key + '"' + (canStart ? '' : ' disabled') + '>Research Level ' + next + '</button></article>';
     return '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>' + escapeHtml(project.library) + ' · Level ' + next + '</span></div><span class="status-badge ' + (canStart ? 'ready' : 'blocked') + '">' + (canStart ? 'Ready' : 'Requirements unmet') + '</span></div><p>Next effect: ' + escapeHtml(String(project.effects[next - 1]) + ' ' + project.effect) + '</p><div class="cost-line"><span>' + number(spheres) + ' Spheres · ' + number(gems) + ' Gemhearts</span><strong>' + number(ancient) + ' Ancient · Monastery ' + next + '</strong></div><button data-research-project="' + key + '"' + (canStart ? '' : ' disabled') + '>Research Level ' + next + '</button></article>';
   }).join("");
   const conclaves = (state.ardentia?.conclaves || []).map((entry) => '<article class="upgrade-card"><div class="card-heading"><div><strong>' + escapeHtml(entry.name) + '</strong><span>Rank ' + entry.rank + ' · ' + number(entry.xp) + ' XP</span></div><span class="status-badge ' + (entry.missionId ? 'blocked' : 'ready') + '">' + (entry.missionId ? 'Away' : 'Ready') + '</span></div><button class="secondary" data-rename-conclave="' + entry._id + '" data-conclave-name="' + escapeHtml(entry.name) + '">Rename</button></article>').join("");
@@ -2068,7 +2072,7 @@ document.querySelectorAll("[data-view-link]").forEach((element) => {
 });
 document.addEventListener("click", (event) => {
   if (!isMobileLayout()) return;
-  const calculation = event.target.closest(".stat-cell[title], .outlook-cell[title]");
+  const calculation = event.target.closest(".stat-cell[title], .outlook-cell[title], .research-time-cell[title]");
   if (calculation) {
     showTapTooltip(calculation.getAttribute("title"));
     return;
