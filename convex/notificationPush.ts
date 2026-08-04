@@ -19,7 +19,7 @@ export const deliver = internalAction({
     for (const subscription of data.subscriptions) {
       try {
         const endpoint = new URL(subscription.endpoint);
-        const allowed = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "push.services.mozilla.com", "web.push.apple.com"].includes(endpoint.hostname) || endpoint.hostname.endsWith(".notify.windows.com");
+        const allowed = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "push.services.mozilla.com", "web.push.apple.com"].includes(endpoint.hostname) || endpoint.hostname.endsWith(".push.apple.com") || endpoint.hostname.endsWith(".notify.windows.com");
         if (endpoint.protocol !== "https:" || !allowed) {
           await ctx.runMutation(internal.notifications.disableSubscription, { subscriptionId: subscription._id });
           disabled += 1;

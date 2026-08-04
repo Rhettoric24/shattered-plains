@@ -21,7 +21,7 @@ const allowedPushHosts = [
 function validatePushSubscription(args: { endpoint: string; p256dh: string; auth: string }) {
   let url: URL;
   try { url = new URL(args.endpoint); } catch { throw new Error("Invalid push endpoint."); }
-  const hostAllowed = allowedPushHosts.includes(url.hostname) || url.hostname.endsWith(".notify.windows.com");
+  const hostAllowed = allowedPushHosts.includes(url.hostname) || url.hostname.endsWith(".push.apple.com") || url.hostname.endsWith(".notify.windows.com");
   if (url.protocol !== "https:" || !hostAllowed || args.endpoint.length > 2048) throw new Error("Unsupported push service.");
   const keyPattern = /^[A-Za-z0-9_-]+$/;
   if (!keyPattern.test(args.p256dh) || !keyPattern.test(args.auth) || args.p256dh.length > 256 || args.auth.length > 128) throw new Error("Invalid push subscription keys.");
@@ -51,6 +51,14 @@ export const list = query({
       vapidPublicKey: env.VAPID_PUBLIC_KEY ?? null,
     };
   },
+});
+
+export const getPushConfiguration = query({
+  args: {},
+  handler: async () => ({
+    vapidPublicKey: env.VAPID_PUBLIC_KEY ?? null,
+    configured: Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY),
+  }),
 });
 
 export const markRead = mutation({

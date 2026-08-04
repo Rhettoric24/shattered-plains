@@ -90,6 +90,7 @@ const refs = {
   markInboxRead: "messages:markInboxRead",
   markMessageRead: "messages:markMessageRead",
   listNotifications: "notifications:list",
+  getPushConfiguration: "notifications:getPushConfiguration",
   markNotificationRead: "notifications:markRead",
   markAllNotificationsRead: "notifications:markAllRead",
   updateNotificationPreferences: "notifications:updatePreferences",
@@ -224,7 +225,7 @@ async function load(options = {}) {
       return;
     }
 
-    const [raids, plateaus, plateauRun, inbox, intelligence, ardentia, research, notifications] = await Promise.all([
+    const [raids, plateaus, plateauRun, inbox, intelligence, ardentia, research, notifications, pushConfiguration] = await Promise.all([
       client.query(refs.listVisibleRaids, {}),
       client.query(refs.listPlateaus, {}),
       client.query(refs.getCurrentPlateauRun, {}),
@@ -238,6 +239,7 @@ async function load(options = {}) {
       client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })),
       client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })),
       client.query(refs.listNotifications, {}).catch(() => ({ notifications: [], unreadCount: 0, preferences: { combat: true, missions: true, research: true, plateauRuns: true, messages: true }, devices: [], vapidPublicKey: null })),
+      client.query(refs.getPushConfiguration, {}).catch(() => ({ vapidPublicKey: null, configured: false })),
     ]);
 
     if (requestId !== latestLoadRequest) return;
@@ -254,6 +256,7 @@ async function load(options = {}) {
       ardentia,
       research,
       notifications,
+      pushConfiguration,
       events,
       clock,
       adminStatus,
@@ -358,7 +361,7 @@ function buildState(data) {
     notificationUnreadCount: data.notifications?.unreadCount || 0,
     notificationPreferences: data.notifications?.preferences || { combat: true, missions: true, research: true, plateauRuns: true, messages: true },
     notificationDevices: data.notifications?.devices || [],
-    vapidPublicKey: data.notifications?.vapidPublicKey || null,
+    vapidPublicKey: data.pushConfiguration?.vapidPublicKey || data.notifications?.vapidPublicKey || null,
     log: data.events.map((event) => ({ text: event.text, at: event.createdAt, kind: event.kind || "world", gameDate: event.gameDate || null })),
   };
 }
