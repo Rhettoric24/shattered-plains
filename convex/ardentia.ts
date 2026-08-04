@@ -23,7 +23,7 @@ export const getStatus = query({
 
 export const recruitConclave = mutation({
   args: { name: v.optional(v.string()) },
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const current = await requireCurrentPlayer(ctx);
     const { player } = await settlePlayerEconomy(ctx, current);
     const monasteryLevel = player.buildings.ardentMonastery ?? 0;
