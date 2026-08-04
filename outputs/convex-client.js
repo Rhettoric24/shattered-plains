@@ -12,7 +12,7 @@ let authToken = localStorage.getItem(AUTH_TOKEN_KEY);
 let refreshToken = localStorage.getItem(AUTH_REFRESH_KEY);
 if (authToken) client.setAuth(authToken);
 let state = null;
-let currentView = localStorage.getItem("sp-current-view") || "overview";
+let currentView = new URLSearchParams(location.search).get("view") || localStorage.getItem("sp-current-view") || "overview";
 let lastSelections = { trainUnit: "", target: "", attackUnits: {}, recruitment: {} };
 let previewListenersReady = false;
 let tooltipTimer = null;
@@ -20,6 +20,9 @@ let inboxFilter = "all";
 let holdingsExpanded = false;
 let latestLoadRequest = 0;
 let loadedPlateauCommitmentId = null;
+let notificationBaselineReady = false;
+let knownNotificationIds = new Set();
+let deferredInstallPrompt = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -86,6 +89,13 @@ const refs = {
   sendMessage: "messages:sendMessage",
   markInboxRead: "messages:markInboxRead",
   markMessageRead: "messages:markMessageRead",
+  listNotifications: "notifications:list",
+  markNotificationRead: "notifications:markRead",
+  markAllNotificationsRead: "notifications:markAllRead",
+  updateNotificationPreferences: "notifications:updatePreferences",
+  registerPushDevice: "notifications:registerDevice",
+  removePushDevice: "notifications:removeDevice",
+  setPushDeviceSound: "notifications:setDeviceSound",
   listEvents: "game:listEvents",
   listDossiers: "intelligence:listDossiers",
 };
@@ -214,7 +224,7 @@ async function load(options = {}) {
       return;
     }
 
-    const [raids, plateaus, plateauRun, inbox, intelligence, ardentia, research] = await Promise.all([
+    const [raids, plateaus, plateauRun, inbox, intelligence, ardentia, research, notifications] = await Promise.all([
       client.query(refs.listVisibleRaids, {}),
       client.query(refs.listPlateaus, {}),
       client.query(refs.getCurrentPlateauRun, {}),
@@ -227,6 +237,7 @@ async function load(options = {}) {
       }),
       client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })),
       client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })),
+      client.query(refs.listNotifications, {}).catch(() => ({ notifications: [], unreadCount: 0, preferences: { combat: true, missions: true, research: true, plateauRuns: true, messages: true }, devices: [], vapidPublicKey: null })),
     ]);
 
     if (requestId !== latestLoadRequest) return;
@@ -242,10 +253,12 @@ async function load(options = {}) {
       intelligence,
       ardentia,
       research,
+      notifications,
       events,
       clock,
       adminStatus,
     });
+    processNewNotificationRows(state.notifications);
     render();
   } catch (error) {
     if (requestId !== latestLoadRequest) return;
@@ -341,6 +354,11 @@ function buildState(data) {
     intelligence: data.intelligence || { kingdoms: [], territories: [], watchtower: { level: 0, territoryLevel: 0, counterIntelligence: 0 } },
     ardentia: data.ardentia || { owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 },
     research: data.research,
+    notifications: data.notifications?.notifications || [],
+    notificationUnreadCount: data.notifications?.unreadCount || 0,
+    notificationPreferences: data.notifications?.preferences || { combat: true, missions: true, research: true, plateauRuns: true, messages: true },
+    notificationDevices: data.notifications?.devices || [],
+    vapidPublicKey: data.notifications?.vapidPublicKey || null,
     log: data.events.map((event) => ({ text: event.text, at: event.createdAt, kind: event.kind || "world", gameDate: event.gameDate || null })),
   };
 }
@@ -367,6 +385,7 @@ function render() {
   renderResearch();
   renderSelects();
   renderInboxBadge();
+  renderNotifications();
   renderRaidUnitInputs("sphere-raid-units");
   renderRaidUnitInputs("neutral-siege-units");
   renderRaidUnitInputs("player-siege-units");
@@ -514,9 +533,13 @@ function captureSelections() {
 }
 
 function showView(view) {
+  if (!document.getElementById("view-" + view)) view = "overview";
   if ((view === "testing" || view === "chronicle") && !state?.isAdmin) view = "overview";
   currentView = view;
   localStorage.setItem("sp-current-view", view);
+  const url = new URL(location.href);
+  url.searchParams.set("view", view);
+  history.replaceState(null, "", url);
   closeMobileMenu();
   document.querySelectorAll(".view").forEach((section) => {
     section.classList.toggle("active", section.id === "view-" + view);
@@ -1302,6 +1325,107 @@ function renderInbox() {
   }, { once: true }));
 }
 
+function processNewNotificationRows(rows) {
+  const ids = new Set(rows.map((entry) => String(entry._id)));
+  if (notificationBaselineReady) {
+    rows.slice().reverse().forEach((entry) => {
+      if (!knownNotificationIds.has(String(entry._id))) showNotificationToast(entry.title, entry.body);
+    });
+  } else notificationBaselineReady = true;
+  knownNotificationIds = ids;
+}
+
+function showNotificationToast(title, body) {
+  const container = $("notification-toasts");
+  if (!container) return;
+  const toast = document.createElement("article");
+  toast.className = "notification-toast";
+  toast.innerHTML = `<strong>${escapeHtml(title || "Shattered Plains")}</strong><span>${escapeHtml(body || "Your warcamp has news.")}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 7000);
+}
+
+function notificationRelativeTime(at) {
+  const minutes = Math.max(0, Math.floor((Date.now() - Number(at)) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return minutes + "m ago";
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + "h ago";
+  return Math.floor(hours / 24) + "d ago";
+}
+
+function renderNotifications() {
+  const badge = $("notification-badge");
+  const count = Number(state.notificationUnreadCount || 0);
+  if (badge) { badge.textContent = count > 99 ? "99+" : String(count); badge.classList.toggle("hidden", count < 1); }
+  if (navigator.setAppBadge) count > 0 ? navigator.setAppBadge(count).catch(() => {}) : navigator.clearAppBadge?.().catch(() => {});
+  const list = $("notification-list");
+  if (list) {
+    list.innerHTML = state.notifications.length ? state.notifications.map((item) =>
+      `<button type="button" class="notification-item ${item.readAt ? "" : "unread"}" data-notification-id="${item._id}" data-notification-view="${escapeHtml(item.destinationView)}"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.body)}</span><small>${escapeHtml(item.category.replace("_", " "))} · ${notificationRelativeTime(item.createdAt)}</small></button>`
+    ).join("") : '<div class="empty">No dispatches yet.</div>';
+    list.querySelectorAll("[data-notification-id]").forEach((button) => button.addEventListener("click", async () => {
+      const item = state.notifications.find((entry) => String(entry._id) === button.dataset.notificationId);
+      if (item && !item.readAt) await client.mutation(refs.markNotificationRead, { notificationId: item._id }).catch(() => null);
+      $("notification-panel").classList.add("hidden");
+      $("notification-bell").setAttribute("aria-expanded", "false");
+      showView(button.dataset.notificationView || "overview");
+      await load();
+    }));
+  }
+  document.querySelectorAll("[data-notification-preference]").forEach((input) => { input.checked = Boolean(state.notificationPreferences[input.dataset.notificationPreference]); });
+  updatePushControls();
+}
+
+async function currentPushSubscription() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+  const registration = await navigator.serviceWorker.ready;
+  return await registration.pushManager.getSubscription();
+}
+
+function urlBase64ToUint8Array(value) {
+  const padding = "=".repeat((4 - value.length % 4) % 4);
+  const raw = atob((value + padding).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
+}
+
+async function enablePushNotifications() {
+  if (!state.vapidPublicKey) throw new Error("Push delivery is not configured on the server yet.");
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") throw new Error("Notification permission was not granted.");
+  const registration = await navigator.serviceWorker.ready;
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(state.vapidPublicKey) });
+  const json = subscription.toJSON();
+  await client.mutation(refs.registerPushDevice, {
+    endpoint: subscription.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth,
+    deviceLabel: `${navigator.platform || "Device"} · ${navigator.userAgent.includes("Mobile") ? "Mobile" : "Browser"}`,
+    soundEnabled: $("notification-sound").checked,
+  });
+  await load();
+}
+
+async function disablePushNotifications() {
+  const subscription = await currentPushSubscription();
+  if (!subscription) return;
+  await client.mutation(refs.removePushDevice, { endpoint: subscription.endpoint });
+  await subscription.unsubscribe();
+  await load();
+}
+
+async function updatePushControls() {
+  const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const subscription = supported ? await currentPushSubscription().catch(() => null) : null;
+  $("enable-push")?.classList.toggle("hidden", !supported || Boolean(subscription));
+  $("disable-push")?.classList.toggle("hidden", !subscription);
+  const support = $("notification-support");
+  if (support) support.textContent = !supported ? "This browser does not support background web notifications." : subscription ? "Background notifications are enabled on this device." : /iPad|iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone ? "On iPhone or iPad, add the game to your Home Screen before enabling notifications." : state.vapidPublicKey ? "Enable this device to receive alerts while the game is closed." : "Push keys must be configured by the game administrator before devices can be enabled.";
+  if (subscription) {
+    const device = state.notificationDevices.find((entry) => entry.endpoint === subscription.endpoint);
+    if (device) $("notification-sound").checked = device.soundEnabled;
+  }
+}
+
 function renderLog() {
   let currentDay = "";
   const markup = state.log.map((entry) => {
@@ -1970,6 +2094,7 @@ $("sign-in-form").addEventListener("submit", (event) => {
 $("logout").addEventListener("click", () => {
   action(async () => {
     try {
+      await disablePushNotifications().catch(() => null);
       await client.action(refs.signOut, {});
     } finally {
       clearAuthTokens();
@@ -2038,6 +2163,35 @@ document.querySelectorAll("[data-inbox-filter]").forEach((button) => button.addE
 }));
 $("auto-read-inbox").checked = localStorage.getItem("sp-auto-read-inbox") === "true";
 $("auto-read-inbox").addEventListener("change", () => localStorage.setItem("sp-auto-read-inbox", String($("auto-read-inbox").checked)));
+$("notification-bell").addEventListener("click", (event) => {
+  event.stopPropagation();
+  const open = $("notification-panel").classList.toggle("hidden") === false;
+  $("notification-bell").setAttribute("aria-expanded", String(open));
+});
+$("notification-panel").addEventListener("click", (event) => event.stopPropagation());
+document.addEventListener("click", () => {
+  $("notification-panel")?.classList.add("hidden");
+  $("notification-bell")?.setAttribute("aria-expanded", "false");
+});
+$("mark-notifications-read").addEventListener("click", () => action(() => client.mutation(refs.markAllNotificationsRead, {})));
+document.querySelectorAll("[data-notification-preference]").forEach((input) => input.addEventListener("change", () => {
+  const preferences = {};
+  document.querySelectorAll("[data-notification-preference]").forEach((entry) => { preferences[entry.dataset.notificationPreference] = entry.checked; });
+  action(() => client.mutation(refs.updateNotificationPreferences, preferences));
+}));
+$("enable-push").addEventListener("click", () => action(enablePushNotifications));
+$("disable-push").addEventListener("click", () => action(disablePushNotifications));
+$("notification-sound").addEventListener("change", async () => {
+  const subscription = await currentPushSubscription().catch(() => null);
+  if (subscription) action(() => client.mutation(refs.setPushDeviceSound, { endpoint: subscription.endpoint, soundEnabled: $("notification-sound").checked }));
+});
+$("install-app").addEventListener("click", async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  $("install-app").classList.add("hidden");
+});
 $("toggle-holdings").addEventListener("click", () => { holdingsExpanded = !holdingsExpanded; renderGroupedHoldings(); });
 document.querySelectorAll("[data-expedition-mode]").forEach((button) => button.addEventListener("click", () => {
   document.querySelectorAll("[data-expedition-mode]").forEach((entry) => entry.classList.toggle("active", entry === button));
@@ -2161,6 +2315,24 @@ window.addEventListener("resize", () => {
     hideTapTooltip();
   }
 });
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  $("install-app")?.classList.remove("hidden");
+});
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js").catch((error) => console.warn("Service worker registration failed.", error));
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.type === "push-notification") {
+      showNotificationToast(event.data.notification?.title, event.data.notification?.body);
+      if (event.data.notification?.id) knownNotificationIds.add(String(event.data.notification.id));
+      if (authToken) load();
+    }
+    if (event.data?.type === "open-view" && state) showView(event.data.view || "overview");
+  });
+}
 
 if (authToken) load();
 else signedOut();

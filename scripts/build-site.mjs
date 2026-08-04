@@ -86,6 +86,10 @@ for (const stylesheet of [
   await fs.copyFile(path.join(root, "outputs", stylesheet), path.join(dist, stylesheet));
 }
 
+for (const asset of ["manifest.webmanifest", "service-worker.js", "app-icon.svg"]) {
+  await fs.copyFile(path.join(root, "outputs", asset), path.join(dist, asset));
+}
+
 const sourceHtml = await fs.readFile(
   path.join(root, "outputs", "convex-client.html"),
   "utf8",

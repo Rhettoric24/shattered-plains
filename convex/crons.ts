@@ -17,4 +17,11 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "clean old notifications",
+  { hours: 24 },
+  internal.notifications.cleanupOld,
+  {},
+);
+
 export default crons;

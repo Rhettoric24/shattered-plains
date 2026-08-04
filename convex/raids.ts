@@ -12,6 +12,7 @@ import {
 import { plateauCountsForPlayer } from "./plateauHelpers";
 import { assignConclave, missionXpBudget, releaseConclave } from "./ardentiaHelpers";
 import { completedResearch } from "./researchHelpers";
+import { createNotification } from "./notificationHelpers";
 import type { Id } from "./_generated/dataModel";
 import {
   applySurvivalLosses,
@@ -190,6 +191,14 @@ async function createRaid(
       subject: "Incoming Raid",
       body: `${attacker.name} has launched a raid toward your warcamp.`,
       createdAt: now,
+    });
+  }
+
+  if (args.targetType === "player" && args.targetPlayerId) {
+    await createNotification(ctx, {
+      playerId: args.targetPlayerId, category: "combat", eventType: "incoming_raid",
+      title: "Incoming Raid", body: `${attacker.name} has launched a raid toward your warcamp.`,
+      destinationView: "raids", entityId: String(raidId), dedupeKey: `raid:${raidId}:incoming`, createdAt: now,
     });
   }
 
@@ -471,6 +480,12 @@ export const resolveRaid = internalMutation({
           body: `${won ? `${attacker.name} seized ${acres} acres from your warcamp.` : `Your warcamp held against ${attacker.name}.`} Your casualties: ${casualtySummary(defenderLossResult.casualties)}. ${casualtyIntelSummary(attackerLossResult.casualties, defenderIntelLevel)} Intelligence reflects what your warcamp could confirm.`,
           createdAt: now,
         });
+        await createNotification(ctx, {
+          playerId: defender._id, category: "combat", eventType: "raid_resolved_defender",
+          title: won ? "Raid Lost" : "Defense Held",
+          body: won ? `${attacker.name} seized ${acres} acres.` : `Your warcamp held against ${attacker.name}.`,
+          destinationView: "raids", entityId: String(raid._id), dedupeKey: `raid:${raid._id}:resolved:defender`, createdAt: now,
+        });
         resultText = won
           ? `${attacker.name} seized ${acres} acres from ${defender.name}. Your casualties: ${casualtySummary(attackerLossResult.casualties)}. ${casualtyIntelSummary(defenderLossResult.casualties, attackerReportLevel)} A new assessment is available in Intelligence.`
           : `${defender.name} held against ${attacker.name}. Your casualties: ${casualtySummary(attackerLossResult.casualties)}. ${casualtyIntelSummary(defenderLossResult.casualties, attackerReportLevel)} A new assessment is available in Intelligence.`;
@@ -489,6 +504,12 @@ export const resolveRaid = internalMutation({
       subject: won ? "Raid Won" : "Raid Resolved",
       body: resultText,
       createdAt: now,
+    });
+    await createNotification(ctx, {
+      playerId: attacker._id, category: raid.targetType === "player" ? "combat" : "missions",
+      eventType: raid.targetType === "player" ? "raid_resolved_attacker" : "mission_resolved",
+      title: won ? "Raid Won" : "Raid Resolved", body: resultText, destinationView: "raids",
+      entityId: String(raid._id), dedupeKey: `raid:${raid._id}:resolved:attacker`, createdAt: now,
     });
     await insertGameEvent(ctx, {
       kind: "raid",

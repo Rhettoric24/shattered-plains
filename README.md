@@ -43,6 +43,19 @@ npm run preview
 - Convex owns accounts, player state, game actions, raids, Plateau Runs, messages, and admin-only testing tools.
 - Plateau Runs are checked every five minutes and open during the noon and 8 PM Mountain time windows.
 - The dashboard includes a World Alerts strip for open Plateau Runs, incoming raids, unread messages, and outgoing raids.
+- The installable PWA includes an in-game notification center and optional background Web Push for combat, missions, research, Plateau Runs, and player messages.
+
+## Background Notification Setup
+
+The current Convex deployment needs three environment variables. Generate a VAPID key pair with `npx web-push generate-vapid-keys --json`, then set:
+
+```powershell
+npx convex env set VAPID_PUBLIC_KEY "your-public-key"
+npx convex env set VAPID_PRIVATE_KEY "your-private-key"
+npx convex env set VAPID_SUBJECT "https://your-public-game-url/"
+```
+
+Never commit the private key. Players enroll each browser or installed device from the notification bell. On iPhone and iPad, add the game to the Home Screen before enabling notifications.
 
 ## Returning To The Project
 

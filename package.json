@@ -8,18 +8,20 @@
     "dev": "npx convex dev",
     "preview": "npm run build && node outputs/convex-static-server.js dist",
     "convex:dev": "npx convex dev",
-    "convex:deploy": "npx convex deploy"
-    ,"test": "vitest run"
+    "convex:deploy": "npx convex deploy",
+    "test": "vitest run"
   },
   "dependencies": {
     "@convex-dev/auth": "latest",
-    "convex": "^1.42.1"
+    "convex": "^1.42.1",
+    "web-push": "^3.6.7"
   },
   "allowScripts": {
     "esbuild@0.27.0": true
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
+    "@types/web-push": "^3.6.4",
     "convex-test": "^0.0.54",
     "vitest": "^4.1.10"
   }

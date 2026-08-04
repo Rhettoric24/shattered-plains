@@ -141,6 +141,53 @@ export default defineSchema({
     .index("by_to_player", ["toPlayerId"])
     .index("by_to_player_created", ["toPlayerId", "createdAt"]),
 
+  notifications: defineTable({
+    playerId: v.id("players"),
+    category: v.union(
+      v.literal("combat"),
+      v.literal("missions"),
+      v.literal("research"),
+      v.literal("plateau_runs"),
+      v.literal("messages"),
+    ),
+    eventType: v.string(),
+    title: v.string(),
+    body: v.string(),
+    destinationView: v.string(),
+    entityId: v.optional(v.string()),
+    dedupeKey: v.string(),
+    readAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_playerId_and_createdAt", ["playerId", "createdAt"])
+    .index("by_playerId_and_readAt", ["playerId", "readAt"])
+    .index("by_playerId_and_dedupeKey", ["playerId", "dedupeKey"]),
+
+  notificationState: defineTable({
+    playerId: v.id("players"),
+    unreadCount: v.number(),
+    combat: v.boolean(),
+    missions: v.boolean(),
+    research: v.boolean(),
+    plateauRuns: v.boolean(),
+    messages: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_playerId", ["playerId"]),
+
+  pushSubscriptions: defineTable({
+    playerId: v.id("players"),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+    deviceLabel: v.string(),
+    soundEnabled: v.boolean(),
+    disabledAt: v.optional(v.number()),
+    createdAt: v.number(),
+    lastSeenAt: v.number(),
+  })
+    .index("by_playerId", ["playerId"])
+    .index("by_endpoint", ["endpoint"]),
+
   plateauRuns: defineTable({
     status: v.union(v.literal("open"), v.literal("resolved")),
     opensAt: v.number(),

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireCurrentPlayer } from "./ownership";
+import { createNotification } from "./notificationHelpers";
 
 export const listInbox = query({
   args: {},
@@ -46,6 +47,12 @@ export const sendMessage = mutation({
       subject,
       body,
       createdAt: now,
+    });
+
+    await createNotification(ctx, {
+      playerId: to._id, category: "messages", eventType: "player_message",
+      title: `Message from ${from.name}`, body: subject, destinationView: "inbox",
+      entityId: String(messageId), dedupeKey: `message:${messageId}`, createdAt: now,
     });
 
     await ctx.db.patch(from._id, { lastActiveAt: now });

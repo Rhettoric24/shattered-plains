@@ -20,6 +20,7 @@ import {
   resolveConclaveInvestigation,
 } from "./ardentiaHelpers";
 import { completedResearch, reconcileResearch } from "./researchHelpers";
+import { createNotification } from "./notificationHelpers";
 import {
   effectiveIntelLevel,
   presentIntelNumber,
@@ -558,6 +559,11 @@ export const launchPlayerSiege = mutation({
       body: `${attacker.name} has started a siege against ${plateau.name}.${assessmentText}`,
       createdAt: now,
     });
+    await createNotification(ctx, {
+      playerId: defender._id, category: "combat", eventType: "incoming_siege",
+      title: "Plateau Under Siege", body: `${attacker.name} has started a siege against ${plateau.name}.`,
+      destinationView: "plateaus", entityId: String(siegeId), dedupeKey: `siege:${siegeId}:incoming`, createdAt: now,
+    });
   await insertGameEvent(ctx, {
       kind: "siege",
       text: `${attacker.name} started a siege against ${defender.name}.`,
@@ -937,6 +943,11 @@ export const resolveSiege = internalMutation({
           body: defenderResultText,
           createdAt: now,
         });
+        await createNotification(ctx, {
+          playerId: defender._id, category: "combat", eventType: "siege_resolved_defender",
+          title: won ? "Plateau Lost" : "Siege Held", body: outcomeText,
+          destinationView: "plateaus", entityId: String(siege._id), dedupeKey: `siege:${siege._id}:resolved:defender`, createdAt: now,
+        });
       }
     }
 
@@ -950,6 +961,13 @@ export const resolveSiege = internalMutation({
       subject: won ? "Siege Won" : "Siege Resolved",
       body: resultText,
       createdAt: now,
+    });
+    await createNotification(ctx, {
+      playerId: attacker._id, category: siege.targetType === "player" ? "combat" : "missions",
+      eventType: siege.targetType === "player" ? "siege_resolved_attacker" : "expedition_resolved",
+      title: won ? (siege.targetType === "player" ? "Siege Won" : "Expedition Succeeded") : (siege.targetType === "player" ? "Siege Resolved" : "Expedition Resolved"),
+      body: resultText, destinationView: "plateaus", entityId: String(siege._id),
+      dedupeKey: `siege:${siege._id}:resolved:attacker`, createdAt: now,
     });
     await insertGameEvent(ctx, {
       kind: siege.targetType === "player" ? "siege" : "territory",

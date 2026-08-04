@@ -31,6 +31,7 @@ type GameplayTable =
   | "sieges"
   | "plateaus"
   | "messages"
+  | "notifications"
   | "gameEvents"
   | "gameState";
 
@@ -112,9 +113,15 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
     sieges: await deleteGameplayTable(ctx, "sieges"),
     plateaus: await deleteGameplayTable(ctx, "plateaus"),
     messages: await deleteGameplayTable(ctx, "messages"),
+    notifications: await deleteGameplayTable(ctx, "notifications"),
     gameEvents: await deleteGameplayTable(ctx, "gameEvents"),
     gameState: await deleteGameplayTable(ctx, "gameState"),
   };
+
+  const notificationStates = await ctx.db.query("notificationState").take(200);
+  for (const notificationState of notificationStates) {
+    await ctx.db.patch(notificationState._id, { unreadCount: 0, updatedAt: now });
+  }
 
   const worldId = await ctx.db.insert("gameState", {
     key: WORLD_KEY,

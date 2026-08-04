@@ -7,6 +7,7 @@ import { requireCurrentPlayer } from "./ownership";
 import { plateauCountsForPlayer } from "./plateauHelpers";
 import { assignConclave, missionXpBudget, releaseConclave } from "./ardentiaHelpers";
 import { completedResearch } from "./researchHelpers";
+import { createNotification } from "./notificationHelpers";
 import {
   addUnits,
   applySurvivalLosses,
@@ -154,16 +155,12 @@ async function createPlateauRun(
     ...(options.scheduleKey ? { scheduleKey: options.scheduleKey } : {}),
   });
 
-  const players = await ctx.db.query("players").collect();
-  for (const player of players) {
-    await ctx.db.insert("messages", {
-      toPlayerId: player._id,
-      kind: "system",
-      subject: "Plateau Run Open",
-      body: `A Plateau Run has opened. The mission appears ${missionRiskLabel(difficulty).toLowerCase()}, with a ${rewardLabel(spherePool).toLowerCase()} sphere pool.`,
-      createdAt: now,
-    });
-  }
+  await ctx.scheduler.runAfter(0, internal.notifications.notifyPlateauRunOpenBatch, {
+    plateauRunId,
+    body: `A Plateau Run has opened. The mission appears ${missionRiskLabel(difficulty).toLowerCase()}, with a ${rewardLabel(spherePool).toLowerCase()} sphere pool.`,
+    createdAt: now,
+    paginationOpts: { numItems: 40, cursor: null },
+  });
 
   await insertGameEvent(ctx, {
     kind: "plateau_run",
@@ -485,6 +482,12 @@ export const resolvePlateauRun = internalMutation({
           body: `The combined force failed against ${missionRiskLabel(run.difficulty).toLowerCase()} opposition. Casualties: ${casualtySummary(lossResult.casualties)}.`,
           createdAt: now,
         });
+        await createNotification(ctx, {
+          playerId: player._id, category: "plateau_runs", eventType: "plateau_run_resolved",
+          title: "Plateau Run Failed", body: "The combined force was defeated. Open the report for casualty details.",
+          destinationView: "plateau", entityId: String(run._id),
+          dedupeKey: `plateau-run:${run._id}:resolved:${player._id}`, createdAt: now,
+        });
       }
 
       await ctx.db.patch(run._id, {
@@ -546,6 +549,13 @@ export const resolvePlateauRun = internalMutation({
           ? `Your warcamp claimed ${run.gemheartReward} Gemheart from the Plateau Run. Casualties: ${casualtySummary(lossResult.casualties)}.`
           : `Your warcamp recovered ${sphereShare} spheres from the Plateau Run.${leftBehind > 0 ? " Some spheres were left behind because the army lacked Plunder." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`,
         createdAt: now,
+      });
+      await createNotification(ctx, {
+        playerId: player._id, category: "plateau_runs", eventType: "plateau_run_resolved",
+        title: isWinner ? "Gemheart Claimed" : "Plateau Run Reward",
+        body: isWinner ? `Your warcamp claimed ${run.gemheartReward} Gemheart.` : `Your warcamp recovered ${sphereShare} spheres.`,
+        destinationView: "plateau", entityId: String(run._id),
+        dedupeKey: `plateau-run:${run._id}:resolved:${player._id}`, createdAt: now,
       });
     }
 

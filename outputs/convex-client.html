@@ -4,6 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Shattered Plains Convex Multiplayer</title>
+    <meta name="theme-color" content="#07111f" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="app-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="app-icon.svg" />
     <link rel="stylesheet" href="shattered-plains-styles.css" />
     <link rel="stylesheet" href="clarity-layout.css" />
     <link rel="stylesheet" href="clarity-components.css" />
@@ -75,10 +79,31 @@
               <p class="eyebrow" id="view-eyebrow">Overview</p>
               <h2 id="view-title">Warcamp status</h2>
             </div>
-            <div class="player-chip">
+            <div class="header-actions">
+              <div class="notification-shell">
+                <button id="notification-bell" class="notification-bell secondary" type="button" aria-expanded="false" aria-controls="notification-panel" aria-label="Notifications">🔔<span id="notification-badge" class="nav-badge hidden">0</span></button>
+                <section id="notification-panel" class="notification-panel hidden" aria-label="Notification center">
+                  <div class="notification-heading"><div><p class="eyebrow">Dispatches</p><h3>Notifications</h3></div><button id="mark-notifications-read" class="secondary compact-button" type="button">Mark all read</button></div>
+                  <div id="notification-list" class="notification-list"></div>
+                  <details class="notification-settings"><summary>Notification settings</summary>
+                    <div class="notification-preferences">
+                      <label><input type="checkbox" data-notification-preference="combat"> Combat</label>
+                      <label><input type="checkbox" data-notification-preference="missions"> Missions</label>
+                      <label><input type="checkbox" data-notification-preference="research"> Research</label>
+                      <label><input type="checkbox" data-notification-preference="plateauRuns"> Plateau Runs</label>
+                      <label><input type="checkbox" data-notification-preference="messages"> Player messages</label>
+                    </div>
+                    <label class="preference-toggle"><input id="notification-sound" type="checkbox" checked> Use device sound where supported</label>
+                    <div class="inline-actions"><button id="enable-push" type="button">Enable notifications</button><button id="disable-push" class="secondary hidden" type="button">Disable this device</button><button id="install-app" class="secondary hidden" type="button">Install app</button></div>
+                    <p id="notification-support" class="hint"></p>
+                  </details>
+                </section>
+              </div>
+              <div class="player-chip">
               <span>Signed in</span>
               <strong id="player-name">Player</strong>
               <small id="admin-status">Standard account</small>
+              </div>
             </div>
           </header>
 
@@ -284,6 +309,7 @@
       </section>
     </main>
     <div id="tap-tooltip" class="tap-tooltip hidden" role="status"></div>
+    <div id="notification-toasts" class="notification-toasts" aria-live="polite"></div>
     <script type="module" src="convex-client.js"></script>
   </body>
 </html>
