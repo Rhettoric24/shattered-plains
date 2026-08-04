@@ -46,6 +46,7 @@ import {
   normalizeUnits,
   PLATEAU_RULES,
   resistanceLabel,
+  researchEffect,
   STARTING_RULES,
   TIME_RULES,
   totalUnits,
@@ -157,24 +158,20 @@ function siegeTravelMs() {
   return TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
 }
 
-function decoratePlateauForOwner(plateau: any, now: number) {
-  const type = identityPlateauType(plateau.type);
+function gemheartProgressForPlateau(plateau: any, now: number, intervalMs: number) {
   const lastGemheartAt = plateau.lastGemheartAt ?? plateau.heldSince ?? plateau.updatedAt;
+  return {
+    lastGemheartAt,
+    nextGemheartAt: lastGemheartAt + intervalMs,
+    progressPercent: Math.max(0, Math.min(100, Math.floor(((now - lastGemheartAt) / intervalMs) * 100))),
+  };
+}
+
+function decoratePlateauForOwner(plateau: any, now: number, gemheartIntervalMs: number) {
+  const type = identityPlateauType(plateau.type);
   const gemheartProgress =
     type === "gemheart"
-      ? {
-          lastGemheartAt,
-          nextGemheartAt: lastGemheartAt + PLATEAU_RULES.gemheartIntervalMs,
-          progressPercent: Math.max(
-            0,
-            Math.min(
-              100,
-              Math.floor(
-                ((now - lastGemheartAt) / PLATEAU_RULES.gemheartIntervalMs) * 100,
-              ),
-            ),
-          ),
-        }
+      ? gemheartProgressForPlateau(plateau, now, gemheartIntervalMs)
       : null;
 
   return {
@@ -255,6 +252,12 @@ export const listPlateaus = query({
       players.map((player) => [player._id, player.name]),
     );
     const playersById = new Map(players.map((player) => [String(player._id), player]));
+    const researchRows = await ctx.db.query("playerResearch").take(200);
+    const researchByPlayer = new Map(researchRows.map((row) => [String(row.playerId), row.completedLevels]));
+    const gemheartIntervalForPlayer = (playerId: Id<"players"> | undefined) => {
+      const gemHours = Number(researchEffect(playerId ? researchByPlayer.get(String(playerId)) : undefined, "gemCutting"));
+      return gemHours > 0 ? gemHours * 60 * 60 * 1000 : PLATEAU_RULES.gemheartIntervalMs;
+    };
     const activeSieges = await ctx.db
       .query("sieges")
       .withIndex("by_status_resolve", (q) => q.eq("status", "pending"))
@@ -298,7 +301,7 @@ export const listPlateaus = query({
     return {
       types: plateauTypes(),
       counts: await plateauCountsForPlayer(ctx, viewer._id),
-      mine: mine.map((plateau) => decoratePlateauForOwner(plateau, now)),
+      mine: mine.map((plateau) => decoratePlateauForOwner(plateau, now, gemheartIntervalForPlayer(viewer._id))),
       neutral: neutral.filter((plateau) => !plateau.activeSiegeId).map((plateau) => {
         const report = reportsByPlateau.get(String(plateau._id));
         const reportLevel = report
@@ -339,6 +342,9 @@ export const listPlateaus = query({
             ownerPlayerId: plateau.ownerPlayerId,
             ownerName,
             intelligenceLevel,
+            ...(intelligenceLevel >= 2 && identityPlateauType(plateau.type) === "gemheart"
+              ? { gemheartProgress: gemheartProgressForPlateau(plateau, now, gemheartIntervalForPlayer(plateau.ownerPlayerId)) }
+              : {}),
             ...(intelligenceLevel >= 1
               ? {
                   type: identityPlateauType(plateau.type),

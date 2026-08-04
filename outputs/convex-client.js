@@ -608,7 +608,7 @@ function renderUnits() {
     const breakthrough = key === "shardbearer"
       ? '<p class="rule-callout">Breakthrough: doubles up to ' + number(shardbearerSupportPower) + ' supporting Power per Shardbearer.</p>'
       : '';
-    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">Ready: ' + number(available) + ' · Away: ' + number(away) + ' · Owned: ' + number(count) + '</span></div><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div><div class="unit-stat-grid"><button type="button" class="stat-cell" title="' + statTooltip("power") + '"><span>Power</span><strong>' + contribution(unit.power) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("speed") + '"><span>Speed</span><strong>' + contribution(unit.speed) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("plunder") + '"><span>Plunder</span><strong>' + contribution(unit.plunder) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("survivability") + '"><span>Survivability</span><strong>' + contribution(unit.survivability) + '</strong></button></div>' + breakthrough + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div><div class="quantity-builder"><div class="quick-add"><button type="button" data-recruit-add="1">+1</button><button type="button" data-recruit-add="10">+10</button><button type="button" data-recruit-add="50">+50</button><button type="button" data-recruit-add="100">+100</button></div><label>Quantity<input data-recruit-quantity type="number" min="0" value="' + draft + '"></label><div class="quantity-corrections"><button type="button" class="secondary" data-recruit-minus>−1</button><button type="button" class="secondary" data-recruit-clear>Clear</button></div></div><div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button></article>';
+    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">Available: ' + number(available) + ' · Owned: ' + number(count) + '</span></div><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div><div class="unit-stat-grid"><button type="button" class="stat-cell" title="' + statTooltip("power") + '"><span>Power</span><strong>' + contribution(unit.power) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("speed") + '"><span>Speed</span><strong>' + contribution(unit.speed) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("plunder") + '"><span>Plunder</span><strong>' + contribution(unit.plunder) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("survivability") + '"><span>Survivability</span><strong>' + contribution(unit.survivability) + '</strong></button></div>' + breakthrough + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div><div class="quantity-builder"><div class="quick-add"><button type="button" data-recruit-add="1">+1</button><button type="button" data-recruit-add="10">+10</button><button type="button" data-recruit-add="50">+50</button><button type="button" data-recruit-add="100">+100</button></div><label>Quantity<input data-recruit-quantity type="number" min="0" value="' + draft + '"></label><div class="quantity-corrections"><button type="button" class="secondary" data-recruit-minus>−1</button><button type="button" class="secondary" data-recruit-clear>Clear</button></div></div><div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button></article>';
   }).join("");
   const monasteryLevel = Number(state.me.buildings.ardentMonastery || 0);
   const ardentia = state.ardentia;
@@ -695,8 +695,25 @@ function renderResearch() {
     return '<article class="upgrade-card investment-card research-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>' + escapeHtml(project.library) + ' · Level ' + next + '</span></div><span class="status-badge ' + (canStart ? 'ready' : 'blocked') + '">' + (canStart ? 'Ready' : 'Requirements unmet') + '</span></div><p class="research-description">' + escapeHtml(project.description || "") + '</p><p class="research-effect"><strong>Next effect:</strong> ' + escapeHtml(String(project.effects[next - 1]) + ' ' + project.effect) + '</p><div class="research-requirements"><div><span>Sphere cost</span><strong>' + number(spheres) + ' Spheres</strong></div><div><span>Gemheart cost</span><strong>' + number(gems) + ' Gemhearts</strong></div><div><span>Territory</span><strong>' + number(ancient) + ' Ancient Plateaus</strong></div><div><span>Monastery</span><strong>Level ' + next + '</strong></div></div><button type="button" class="research-time-cell" title="' + escapeHtml(speedTooltip) + '"><span>Research time</span><strong>' + formatDuration(baseMinutes) + '</strong><small>Adjusted: ' + formatDuration(adjustedMinutes) + ' with +' + number(research.speed?.total || 0) + '% speed</small></button><button data-research-project="' + key + '"' + (canStart ? '' : ' disabled') + '>Research Level ' + next + '</button></article>';
     return '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>' + escapeHtml(project.library) + ' · Level ' + next + '</span></div><span class="status-badge ' + (canStart ? 'ready' : 'blocked') + '">' + (canStart ? 'Ready' : 'Requirements unmet') + '</span></div><p>Next effect: ' + escapeHtml(String(project.effects[next - 1]) + ' ' + project.effect) + '</p><div class="cost-line"><span>' + number(spheres) + ' Spheres · ' + number(gems) + ' Gemhearts</span><strong>' + number(ancient) + ' Ancient · Monastery ' + next + '</strong></div><button data-research-project="' + key + '"' + (canStart ? '' : ' disabled') + '>Research Level ' + next + '</button></article>';
   }).join("");
-  const conclaves = (state.ardentia?.conclaves || []).map((entry) => '<article class="upgrade-card"><div class="card-heading"><div><strong>' + escapeHtml(entry.name) + '</strong><span>Rank ' + entry.rank + ' · ' + number(entry.xp) + ' XP</span></div><span class="status-badge ' + (entry.missionId ? 'blocked' : 'ready') + '">' + (entry.missionId ? 'Away' : 'Ready') + '</span></div><button class="secondary" data-rename-conclave="' + entry._id + '" data-conclave-name="' + escapeHtml(entry.name) + '">Rename</button></article>').join("");
-  container.innerHTML = '<div class="building-grid">' + activeHtml + '</div><h3>Conclaves</h3><div class="building-grid">' + (conclaves || '<div class="empty">Form a Scout Conclave from the Army page.</div>') + '</div><h3>Libraries</h3><div class="building-grid">' + projects + '</div>';
+  const rankThresholds = state.config.ardentiaRules?.rankThresholds || [0, 500, 1000, 1500, 2000];
+  const rankDescriptions = [
+    "Newly sworn ardents learn to turn field observations into disciplined inquiry.",
+    "Practiced observers now recognize useful patterns amid the chaos of a campaign.",
+    "Seasoned scholars coordinate their findings and sharpen the Monastery's work.",
+    "Veteran researchers return from the field with hard-won insights few others can see.",
+    "Master ardents guide the kingdom's scholarship with unmatched judgment and experience.",
+  ];
+  const conclaves = (state.ardentia?.conclaves || []).map((entry) => {
+    const rank = Math.max(1, Number(entry.rank || 1));
+    const xp = Number(entry.xp || 0);
+    const rankFloor = Number(rankThresholds[rank - 1] || 0);
+    const nextThreshold = rankThresholds[rank];
+    const progress = nextThreshold == null ? 100 : Math.max(0, Math.min(100, ((xp - rankFloor) / (Number(nextThreshold) - rankFloor)) * 100));
+    const xpLabel = nextThreshold == null ? number(xp) + " XP · Maximum rank" : number(xp) + " / " + number(nextThreshold) + " XP";
+    return '<article class="upgrade-card conclave-progress-card"><div class="card-heading"><div><strong>' + escapeHtml(entry.name) + '</strong><span>Rank ' + rank + '</span></div><span class="status-badge ' + (entry.missionId ? 'blocked' : 'ready') + '">' + (entry.missionId ? 'Away' : 'Ready') + '</span></div><p class="rank-narrative">' + escapeHtml(rankDescriptions[rank - 1] || rankDescriptions[rankDescriptions.length - 1]) + '</p><div class="conclave-xp-heading"><span>' + escapeHtml(xpLabel) + '</span><strong>+' + rank + '% research speed</strong></div><div class="conclave-xp-track" role="progressbar" aria-label="' + escapeHtml(entry.name) + ' rank progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(progress) + '"><span style="width:' + progress + '%"></span></div><button class="secondary" data-rename-conclave="' + entry._id + '" data-conclave-name="' + escapeHtml(entry.name) + '">Rename</button></article>';
+  }).join("");
+  const cohortBonus = Number(research.speed?.conclave || 0);
+  container.innerHTML = '<div class="building-grid">' + activeHtml + '</div><div class="cohort-heading"><div><h3>Ardent Cohort</h3><p>Field experience strengthens every Conclave and accelerates the kingdom\'s research.</p></div><span class="status-badge ready">+' + number(cohortBonus) + '% combined speed</span></div><div class="building-grid">' + (conclaves || '<div class="empty">Form a Scout Conclave from the Army page.</div>') + '</div><h3>Libraries</h3><div class="building-grid">' + projects + '</div>';
   container.querySelectorAll("[data-research-project]").forEach((button) => button.addEventListener("click", () => action(() => client.mutation(refs.startResearch, { project: button.dataset.researchProject }))));
   container.querySelectorAll("[data-rename-conclave]").forEach((button) => button.addEventListener("click", () => {
     const name = window.prompt("Name this Scout Conclave", button.dataset.conclaveName);
@@ -784,7 +801,8 @@ function renderSelects() {
   }
   if ($("player-plateau-target")) {
     $("player-plateau-target").innerHTML = state.plateaus.rivals.map((plateau) => {
-      return '<option value="' + plateau.id + '">' + escapeHtml(plateau.ownerName + " - " + plateau.name) + '</option>';
+      const label = plateau.ownerName + " - " + plateau.name;
+      return '<option value="' + plateau.id + '"' + (plateau.gemheartProgress ? ' data-gemheart-at="' + plateau.gemheartProgress.nextGemheartAt + '" data-countdown-label="' + escapeHtml(label) + '"' : '') + '>' + escapeHtml(label + (plateau.gemheartProgress ? " · Next Gemheart: " + formatCountdownAt(plateau.gemheartProgress.nextGemheartAt) : "")) + '</option>';
     }).join("");
     if (lastSelections.playerPlateau && state.plateaus.rivals.some((plateau) => plateau.id === lastSelections.playerPlateau)) $("player-plateau-target").value = lastSelections.playerPlateau;
   }
@@ -884,6 +902,14 @@ function previewMarkup(units, type, planner) {
       ? Boolean($("player-conclave-select")?.value)
       : false;
   const intelOutlook = type === "playerSiege" ? playerSiegeIntelOutlook(conclaveAttached) : null;
+  if (type === "plateau") {
+    return '<div class="outlook-heading"><span>Army outlook</span><strong>' + escapeHtml(target) + '</strong></div><div class="outlook-grid">' +
+      outlookCell("Power", formatStat(stats.power), powerBreakdown(units, stats)) +
+      outlookCell("Survival", signedStat(stats.survivability), survivabilityBreakdown(units, stats)) +
+      outlookCell("Plunder", number(stats.plunder), plunderBreakdown(units, stats)) +
+      outlookCell("Speed", signedStat(stats.speed), speedBreakdown(units, stats, travel)) +
+      '</div>';
+  }
   return '<div class="outlook-heading"><span>Mission outlook</span><strong>' + escapeHtml(target) + '</strong></div><div class="outlook-grid">' +
     outlookCell("Power", formatStat(stats.power), powerBreakdown(units, stats)) +
     outlookCell(rewardLabel, type === "plateau" ? "Event pool" : number(stats.plunder) + " Spheres", plunderBreakdown(units, stats)) +
@@ -1021,7 +1047,7 @@ function renderPlateauBonusSummary() {
   if (!container) return;
   const counts = Object.fromEntries(["sphere", "bridged", "ancient", "gemheart"].map((type) => [type, state.plateaus.mine.filter((plateau) => plateau.type === type || (type === "ancient" && plateau.type === "ancient_ruins")).length]));
   const gemheart = state.plateaus.mine.find((plateau) => plateau.gemheartProgress);
-  container.innerHTML = pulseItem("Sphere income", modifierLabel(state.me.plateauBonuses.sphereIncomeBonusPercent, "+")) + pulseItem("Travel time", modifierLabel(state.me.plateauBonuses.bridgedTravelReductionPercent, "−")) + pulseItem("Provision capacity", modifierLabel(state.me.provisions.largeBonusPercent, "+")) + pulseItem("Ancient sites", number(counts.ancient)) + (gemheart ? pulseItem("Next Gemheart", number(gemheart.gemheartProgress.progressPercent) + "%") : pulseItem("Gemheart sites", number(counts.gemheart)));
+  container.innerHTML = pulseItem("Sphere income", modifierLabel(state.me.plateauBonuses.sphereIncomeBonusPercent, "+")) + pulseItem("Travel time", modifierLabel(state.me.plateauBonuses.bridgedTravelReductionPercent, "−")) + pulseItem("Provision capacity", modifierLabel(state.me.provisions.largeBonusPercent, "+")) + pulseItem("Ancient sites", number(counts.ancient)) + (gemheart ? countdownPulseItem("Next Gemheart", gemheart.gemheartProgress.nextGemheartAt) : pulseItem("Gemheart sites", number(counts.gemheart)));
 }
 
 function renderGroupedHoldings() {
@@ -1048,7 +1074,7 @@ function plateauCard(plateau) {
   const underSiege = Boolean(plateau.activeSiegeId);
   const status = underSiege ? '<small class="warning-text">Under siege</small>' : "";
   const timer = plateau.gemheartProgress
-    ? '<small>Gemheart: ' + number(plateau.gemheartProgress.progressPercent) + '% toward next</small>'
+    ? '<small data-gemheart-at="' + plateau.gemheartProgress.nextGemheartAt + '" data-countdown-prefix="Next Gemheart: ">Next Gemheart: ' + formatCountdownAt(plateau.gemheartProgress.nextGemheartAt) + '</small>'
     : "";
   const origin = plateau.origin === "home" ? '<small>Home Plateau</small>' : "";
   return '<article class="plateau-holding-card ' + (underSiege ? "warning" : "") + '" title="' + plateauTooltip(plateau) + '"><strong>' + escapeHtml(plateau.name) + '</strong><span>' + escapeHtml(plateau.typeName) + '</span>' + origin + '<small>' + escapeHtml(attributes) + '</small><small>' + escapeHtml(plateauBonusLabel(plateau)) + '</small>' + timer + status + '</article>';
@@ -1322,6 +1348,10 @@ function pulseItem(label, value, title = "", expandable = false) {
   return '<article class="pulse-item' + (expandable ? ' expandable' : '') + '"' + (title ? ' title="' + escapeHtml(title) + '" tabindex="0"' : '') + '><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(value) + '</strong></article>';
 }
 
+function countdownPulseItem(label, nextAt) {
+  return '<article class="pulse-item"><span>' + escapeHtml(label) + '</span><strong data-gemheart-at="' + Number(nextAt) + '">' + formatCountdownAt(nextAt) + '</strong></article>';
+}
+
 function pulseBreakdownItem(label, lines) {
   return '<article class="pulse-item"><span>' + escapeHtml(label) + '</span><div class="pulse-lines">' + lines.map(([name, value]) => '<div><small>' + escapeHtml(name) + '</small><strong>' + escapeHtml(value) + '</strong></div>').join("") + '</div></article>';
 }
@@ -1381,7 +1411,7 @@ function plateauTooltip(plateau) {
   if (plateau.highground) effects.push("Highground: +20% defense when this plateau is attacked.");
   if (plateau.large) effects.push("Large: +10% Soulcast Bunker Provisions capacity, stacking to +30%.");
   if (plateau.gemheartProgress) {
-    effects.push("Gemheart progress: " + number(plateau.gemheartProgress.progressPercent) + "%.");
+    effects.push("Next Gemheart: " + formatCountdownAt(plateau.gemheartProgress.nextGemheartAt) + ".");
   }
   if (!effects.length) effects.push("No special effect yet.");
   return escapeHtml(effects.join("\n"));
@@ -1965,6 +1995,11 @@ $("player-siege-form").addEventListener("submit", (event) => {
     await client.mutation(refs.launchPlayerSiege, { plateauId: $("player-plateau-target").value, units: validatedRaidUnits("player-siege-units"), ...($("player-conclave-select")?.value ? { conclaveId: $("player-conclave-select").value } : {}) });
   });
 });
+["sphere-form", "neutral-siege-form", "player-siege-form"].forEach((formId) => {
+  $(formId)?.addEventListener("keydown", (event) => {
+    if (isMobileLayout() && event.key === "Enter" && !event.target.closest("button")) event.preventDefault();
+  });
+});
 $("plateau-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!state.plateauRun) return alert("No Plateau Run is open.");
@@ -2050,6 +2085,27 @@ if ($("reset-world-keep-accounts")) {
     }
   });
 }
+
+function formatCountdownAt(timestamp) {
+  const remaining = Math.max(0, Number(timestamp || 0) - Date.now());
+  if (remaining <= 0) return "Ready";
+  const totalMinutes = Math.max(1, Math.ceil(remaining / 60000));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  return [days ? days + "d" : "", hours ? hours + "h" : "", minutes ? minutes + "m" : ""].filter(Boolean).join(" ");
+}
+
+function updateGemheartCountdowns() {
+  document.querySelectorAll("[data-gemheart-at]").forEach((element) => {
+    const countdown = formatCountdownAt(element.dataset.gemheartAt);
+    if (element.tagName === "OPTION") {
+      element.textContent = (element.dataset.countdownLabel || "Gemheart Plateau") + " · Next Gemheart: " + countdown;
+    } else {
+      element.textContent = (element.dataset.countdownPrefix || "") + countdown;
+    }
+  });
+}
 document.querySelectorAll(".nav-button").forEach((button) => {
   button.addEventListener("click", () => {
     if (button.dataset.adminOnly === "true" && !state?.isAdmin) return;
@@ -2111,3 +2167,4 @@ else signedOut();
 setInterval(() => {
   if (authToken) load();
 }, DASHBOARD_REFRESH_MS);
+setInterval(updateGemheartCountdowns, 1000);
