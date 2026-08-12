@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
@@ -14,7 +14,9 @@ import { assignConclave, missionXpBudget, releaseConclave } from "./ardentiaHelp
 import { completedResearch } from "./researchHelpers";
 import { createNotification } from "./notificationHelpers";
 import type { Id } from "./_generated/dataModel";
+import { subtractAvailableUnits, unitCountsValidator, validateMissionUnits } from "./armyRules";
 import {
+  addUnits,
   applySurvivalLosses,
   baseCasualtyRate,
   casualtySummary,
@@ -25,22 +27,11 @@ import {
   rewardLabel,
   totalUnits,
   travelMsForUnits,
-  UNIT_RULES,
   unitPlunder,
   unitSpeed,
   WORLD_KEY,
   type UnitCounts,
-  type UnitKey,
 } from "./rules";
-
-const unitCounts = v.object({
-  bridgeman: v.number(),
-  spearman: v.number(),
-  chull: v.optional(v.number()),
-  scout: v.number(),
-  heavy: v.number(),
-  shardbearer: v.number(),
-});
 
 function cleanUnits(units: UnitCounts) {
   return normalizeUnits(units);
@@ -54,50 +45,12 @@ function seededInt(seed: string, min: number, max: number) {
   return min + (hash % (max - min + 1));
 }
 
-function subtractUnits(available: UnitCounts, requested: UnitCounts) {
-  const normalizedAvailable = normalizeUnits(available);
-  const normalizedRequested = normalizeUnits(requested);
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    if (normalizedRequested[key] > normalizedAvailable[key]) {
-      throw new Error(`Not enough ${UNIT_RULES[key].name}s available.`);
-    }
-  }
-
-  const remaining = { ...normalizedAvailable };
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    remaining[key] -= normalizedRequested[key];
-  }
-  return remaining;
-}
-
-function addUnits(current: UnitCounts, returned: UnitCounts) {
-  const next = normalizeUnits(current);
-  const normalizedReturned = normalizeUnits(returned);
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    next[key] += normalizedReturned[key];
-  }
-  return next;
-}
-
-function validateUnlockedUnits(buildings: { barracks: number }, units: UnitCounts) {
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    if (units[key] > 0 && !UNIT_RULES[key].active) {
-      throw new Error(`${UNIT_RULES[key].name} is inactive for new actions.`);
-    }
-    if (units[key] > 0 && buildings.barracks < UNIT_RULES[key].barracksLevel) {
-      throw new Error(
-        `${UNIT_RULES[key].name} requires Barracks level ${UNIT_RULES[key].barracksLevel}.`,
-      );
-    }
-  }
-}
-
 async function createRaid(
-  ctx: any,
+  ctx: MutationCtx,
   args: {
-    attackerId: any;
+    attackerId: Id<"players">;
     targetType: "open_acres" | "player" | "parshendi_spheres";
-    targetPlayerId?: any;
+    targetPlayerId?: Id<"players">;
     units: UnitCounts;
     acres?: number;
     conclaveId?: Id<"ardentConclaves">;
@@ -112,7 +65,7 @@ async function createRaid(
   if (totalUnits(units) < 1) {
     throw new Error("Send at least one unit.");
   }
-  validateUnlockedUnits(attacker.buildings, units);
+  validateMissionUnits(attacker.buildings, units);
 
   if (args.targetType === "player") {
     if (!args.targetPlayerId) throw new Error("Choose a target player.");
@@ -123,7 +76,7 @@ async function createRaid(
 
   const world = await ctx.db
     .query("gameState")
-    .withIndex("by_key", (q: any) => q.eq("key", WORLD_KEY))
+    .withIndex("by_key", (q) => q.eq("key", WORLD_KEY))
     .unique();
   if (!world) {
     throw new Error("Create the world before launching raids.");
@@ -136,7 +89,7 @@ async function createRaid(
   const arriveAt = now + travelMsForUnits(units, plateauCounts, completed);
   const power = effectivePower(units, completed);
   const speed = unitSpeed(units);
-  const remainingUnits = subtractUnits(attacker.units, units);
+  const remainingUnits = subtractAvailableUnits(attacker.units, units);
   const acres =
     args.targetType === "parshendi_spheres"
       ? undefined
@@ -222,7 +175,7 @@ async function createRaid(
 export const launchOpenAcreRaid = mutation({
   args: {
     acres: v.number(),
-    units: unitCounts,
+    units: unitCountsValidator,
     conclaveId: v.optional(v.id("ardentConclaves")),
   },
   handler: async (ctx, args) => {
@@ -239,7 +192,7 @@ export const launchOpenAcreRaid = mutation({
 
 export const launchSphereRaid = mutation({
   args: {
-    units: unitCounts,
+    units: unitCountsValidator,
     conclaveId: v.optional(v.id("ardentConclaves")),
   },
   handler: async (ctx, args) => {
@@ -257,7 +210,7 @@ export const launchPlayerRaid = mutation({
   args: {
     targetPlayerId: v.id("players"),
     acres: v.number(),
-    units: unitCounts,
+    units: unitCountsValidator,
     conclaveId: v.optional(v.id("ardentConclaves")),
   },
   handler: async (ctx, args) => {

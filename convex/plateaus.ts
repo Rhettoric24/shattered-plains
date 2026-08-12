@@ -21,6 +21,7 @@ import {
 } from "./ardentiaHelpers";
 import { completedResearch, reconcileResearch } from "./researchHelpers";
 import { createNotification } from "./notificationHelpers";
+import { subtractAvailableUnits, unitCountsValidator, validateMissionUnits } from "./armyRules";
 import {
   effectiveIntelLevel,
   presentIntelNumber,
@@ -37,6 +38,7 @@ import {
   plateauTypes,
 } from "./plateauHelpers";
 import {
+  addUnits,
   applySurvivalLosses,
   baseCasualtyRate,
   casualtySummary,
@@ -51,66 +53,17 @@ import {
   STARTING_RULES,
   TIME_RULES,
   totalUnits,
-  UNIT_RULES,
   unitSpeed,
   travelMsForUnits,
   type UnitCounts,
-  type UnitKey,
 } from "./rules";
-
-const unitCounts = v.object({
-  bridgeman: v.number(),
-  spearman: v.number(),
-  chull: v.optional(v.number()),
-  scout: v.number(),
-  heavy: v.number(),
-  shardbearer: v.number(),
-});
 
 function cleanUnits(units: UnitCounts) {
   return normalizeUnits(units);
 }
 
-function subtractUnits(available: UnitCounts, requested: UnitCounts) {
-  const normalizedAvailable = normalizeUnits(available);
-  const normalizedRequested = normalizeUnits(requested);
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    if (normalizedRequested[key] > normalizedAvailable[key]) {
-      throw new Error(`Not enough ${UNIT_RULES[key].name}s available.`);
-    }
-  }
-
-  const remaining = { ...normalizedAvailable };
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    remaining[key] -= normalizedRequested[key];
-  }
-  return remaining;
-}
-
-function addUnits(current: UnitCounts, returned: UnitCounts) {
-  const next = normalizeUnits(current);
-  const normalizedReturned = normalizeUnits(returned);
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    next[key] += normalizedReturned[key];
-  }
-  return next;
-}
-
 function applyLossRate(units: UnitCounts, lossRate: number, seed: string, completed?: Record<string, number>) {
   return applySurvivalLosses(normalizeUnits(units), lossRate, seed, completed);
-}
-
-function validateUnlockedUnits(buildings: { barracks: number }, units: UnitCounts) {
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    if (units[key] > 0 && !UNIT_RULES[key].active) {
-      throw new Error(`${UNIT_RULES[key].name} is inactive for new actions.`);
-    }
-    if (units[key] > 0 && buildings.barracks < UNIT_RULES[key].barracksLevel) {
-      throw new Error(
-        `${UNIT_RULES[key].name} requires Barracks level ${UNIT_RULES[key].barracksLevel}.`,
-      );
-    }
-  }
 }
 
 async function validateConclaveAttachment(
@@ -405,7 +358,7 @@ export const listPlateaus = query({
 export const launchNeutralSiege = mutation({
   args: {
     plateauId: v.id("plateaus"),
-    units: unitCounts,
+    units: unitCountsValidator,
     ardentiaConclave: v.optional(v.boolean()),
     conclaveId: v.optional(v.id("ardentConclaves")),
   },
@@ -421,7 +374,7 @@ export const launchNeutralSiege = mutation({
 
     const units = cleanUnits(args.units);
     if (totalUnits(units) < 1) throw new Error("Send at least one unit.");
-    validateUnlockedUnits(attacker.buildings, units);
+    validateMissionUnits(attacker.buildings, units);
     const ardentiaConclave = args.conclaveId ? true : await validateConclaveAttachment(
       ctx,
       attacker,
@@ -432,7 +385,7 @@ export const launchNeutralSiege = mutation({
     const plateauCounts = await plateauCountsForPlayer(ctx, attacker._id);
     const completed = await completedResearch(ctx, attacker._id);
     const resolveAt = now + travelMsForUnits(units, plateauCounts, completed);
-    const remainingUnits = subtractUnits(attacker.units, units);
+    const remainingUnits = subtractAvailableUnits(attacker.units, units);
     const siegeId = await ctx.db.insert("sieges", {
       plateauId: plateau._id,
       attackerId: attacker._id,
@@ -475,7 +428,7 @@ export const launchNeutralSiege = mutation({
 export const launchPlayerSiege = mutation({
   args: {
     plateauId: v.id("plateaus"),
-    units: unitCounts,
+    units: unitCountsValidator,
     ardentiaConclave: v.optional(v.boolean()),
     conclaveId: v.optional(v.id("ardentConclaves")),
   },
@@ -497,7 +450,7 @@ export const launchPlayerSiege = mutation({
 
     const units = cleanUnits(args.units);
     if (totalUnits(units) < 1) throw new Error("Send at least one unit.");
-    validateUnlockedUnits(attacker.buildings, units);
+    validateMissionUnits(attacker.buildings, units);
     const ardentiaConclave = args.conclaveId ? true : await validateConclaveAttachment(
       ctx,
       attacker,
@@ -507,7 +460,7 @@ export const launchPlayerSiege = mutation({
     const now = Date.now();
     const completed = await completedResearch(ctx, attacker._id);
     const resolveAt = now + siegeTravelMs();
-    const remainingUnits = subtractUnits(attacker.units, units);
+    const remainingUnits = subtractAvailableUnits(attacker.units, units);
     const siegeId = await ctx.db.insert("sieges", {
       plateauId: plateau._id,
       attackerId: attacker._id,
@@ -580,7 +533,7 @@ export const launchPlayerSiege = mutation({
 export const commitSiegeDefenders = mutation({
   args: {
     siegeId: v.id("sieges"),
-    units: unitCounts,
+    units: unitCountsValidator,
   },
   handler: async (ctx, args) => {
     const defender = await requireCurrentPlayer(ctx);
@@ -600,8 +553,8 @@ export const commitSiegeDefenders = mutation({
 
     const units = cleanUnits(args.units);
     if (totalUnits(units) < 1) throw new Error("Commit at least one unit.");
-    validateUnlockedUnits(defender.buildings, units);
-    const remainingUnits = subtractUnits(defender.units, units);
+    validateMissionUnits(defender.buildings, units);
+    const remainingUnits = subtractAvailableUnits(defender.units, units);
     const now = Date.now();
 
     await ctx.db.patch(defender._id, {

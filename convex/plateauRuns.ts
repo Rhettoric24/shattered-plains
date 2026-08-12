@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
@@ -8,6 +8,7 @@ import { plateauCountsForPlayer } from "./plateauHelpers";
 import { assignConclave, missionXpBudget, releaseConclave } from "./ardentiaHelpers";
 import { completedResearch } from "./researchHelpers";
 import { createNotification } from "./notificationHelpers";
+import { subtractAvailableUnits, unitCountsValidator, validateMissionUnits } from "./armyRules";
 import {
   addUnits,
   applySurvivalLosses,
@@ -20,23 +21,12 @@ import {
   PLATEAU_RUN_RULES,
   PLATEAU_RUN_SCHEDULE,
   totalUnits,
-  UNIT_RULES,
   unitPlunder,
   rewardLabel,
   unitSpeed,
   travelMsForUnits,
   type UnitCounts,
-  type UnitKey,
 } from "./rules";
-
-const unitCounts = v.object({
-  bridgeman: v.number(),
-  spearman: v.number(),
-  chull: v.optional(v.number()),
-  scout: v.number(),
-  heavy: v.number(),
-  shardbearer: v.number(),
-});
 
 function seededInt(seed: string, min: number, max: number) {
   let hash = 0;
@@ -50,61 +40,23 @@ function cleanUnits(units: UnitCounts) {
   return normalizeUnits(units);
 }
 
-function subtractUnits(available: UnitCounts, requested: UnitCounts) {
-  const normalizedAvailable = normalizeUnits(available);
-  const normalizedRequested = normalizeUnits(requested);
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    if (normalizedRequested[key] > normalizedAvailable[key]) {
-      throw new Error(`Not enough ${UNIT_RULES[key].name}s available.`);
-    }
-  }
-
-  const remaining = { ...normalizedAvailable };
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    remaining[key] -= normalizedRequested[key];
-  }
-  return remaining;
-}
-
-function addUnits(current: UnitCounts, returned: UnitCounts) {
-  const next = normalizeUnits(current);
-  const normalizedReturned = normalizeUnits(returned);
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    next[key] += normalizedReturned[key];
-  }
-  return next;
-}
-
-function validateUnlockedUnits(buildings: { barracks: number }, units: UnitCounts) {
-  for (const key of Object.keys(UNIT_RULES) as UnitKey[]) {
-    if (units[key] > 0 && !UNIT_RULES[key].active) {
-      throw new Error(`${UNIT_RULES[key].name} is inactive for new actions.`);
-    }
-    if (units[key] > 0 && buildings.barracks < UNIT_RULES[key].barracksLevel) {
-      throw new Error(
-        `${UNIT_RULES[key].name} requires Barracks level ${UNIT_RULES[key].barracksLevel}.`,
-      );
-    }
-  }
-}
-
-async function activePlayerCount(ctx: any, now: number) {
+async function activePlayerCount(ctx: MutationCtx, now: number) {
   const cutoff = now - PLATEAU_RUN_RULES.activePlayerWindowMs;
   const activePlayers = await ctx.db
     .query("players")
-    .withIndex("by_last_active", (q: any) => q.gte("lastActiveAt", cutoff))
+    .withIndex("by_last_active", (q) => q.gte("lastActiveAt", cutoff))
     .collect();
   return Math.max(1, activePlayers.length);
 }
 
 async function createPlateauRun(
-  ctx: any,
+  ctx: MutationCtx,
   now: number,
   options: { scheduleKey?: string; source: "admin" | "schedule" },
 ) {
   const existing = await ctx.db
     .query("plateauRuns")
-    .withIndex("by_status", (q: any) => q.eq("status", "open"))
+    .withIndex("by_status", (q) => q.eq("status", "open"))
     .first();
   if (existing) {
     return { created: false, plateauRunId: existing._id };
@@ -113,7 +65,7 @@ async function createPlateauRun(
   if (options.scheduleKey) {
     const alreadyStarted = await ctx.db
       .query("plateauRuns")
-      .withIndex("by_schedule_key", (q: any) =>
+      .withIndex("by_schedule_key", (q) =>
         q.eq("scheduleKey", options.scheduleKey),
       )
       .unique();
@@ -272,7 +224,7 @@ export const maybeStartScheduledPlateauRun = internalMutation({
 export const joinPlateauRun = mutation({
   args: {
     plateauRunId: v.id("plateauRuns"),
-    units: unitCounts,
+    units: unitCountsValidator,
     conclaveId: v.optional(v.id("ardentConclaves")),
   },
   handler: async (ctx, args) => {
@@ -297,12 +249,12 @@ export const joinPlateauRun = mutation({
     if (totalUnits(units) < 1) {
       throw new Error("Commit at least one unit.");
     }
-    validateUnlockedUnits(player.buildings, units);
+    validateMissionUnits(player.buildings, units);
 
     const availableUnits = existingCommitment
       ? addUnits(player.units, existingCommitment.units)
       : player.units;
-    const remainingUnits = subtractUnits(availableUnits, units);
+    const remainingUnits = subtractAvailableUnits(availableUnits, units);
     const completed = await completedResearch(ctx, player._id);
     const power = effectivePower(units, completed);
     const plateauCounts = await plateauCountsForPlayer(ctx, player._id);

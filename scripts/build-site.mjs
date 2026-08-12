@@ -86,7 +86,14 @@ for (const stylesheet of [
   await fs.copyFile(path.join(root, "outputs", stylesheet), path.join(dist, stylesheet));
 }
 
-for (const asset of ["manifest.webmanifest", "service-worker.js", "app-icon.svg"]) {
+for (const asset of [
+  "manifest.webmanifest",
+  "service-worker.js",
+  "app-icon.svg",
+  "app-icon-180.png",
+  "app-icon-192.png",
+  "app-icon-512.png",
+]) {
   await fs.copyFile(path.join(root, "outputs", asset), path.join(dist, asset));
 }
 

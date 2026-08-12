@@ -12,6 +12,7 @@ import type * as admin from "../admin.js";
 import type * as ardentia from "../ardentia.js";
 import type * as ardentiaHelpers from "../ardentiaHelpers.js";
 import type * as army from "../army.js";
+import type * as armyRules from "../armyRules.js";
 import type * as auth from "../auth.js";
 import type * as buildings from "../buildings.js";
 import type * as config from "../config.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   ardentia: typeof ardentia;
   ardentiaHelpers: typeof ardentiaHelpers;
   army: typeof army;
+  armyRules: typeof armyRules;
   auth: typeof auth;
   buildings: typeof buildings;
   config: typeof config;

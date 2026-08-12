@@ -1,4 +1,4 @@
-const ICON = "app-icon.svg";
+const ICON = "app-icon-192.png";
 
 self.addEventListener("push", (event) => {
   const data = event.data ? event.data.json() : {};
