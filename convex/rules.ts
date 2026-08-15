@@ -35,6 +35,10 @@ export const RESEARCH_RULES = {
   speedCapPercent: 30,
   monasterySpeedPerLevelPercent: 1,
   ancientPlateausPerSpeedPercent: 2,
+  // Temporary compatibility aliases for clients cached before the library/doctrine pass.
+  // New clients use each project's authoritative costs and durations below.
+  sphereCosts: [1000, 3000, 7500],
+  durationsMs: [60 * 60 * 1000, 4 * 60 * 60 * 1000, 12 * 60 * 60 * 1000],
   libraries: {
     economic: { name: "Economic Studies", description: "Ardents pursue the subtle crafts of markets, trade, Soulcasting, and warcamp economics." },
     military: { name: "Military Studies", description: "Ardents refine the movement, protection, and supply of armies crossing the Plains." },
