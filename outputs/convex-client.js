@@ -634,11 +634,14 @@ function renderUnits() {
     const provisionCost = unit.provisionsCost || 0;
     const draft = Math.max(0, Math.floor(Number(lastSelections.recruitment[key]) || 0));
     const contribution = (value) => Number(value || 0) > 0 ? "+" + formatStat(value) : formatStat(value);
+    const researchBonuses = unitResearchBonuses(key);
+    const statValue = (base, bonus) => contribution(base) + (bonus ? '<small class="research-stat-bonus">' + signedStat(bonus) + ' Research · ' + formatStat(Number(base || 0) + bonus) + ' total</small>' : '');
+    const statTitle = (stat, base, bonus) => statTooltip(stat) + unitResearchMath(key, stat, base, bonus);
     const shardbearerSupportPower = Number(state.config.armyRules?.shardbearerSupportPowerPerUnit || 100);
     const breakthrough = key === "shardbearer"
       ? '<p class="rule-callout">Breakthrough: doubles up to ' + number(shardbearerSupportPower) + ' supporting Power per Shardbearer.</p>'
       : '';
-    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">Available: ' + number(available) + ' · Owned: ' + number(count) + '</span></div><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div><div class="unit-stat-grid"><button type="button" class="stat-cell" title="' + statTooltip("power") + '"><span>Power</span><strong>' + contribution(unit.power) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("speed") + '"><span>Speed</span><strong>' + contribution(unit.speed) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("plunder") + '"><span>Plunder</span><strong>' + contribution(unit.plunder) + '</strong></button><button type="button" class="stat-cell" title="' + statTooltip("survivability") + '"><span>Survivability</span><strong>' + contribution(unit.survivability) + '</strong></button></div>' + breakthrough + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div><div class="quantity-builder"><div class="quick-add"><button type="button" data-recruit-add="1">+1</button><button type="button" data-recruit-add="10">+10</button><button type="button" data-recruit-add="50">+50</button><button type="button" data-recruit-add="100">+100</button></div><label>Quantity<input data-recruit-quantity type="number" min="0" value="' + draft + '"></label><div class="quantity-corrections"><button type="button" class="secondary" data-recruit-minus>−1</button><button type="button" class="secondary" data-recruit-clear>Clear</button></div></div><div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button></article>';
+    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">Available: ' + number(available) + ' · Owned: ' + number(count) + '</span></div><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div><div class="unit-stat-grid"><button type="button" class="stat-cell" title="' + escapeHtml(statTitle("power", unit.power, researchBonuses.power)) + '"><span>Power</span><strong>' + statValue(unit.power, researchBonuses.power) + '</strong></button><button type="button" class="stat-cell" title="' + escapeHtml(statTitle("speed", unit.speed, 0)) + '"><span>Speed</span><strong>' + statValue(unit.speed, 0) + '</strong></button><button type="button" class="stat-cell" title="' + escapeHtml(statTitle("plunder", unit.plunder, researchBonuses.plunder)) + '"><span>Plunder</span><strong>' + statValue(unit.plunder, researchBonuses.plunder) + '</strong></button><button type="button" class="stat-cell" title="' + escapeHtml(statTitle("survivability", unit.survivability, researchBonuses.survivability)) + '"><span>Survivability</span><strong>' + statValue(unit.survivability, researchBonuses.survivability) + '</strong></button></div>' + breakthrough + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div><div class="quantity-builder"><div class="quick-add"><button type="button" data-recruit-add="1">+1</button><button type="button" data-recruit-add="10">+10</button><button type="button" data-recruit-add="50">+50</button><button type="button" data-recruit-add="100">+100</button></div><label>Quantity<input data-recruit-quantity type="number" min="0" value="' + draft + '"></label><div class="quantity-corrections"><button type="button" class="secondary" data-recruit-minus>−1</button><button type="button" class="secondary" data-recruit-clear>Clear</button></div></div><div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button></article>';
   }).join("");
   const monasteryLevel = Number(state.me.buildings.ardentMonastery || 0);
   const ardentia = state.ardentia;
@@ -1013,24 +1016,43 @@ function outlookCell(label, value, details) {
 }
 
 function powerBreakdown(units, stats) {
-  const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + formatStat(unit.power) + " " + unit.name);
-  if (Number(units.shardbearer || 0) > 0) lines.push("Bounded Breakthrough bonus: +" + formatStat(stats.breakthroughPower));
+  const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + formatStat(unit.power) + " " + unit.name + " = " + formatStat(Number(units[key]) * Number(unit.power)));
+  if (Number(units.shardbearer || 0) > 0) lines.push("Shardbearer Breakthrough: min(" + formatStat(stats.supportingPower) + " supporting Power, " + number(units.shardbearer) + " × " + number(state.config.armyRules?.shardbearerSupportPowerPerUnit || 100) + ") = +" + formatStat(stats.breakthroughPower));
+  if (stats.soulcastArmorPowerBonus) lines.push("Soulcast Armor: " + number(units.spearman) + " Spearmen × " + signedStat(stats.soulcastArmorPowerPerSpearman) + " = " + signedStat(stats.soulcastArmorPowerBonus));
+  if (stats.painrialPowerBonus) lines.push("Painrials: " + number(units.spearman) + " Spearmen × " + signedStat(stats.painrialPowerPerSpearman) + " = " + signedStat(stats.painrialPowerBonus));
+  if (stats.conclavePowerBonus) lines.push("Deployed Conclave: +10 + 50% × max(0, min(100, " + formatStat(stats.preConclavePower) + " pre-Conclave Power)) = " + signedStat(stats.conclavePowerBonus));
   lines.push("Final Power: " + formatStat(stats.power));
   return lines.join("\n");
 }
 
 function plunderBreakdown(units, stats) {
-  const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + formatStat(unit.plunder || 0) + " from " + unit.name);
+  const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + formatStat(unit.plunder || 0) + " " + unit.name + " = " + formatStat(Number(units[key]) * Number(unit.plunder || 0)));
+  if (stats.researchPlunderBonus) lines.push("Pack Harnesses: " + number(units.chull) + " Chulls × " + signedStat(stats.packHarnessPlunderPerChull) + " = " + signedStat(stats.researchPlunderBonus));
+  if (stats.conclavePlunderBonus) lines.push("Deployed Conclave support: " + signedStat(stats.conclavePlunderBonus));
   lines.push("Maximum recovery: " + number(stats.plunder) + " Spheres");
   return lines.join("\n");
 }
 
 function speedBreakdown(units, stats, travel) {
   const constant = configValue("statDiminishingConstant", 100);
+  const baseMinutes = configValue("raidTravelGameDays", 1) * configValue("realMsPerGameDay", 3600000) / 60000;
+  const speedMultiplier = stats.speed >= 0 ? constant / (constant + stats.speed) : 1 + Math.abs(stats.speed) / constant;
+  const bridgedMultiplier = 1 - bridgedTravelReductionPercent() / 100;
+  const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + signedStat(unit.speed) + " " + unit.name + " = " + signedStat(Number(units[key]) * Number(unit.speed)));
+  if (stats.bridgeSpeedBonus) lines.push("Bridge Engineering: " + signedStat(stats.bridgeSpeedBonus));
+  if (stats.packHarnessSpeedBonus) lines.push("Pack Harnesses: " + number(units.chull) + " Chulls × " + signedStat(stats.packHarnessSpeedPerChull) + " = " + signedStat(stats.packHarnessSpeedBonus));
+  if (stats.soulcastArmorSpeedBonus) lines.push("Soulcast Armor: " + number(units.spearman) + " Spearmen × " + signedStat(stats.soulcastArmorSpeedPerSpearman) + " = " + signedStat(stats.soulcastArmorSpeedBonus));
+  if (stats.conclaveSpeedBonus) lines.push("Deployed Conclave: " + signedStat(stats.conclaveSpeedBonus));
+  lines.push("Final army Speed: " + signedStat(stats.speed));
   const formula = stats.speed >= 0
     ? "Base Time × " + constant + " ÷ (" + constant + " + " + formatStat(stats.speed) + ")"
     : "Base Time × (1 + " + formatStat(Math.abs(stats.speed)) + " ÷ " + constant + ")";
-  return "Speed contributions sum to " + signedStat(stats.speed) + ".\nFormula: " + formula + "\nBridged Plateau reduction: " + number(bridgedTravelReductionPercent()) + "%\nFinal duration: " + formatDuration(travel);
+  lines.push("Base travel time: " + formatDuration(baseMinutes));
+  lines.push("Speed formula: " + formula + " = " + formatStat(speedMultiplier) + "× base time");
+  lines.push("After Speed: " + formatDuration(Math.ceil(baseMinutes * speedMultiplier)));
+  lines.push("Bridged Plateaus: 1 − " + number(bridgedTravelReductionPercent()) + "% = " + formatStat(bridgedMultiplier) + "×");
+  lines.push("Final duration: " + formatDuration(travel));
+  return lines.join("\n");
 }
 
 function playerSiegeIntelOutlook(conclaveAttached) {
@@ -1051,7 +1073,9 @@ function playerSiegeIntelOutlook(conclaveAttached) {
 
 function survivabilityBreakdown(units, stats) {
   const constant = configValue("statDiminishingConstant", 100);
-  const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + signedStat(unit.survivability) + " from " + unit.name);
+  const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + signedStat(unit.survivability) + " " + unit.name + " = " + signedStat(Number(units[key]) * Number(unit.survivability)));
+  if (stats.researchSurvivabilityBonus) lines.push("Painrials: " + number(units.spearman) + " Spearmen × " + signedStat(stats.painrialSurvivalPerSpearman) + " = " + signedStat(stats.researchSurvivabilityBonus));
+  if (stats.conclaveSurvivabilityBonus) lines.push("Deployed Conclave: 50% × max(0, min(100, " + signedStat(stats.preConclaveSurvivability) + " pre-Conclave Survival)) = " + signedStat(stats.conclaveSurvivabilityBonus));
   lines.push("Army Survivability: " + signedStat(stats.survivability));
   lines.push(stats.survivability >= 0
     ? "Final casualties = Base casualties × " + constant + " ÷ (" + constant + " + Survivability)"
@@ -1949,20 +1973,80 @@ function raidStats(units, missionType = "") {
   );
   stats.power += stats.breakthroughPower;
   const completed = state.me.completedResearch || {};
-  const rules = state.config.researchRules?.projects || {};
-  const value = (key, field = "effects") => { const level = Number(completed[key] || 0); return level > 0 ? Number(rules[key]?.[field]?.[level - 1] || 0) : 0; };
-  stats.power += Number(units.spearman || 0) * (value("soulcastArmor") + value("painrialMedicine", "powerEffects"));
-  stats.speed += value("bridgeEngineering") + Number(units.chull || 0) * value("packHarnessDesign", "speedEffects") + Number(units.spearman || 0) * value("soulcastArmor", "speedEffects");
-  stats.plunder += Number(units.chull || 0) * value("packHarnessDesign");
-  stats.survivability += Number(units.spearman || 0) * value("painrialMedicine");
+  const value = currentResearchValue;
+  stats.soulcastArmorPowerPerSpearman = value("soulcastArmor");
+  stats.painrialPowerPerSpearman = value("painrialMedicine", "powerEffects");
+  stats.soulcastArmorPowerBonus = Number(units.spearman || 0) * stats.soulcastArmorPowerPerSpearman;
+  stats.painrialPowerBonus = Number(units.spearman || 0) * stats.painrialPowerPerSpearman;
+  stats.researchPowerBonus = stats.soulcastArmorPowerBonus + stats.painrialPowerBonus;
+  stats.packHarnessPlunderPerChull = value("packHarnessDesign");
+  stats.researchPlunderBonus = Number(units.chull || 0) * stats.packHarnessPlunderPerChull;
+  stats.painrialSurvivalPerSpearman = value("painrialMedicine");
+  stats.researchSurvivabilityBonus = Number(units.spearman || 0) * stats.painrialSurvivalPerSpearman;
+  stats.bridgeSpeedBonus = value("bridgeEngineering");
+  stats.packHarnessSpeedPerChull = value("packHarnessDesign", "speedEffects");
+  stats.packHarnessSpeedBonus = Number(units.chull || 0) * stats.packHarnessSpeedPerChull;
+  stats.soulcastArmorSpeedPerSpearman = value("soulcastArmor", "speedEffects");
+  stats.soulcastArmorSpeedBonus = Number(units.spearman || 0) * stats.soulcastArmorSpeedPerSpearman;
+  stats.conclavePowerBonus = 0;
+  stats.conclavePlunderBonus = 0;
+  stats.conclaveSurvivabilityBonus = 0;
+  stats.conclaveSpeedBonus = 0;
+  stats.power += stats.researchPowerBonus;
+  stats.speed += stats.bridgeSpeedBonus + stats.packHarnessSpeedBonus + stats.soulcastArmorSpeedBonus;
+  stats.plunder += stats.researchPlunderBonus;
+  stats.survivability += stats.researchSurvivabilityBonus;
   const conclaveSelected = missionType === "spheres" ? Boolean($("sphere-conclave")?.value) : missionType === "neutralSiege" ? Boolean($("neutral-conclave-select")?.value) : missionType === "playerSiege" ? Boolean($("player-conclave-select")?.value) : missionType === "plateau" ? Boolean($("plateau-conclave")?.value) : false;
   if (conclaveSelected && Number(completed.religiousStudies || 0) >= 3) {
-    stats.power += 10 + Math.min(100, Math.max(0, stats.power)) * 0.5;
-    stats.survivability += Math.min(100, Math.max(0, stats.survivability)) * 0.5;
-    stats.speed += 1;
-    stats.plunder += 25;
+    stats.preConclavePower = stats.power;
+    stats.preConclaveSurvivability = stats.survivability;
+    stats.conclavePowerBonus = 10 + Math.min(100, Math.max(0, stats.power)) * 0.5;
+    stats.conclaveSurvivabilityBonus = Math.min(100, Math.max(0, stats.survivability)) * 0.5;
+    stats.conclavePlunderBonus = 25;
+    stats.power += stats.conclavePowerBonus;
+    stats.survivability += stats.conclaveSurvivabilityBonus;
+    stats.conclaveSpeedBonus = 1;
+    stats.speed += stats.conclaveSpeedBonus;
+    stats.plunder += stats.conclavePlunderBonus;
   }
   return stats;
+}
+
+function currentResearchValue(project, field = "effects") {
+  const completed = state?.me?.completedResearch || state?.research?.completedLevels || {};
+  const level = Number(completed[project] || 0);
+  return level > 0 ? Number(state?.config?.researchRules?.projects?.[project]?.[field]?.[level - 1] || 0) : 0;
+}
+
+function unitResearchBonuses(unitKey) {
+  if (unitKey === "spearman") {
+    return {
+      power: currentResearchValue("soulcastArmor") + currentResearchValue("painrialMedicine", "powerEffects"),
+      plunder: 0,
+      survivability: currentResearchValue("painrialMedicine"),
+    };
+  }
+  if (unitKey === "chull") return { power: 0, plunder: currentResearchValue("packHarnessDesign"), survivability: 0 };
+  return { power: 0, plunder: 0, survivability: 0 };
+}
+
+function unitResearchMath(unitKey, stat, base, bonus) {
+  if (!bonus) return "";
+  const lines = ["", "Base " + stat + ": " + formatStat(base)];
+  if (unitKey === "spearman" && stat === "power") {
+    const armor = currentResearchValue("soulcastArmor");
+    const painrial = currentResearchValue("painrialMedicine", "powerEffects");
+    if (armor) lines.push("Soulcast Armor: " + signedStat(armor));
+    if (painrial) lines.push("Painrials: " + signedStat(painrial));
+    lines.push(formatStat(base) + " + " + formatStat(armor) + " + " + formatStat(painrial) + " = " + formatStat(Number(base || 0) + bonus) + " effective Power per Spearman");
+  } else if (unitKey === "spearman" && stat === "survivability") {
+    lines.push("Painrials: " + signedStat(bonus));
+    lines.push(formatStat(base) + " + " + formatStat(bonus) + " = " + formatStat(Number(base || 0) + bonus) + " effective Survival per Spearman");
+  } else if (unitKey === "chull" && stat === "plunder") {
+    lines.push("Pack Harnesses: " + signedStat(bonus));
+    lines.push(formatStat(base) + " + " + formatStat(bonus) + " = " + formatStat(Number(base || 0) + bonus) + " effective Plunder per Chull");
+  }
+  return lines.join("\n");
 }
 
 function bridgedTravelReductionPercent() {
