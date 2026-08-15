@@ -13,6 +13,8 @@ import { plateauCountsForPlayer } from "./plateauHelpers";
 import { assignConclave, missionXpBudget, releaseConclave } from "./ardentiaHelpers";
 import { completedResearch } from "./researchHelpers";
 import { createNotification } from "./notificationHelpers";
+import { awardSeasonPoints, ensureActiveSeason } from "./seasonLedger";
+import { SEASON_SCORING_RULES } from "./seasonScoringRules";
 import type { Id } from "./_generated/dataModel";
 import { subtractAvailableUnits, unitCountsValidator, validateMissionUnits } from "./armyRules";
 import {
@@ -83,6 +85,7 @@ async function createRaid(
   }
 
   const now = Date.now();
+  const scoringSeason = await ensureActiveSeason(ctx, now);
   const departAt = now;
   const plateauCounts = await plateauCountsForPlayer(ctx, attacker._id);
   const completed = await completedResearch(ctx, attacker._id);
@@ -132,6 +135,7 @@ async function createRaid(
     departAt,
     arriveAt,
     status: "pending",
+    scoringSeasonId: scoringSeason._id,
   });
   if (args.conclaveId) {
     await assignConclave(ctx, attacker._id, args.conclaveId, "raid", String(raidId));
@@ -180,14 +184,8 @@ export const launchOpenAcreRaid = mutation({
     conclaveId: v.optional(v.id("ardentConclaves")),
   },
   handler: async (ctx, args) => {
-    const attacker = await requireCurrentPlayer(ctx);
-    return await createRaid(ctx, {
-      attackerId: attacker._id,
-      targetType: "open_acres",
-      acres: args.acres,
-      units: args.units,
-      conclaveId: args.conclaveId,
-    });
+    await requireCurrentPlayer(ctx);
+    throw new Error("Open-acre raids are a legacy mission type and are no longer available.");
   },
 });
 
@@ -215,15 +213,8 @@ export const launchPlayerRaid = mutation({
     conclaveId: v.optional(v.id("ardentConclaves")),
   },
   handler: async (ctx, args) => {
-    const attacker = await requireCurrentPlayer(ctx);
-    return await createRaid(ctx, {
-      attackerId: attacker._id,
-      targetType: "player",
-      targetPlayerId: args.targetPlayerId,
-      acres: args.acres,
-      units: args.units,
-      conclaveId: args.conclaveId,
-    });
+    await requireCurrentPlayer(ctx);
+    throw new Error("PvP raids are not available. Use plateau sieges to contest another kingdom.");
   },
 });
 
@@ -310,6 +301,7 @@ export const resolveRaid = internalMutation({
     let won = false;
     let resultText = "";
     let survivors = raid.units;
+    let spheresRecovered = 0;
 
     if (raid.targetType === "open_acres") {
       const world = await ctx.db
@@ -362,6 +354,7 @@ export const resolveRaid = internalMutation({
       survivors = lossResult.survivors;
       const plunder = unitPlunder(normalizeUnits(raid.units), completed, Boolean(raid.conclaveId));
       const recovered = won ? Math.min(reward, plunder) : 0;
+      spheresRecovered = recovered;
       const leftBehind = won ? Math.max(0, reward - recovered) : 0;
 
       await ctx.db.patch(attacker._id, {
@@ -451,10 +444,25 @@ export const resolveRaid = internalMutation({
 
     const baseConclaveXp = won ? missionXpBudget(raid.defensePower ?? raid.power) : Math.ceil(missionXpBudget(raid.defensePower ?? raid.power) / 2);
     const awardedConclaveXp = raid.conclaveId ? await releaseConclave(ctx, raid.conclaveId, baseConclaveXp) : undefined;
+    if (raid.targetType === "parshendi_spheres" && won && spheresRecovered > 0 && raid.scoringSeasonId) {
+      await awardSeasonPoints(ctx, {
+        seasonId: raid.scoringSeasonId,
+        playerId: attacker._id,
+        category: "military",
+        sourceType: "parshendi_raid_victory",
+        sourceKey: `raid:${raid._id}:victory`,
+        basePoints: SEASON_SCORING_RULES.military.parshendiRaidVictory,
+        description: `Recovered ${spheresRecovered} Spheres from a successful Parshendi raid`,
+        entityType: "raid",
+        entityId: String(raid._id),
+        now,
+      });
+    }
     await ctx.db.patch(raid._id, {
       status: "resolved",
       resolvedAt: now,
       conclaveXpAwarded: awardedConclaveXp,
+      spheresRecovered,
     });
     await ctx.db.insert("messages", {
       toPlayerId: attacker._id,

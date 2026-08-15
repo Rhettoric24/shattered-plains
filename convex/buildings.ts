@@ -18,6 +18,8 @@ import {
   researchEffect,
 } from "./rules";
 import { completedResearch } from "./researchHelpers";
+import { awardSeasonPoints } from "./seasonLedger";
+import { SEASON_SCORING_RULES } from "./seasonScoringRules";
 
 const buildingKey = v.union(
   v.literal("market"),
@@ -127,6 +129,13 @@ export const upgradeBuilding = mutation({
       buildings,
       spheres: settledPlayer.spheres - cost,
       lastActiveAt: now,
+    });
+
+    await awardSeasonPoints(ctx, {
+      playerId: settledPlayer._id, category: "economy", sourceType: "building_upgrade",
+      sourceKey: `building:${args.building}:level:${currentLevel + 1}`,
+      basePoints: SEASON_SCORING_RULES.economy.buildingPoints[args.building],
+      description: `${rule.name} upgraded to level ${currentLevel + 1}`, entityType: "building", entityId: args.building, now,
     });
 
     await insertGameEvent(ctx, {

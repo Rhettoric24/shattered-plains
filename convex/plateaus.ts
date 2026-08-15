@@ -21,6 +21,7 @@ import {
 } from "./ardentiaHelpers";
 import { completedResearch, reconcileResearch, recordSuccessfulDefensiveSiege } from "./researchHelpers";
 import { createNotification } from "./notificationHelpers";
+import { observePlateauOwnership, recordOpponentAttack, recordSiegeDefenseScore, recordSiegeVictoryScore } from "./seasonLedger";
 import { subtractAvailableUnits, unitCountsValidator, validateMissionUnits } from "./armyRules";
 import {
   effectiveIntelLevel,
@@ -462,6 +463,7 @@ export const launchPlayerSiege = mutation({
     );
 
     const now = Date.now();
+    const scoring = await recordOpponentAttack(ctx, attacker._id, defender._id, now);
     const completed = await completedResearch(ctx, attacker._id);
     const resolveAt = now + siegeTravelMs();
     const remainingUnits = subtractAvailableUnits(attacker.units, units);
@@ -484,6 +486,8 @@ export const launchPlayerSiege = mutation({
       departAt: now,
       resolveAt,
       status: "pending",
+      scoringSeasonId: scoring.seasonId,
+      opponentChainPosition: scoring.chainPosition,
     });
 
     await ctx.db.patch(attacker._id, {
@@ -776,6 +780,7 @@ export const resolveSiege = internalMutation({
           updatedAt: now,
         });
         await reconcileResearch(ctx, attacker._id, now);
+        await observePlateauOwnership(ctx, { plateauId: plateau._id, newOwnerId: attacker._id, heldSince: now, now });
         resultText = `${attacker.name} claimed ${plateauTypeName(plateau.type)} against ${resistanceLabel(plateau.neutralDefenseRemaining).toLowerCase()} resistance. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
       } else {
         await ctx.db.patch(plateau._id, {
@@ -884,7 +889,13 @@ export const resolveSiege = internalMutation({
           });
           await reconcileResearch(ctx, attacker._id, now);
           await reconcileResearch(ctx, defender._id, now);
+          await observePlateauOwnership(ctx, { plateauId: plateau._id, previousOwnerId: defender._id, newOwnerId: attacker._id, heldSince: now, now });
           outcomeText = `${attacker.name} captured ${plateau.name} from ${defender.name}.`;
+          if (siege.scoringSeasonId && siege.opponentChainPosition) await recordSiegeVictoryScore(ctx, {
+            siegeId: siege._id, seasonId: siege.scoringSeasonId, attackerId: attacker._id, defenderId: defender._id,
+            attackerName: attacker.name, defenderName: defender.name, plateauName: plateau.name,
+            chainPosition: siege.opponentChainPosition, now,
+          });
         } else {
           await ctx.db.patch(plateau._id, {
             activeSiegeId: undefined,
@@ -892,6 +903,10 @@ export const resolveSiege = internalMutation({
           });
           outcomeText = `${defender.name} held ${plateau.name} against ${attacker.name}.`;
           await recordSuccessfulDefensiveSiege(ctx, defender._id, now);
+          if (siege.scoringSeasonId) await recordSiegeDefenseScore(ctx, {
+            siegeId: siege._id, seasonId: siege.scoringSeasonId, defenderId: defender._id, attackerId: attacker._id,
+            attackerName: attacker.name, plateauName: plateau.name, now,
+          });
         }
         const attackerResultText = `${outcomeText} Your casualties: ${casualtySummary(attackerLossResult.casualties)}. ${casualtyIntelSummary(defenderLossResult.casualties, attackerReportLevel)}${investigationText} Updated snapshots are available in Intelligence.`;
         const defenderResultText = `${outcomeText} Your casualties: ${casualtySummary(defenderLossResult.casualties)}. ${casualtyIntelSummary(attackerLossResult.casualties, defenderIntelLevel)} Intelligence reflects what your warcamp could confirm.`;

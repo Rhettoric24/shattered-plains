@@ -64,6 +64,8 @@ export default defineSchema({
     acres: v.optional(v.number()),
     defensePower: v.optional(v.number()),
     rewardSpheres: v.optional(v.number()),
+    spheresRecovered: v.optional(v.number()),
+    scoringSeasonId: v.optional(v.id("seasons")),
     ardentiaConclave: v.optional(v.boolean()),
     conclaveId: v.optional(v.id("ardentConclaves")),
     conclaveXpAwarded: v.optional(v.number()),
@@ -115,6 +117,8 @@ export default defineSchema({
     conclaveId: v.optional(v.id("ardentConclaves")),
     conclaveXpAwarded: v.optional(v.number()),
     defenderHeld: v.optional(v.boolean()),
+    scoringSeasonId: v.optional(v.id("seasons")),
+    opponentChainPosition: v.optional(v.number()),
     departAt: v.number(),
     resolveAt: v.number(),
     resolvedAt: v.optional(v.number()),
@@ -199,6 +203,7 @@ export default defineSchema({
     gemheartReward: v.number(),
     scheduleKey: v.optional(v.string()),
     winnerPlayerId: v.optional(v.id("players")),
+    scoringSeasonId: v.optional(v.id("seasons")),
     resolvedAt: v.optional(v.number()),
   })
     .index("by_status", ["status"])
@@ -299,4 +304,84 @@ export default defineSchema({
     .index("by_viewerPlayerId_and_targetType", ["viewerPlayerId", "targetType"])
     .index("by_viewerPlayerId_and_targetPlayerId", ["viewerPlayerId", "targetPlayerId"])
     .index("by_viewerPlayerId_and_plateauId", ["viewerPlayerId", "plateauId"]),
+
+  seasons: defineTable({
+    number: v.number(),
+    name: v.string(),
+    status: v.union(v.literal("active"), v.literal("closed")),
+    startsAt: v.number(),
+    endsAt: v.optional(v.number()),
+    closedAt: v.optional(v.number()),
+  })
+    .index("by_status", ["status"])
+    .index("by_number", ["number"]),
+
+  seasonScores: defineTable({
+    seasonId: v.id("seasons"),
+    playerId: v.id("players"),
+    total: v.number(),
+    categoryTotals: v.record(v.string(), v.number()),
+    updatedAt: v.number(),
+  }).index("by_seasonId_and_playerId", ["seasonId", "playerId"]),
+
+  seasonScoreEvents: defineTable({
+    seasonId: v.id("seasons"),
+    playerId: v.id("players"),
+    category: v.string(),
+    sourceType: v.string(),
+    sourceKey: v.string(),
+    basePoints: v.number(),
+    points: v.number(),
+    multiplier: v.optional(v.number()),
+    description: v.string(),
+    opponentPlayerId: v.optional(v.id("players")),
+    entityType: v.optional(v.string()),
+    entityId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_seasonId_and_playerId_and_createdAt", ["seasonId", "playerId", "createdAt"])
+    .index("by_seasonId_and_playerId_and_sourceKey", ["seasonId", "playerId", "sourceKey"]),
+
+  seasonAchievements: defineTable({
+    seasonId: v.id("seasons"),
+    playerId: v.id("players"),
+    key: v.string(),
+    category: v.string(),
+    points: v.number(),
+    earnedAt: v.number(),
+  }).index("by_seasonId_and_playerId_and_key", ["seasonId", "playerId", "key"]),
+
+  seasonOpponentChains: defineTable({
+    seasonId: v.id("seasons"),
+    attackerId: v.id("players"),
+    opponentId: v.id("players"),
+    chainCount: v.number(),
+    lastAttackAt: v.number(),
+  }).index("by_seasonId_and_attackerId_and_opponentId", ["seasonId", "attackerId", "opponentId"]),
+
+  seasonTerritoryStates: defineTable({
+    seasonId: v.id("seasons"),
+    playerId: v.id("players"),
+    lastCount: v.number(),
+    updatedAt: v.number(),
+  }).index("by_seasonId_and_playerId", ["seasonId", "playerId"]),
+
+  seasonPlateauClaims: defineTable({
+    seasonId: v.id("seasons"),
+    plateauId: v.id("plateaus"),
+    playerId: v.id("players"),
+    lostToPlayerAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("by_seasonId_and_plateauId_and_playerId", ["seasonId", "plateauId", "playerId"]),
+
+  seasonPlateauHolds: defineTable({
+    seasonId: v.id("seasons"),
+    plateauId: v.id("plateaus"),
+    playerId: v.id("players"),
+    heldSince: v.number(),
+    territoryIntervalsAwarded: v.number(),
+    researchIntervalsAwarded: v.number(),
+    custodianAwarded: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_seasonId_and_plateauId", ["seasonId", "plateauId"]),
 });

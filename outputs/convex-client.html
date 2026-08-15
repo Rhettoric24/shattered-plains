@@ -60,6 +60,7 @@
           <button id="mobile-menu-toggle" class="secondary mobile-menu-toggle" type="button" aria-expanded="false" aria-controls="dashboard-nav">Menu</button>
           <nav id="dashboard-nav" class="side-nav" aria-label="Dashboard sections">
             <button class="nav-button active" type="button" data-view="overview">Overview</button>
+            <button class="nav-button" type="button" data-view="ledger">Season Ledger</button>
             <button class="nav-button" type="button" data-view="buildings">Buildings</button>
             <button class="nav-button" type="button" data-view="army">Army</button>
             <button class="nav-button" type="button" data-view="research">Research</button>
@@ -230,6 +231,14 @@
             </section>
           </section>
 
+          <section class="view" id="view-ledger" data-title="Season Ledger" data-eyebrow="Season progress">
+            <section class="panel full-panel season-ledger-hero"><p class="eyebrow" id="ledger-season-name">Current season</p><h2>Your seasonal score</h2><strong id="ledger-total" class="ledger-total">0</strong><p class="hint">Your ledger is exact. Rival scores remain private and may later require Kingdom Intelligence.</p></section>
+            <section class="panel full-panel"><div class="section-heading"><div><p class="eyebrow">Standing</p><h2>Score by category</h2></div></div><div id="ledger-categories" class="ledger-category-grid"></div></section>
+            <section class="panel full-panel"><div class="section-heading"><div><p class="eyebrow">Distinctions</p><h2>Seasonal badges</h2></div></div><div id="ledger-achievements" class="ledger-badge-grid"></div></section>
+            <section class="panel full-panel"><div class="section-heading"><div><p class="eyebrow">Audit trail</p><h2>Recent scoring events</h2></div></div><div id="ledger-events" class="ledger-event-list"></div></section>
+            <section class="panel full-panel"><details class="ledger-rules"><summary>How seasonal scoring works</summary><div id="ledger-rules"></div></details></section>
+          </section>
+
           <section class="view" id="view-research" data-title="Ardent scholarship" data-eyebrow="Research">
             <section class="panel full-panel">
               <p class="eyebrow">The Ardentia</p>
@@ -296,6 +305,7 @@
                 <button id="backfill-plateaus" type="button">Retune / backfill plateaus</button>
                 <button id="finish-research" type="button">Finish active research</button>
                 <button id="backfill-research" type="button">Backfill Conclaves</button>
+                <button id="rollover-season" type="button">Start new season</button>
                 <button id="reset-world-keep-accounts" class="danger-button" type="button">Reset world / keep accounts</button>
               </div>
               <p class="hint">These tools call Convex testing helpers. Economy is lazy-settled when you train, build, or open your dashboard. Resetting the world keeps login accounts and warcamp names, but wipes current gameplay state.</p>

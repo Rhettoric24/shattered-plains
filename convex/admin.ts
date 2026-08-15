@@ -19,6 +19,7 @@ import {
   STARTING_RULES,
   WORLD_KEY,
 } from "./rules";
+import { createFreshSeason } from "./seasonLedger";
 
 type AnyCtx = QueryCtx | MutationCtx;
 type GameplayTable =
@@ -33,7 +34,15 @@ type GameplayTable =
   | "messages"
   | "notifications"
   | "gameEvents"
-  | "gameState";
+  | "gameState"
+  | "seasonPlateauHolds"
+  | "seasonPlateauClaims"
+  | "seasonTerritoryStates"
+  | "seasonOpponentChains"
+  | "seasonAchievements"
+  | "seasonScoreEvents"
+  | "seasonScores"
+  | "seasons";
 
 declare const process: {
   env: Record<string, string | undefined>;
@@ -104,6 +113,14 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
   const now = Date.now();
   const players = await ctx.db.query("players").take(200);
   const deleted = {
+    seasonPlateauHolds: await deleteGameplayTable(ctx, "seasonPlateauHolds"),
+    seasonPlateauClaims: await deleteGameplayTable(ctx, "seasonPlateauClaims"),
+    seasonTerritoryStates: await deleteGameplayTable(ctx, "seasonTerritoryStates"),
+    seasonOpponentChains: await deleteGameplayTable(ctx, "seasonOpponentChains"),
+    seasonAchievements: await deleteGameplayTable(ctx, "seasonAchievements"),
+    seasonScoreEvents: await deleteGameplayTable(ctx, "seasonScoreEvents"),
+    seasonScores: await deleteGameplayTable(ctx, "seasonScores"),
+    seasons: await deleteGameplayTable(ctx, "seasons"),
     ardentConclaves: await deleteGameplayTable(ctx, "ardentConclaves"),
     playerResearch: await deleteGameplayTable(ctx, "playerResearch"),
     intelligenceReports: await deleteGameplayTable(ctx, "intelligenceReports"),
@@ -129,6 +146,7 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
     createdAt: now,
     updatedAt: now,
   });
+  const seasonId = await createFreshSeason(ctx, 1, now);
 
   for (const player of players) {
     await ctx.db.patch(player._id, {
@@ -169,6 +187,7 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
   return {
     reset: true,
     worldId,
+    seasonId,
     playersReset: players.length,
     homePlateausCreated: homeSeed.created,
     neutralPlateausCreated: neutralSeed.totalNeutral,

@@ -2,6 +2,8 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { ARDENTIA_RULES, conclaveRank } from "./rules";
 import { reconcileResearch, researchForPlayer } from "./researchHelpers";
+import { awardSeasonPoints } from "./seasonLedger";
+import { SEASON_SCORING_RULES } from "./seasonScoringRules";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -66,8 +68,15 @@ export async function releaseConclave(ctx: MutationCtx, conclaveId: Id<"ardentCo
   const state = await researchForPlayer(ctx, conclave.ownerPlayerId);
   const religiousLevel = Math.floor(state?.completedLevels.religiousStudies ?? 0);
   const awardedXp = xp * (religiousLevel >= 1 ? 2 : 1);
+  const oldRank = conclaveRank(conclave.xp);
+  const newRank = conclaveRank(conclave.xp + awardedXp);
   if (xp > 0 || religiousLevel >= 3) await reconcileResearch(ctx, conclave.ownerPlayerId, now);
   await ctx.db.patch(conclave._id, { xp: conclave.xp + awardedXp, missionKind: undefined, missionId: undefined, updatedAt: now });
+  for (let rank = oldRank + 1; rank <= newRank; rank += 1) await awardSeasonPoints(ctx, {
+    playerId: conclave.ownerPlayerId, category: "research", sourceType: "conclave_rank", sourceKey: `conclave:${conclave._id}:rank:${rank}`,
+    basePoints: SEASON_SCORING_RULES.research.conclaveRankPoints[rank - 1] ?? 0,
+    description: `${conclave.name} reached rank ${rank}`, entityType: "conclave", entityId: String(conclave._id), now,
+  });
   if (xp > 0 || religiousLevel >= 3) await reconcileResearch(ctx, conclave.ownerPlayerId, now);
   return awardedXp;
 }

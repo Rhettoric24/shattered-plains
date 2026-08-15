@@ -39,6 +39,8 @@ import type * as raids from "../raids.js";
 import type * as research from "../research.js";
 import type * as researchHelpers from "../researchHelpers.js";
 import type * as rules from "../rules.js";
+import type * as seasonLedger from "../seasonLedger.js";
+import type * as seasonScoringRules from "../seasonScoringRules.js";
 import type * as spren from "../spren.js";
 
 import type {
@@ -79,6 +81,8 @@ declare const fullApi: ApiFromModules<{
   research: typeof research;
   researchHelpers: typeof researchHelpers;
   rules: typeof rules;
+  seasonLedger: typeof seasonLedger;
+  seasonScoringRules: typeof seasonScoringRules;
   spren: typeof spren;
 }>;
 

@@ -1,4 +1,5 @@
 import type { Id } from "./_generated/dataModel";
+import { observePlateauOwnership } from "./seasonLedger";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
   emptyPlateauCounts,
@@ -106,7 +107,7 @@ export async function createStarterPlateaus(
 
   for (let index = 0; index < homePackage.length; index += 1) {
     const type = identityPlateauType(homePackage[index]);
-    await ctx.db.insert("plateaus", {
+    const plateauId = await ctx.db.insert("plateaus", {
       name: `Home ${plateauTypeName(type)} ${index + 1}`,
       type,
       status: "owned",
@@ -121,6 +122,7 @@ export async function createStarterPlateaus(
       createdAt: now,
       updatedAt: now,
     });
+    await observePlateauOwnership(ctx, { plateauId, newOwnerId: playerId, heldSince: now, now });
   }
 
   return STARTING_RULES.startingPlateaus;

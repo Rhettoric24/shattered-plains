@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { insertGameEvent } from "./eventHelpers";
 import { getGameClock, WORLD_KEY } from "./rules";
+import { ensureActiveSeason } from "./seasonLedger";
 
 export const getWorldStatus = query({
   args: {},
@@ -33,6 +34,7 @@ export const bootstrapWorld = mutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
+    await ensureActiveSeason(ctx, now);
     const existing = await ctx.db
       .query("gameState")
       .withIndex("by_key", (q) => q.eq("key", WORLD_KEY))

@@ -8,6 +8,8 @@ import { plateauCountsForPlayer } from "./plateauHelpers";
 import { assignConclave, missionXpBudget, releaseConclave } from "./ardentiaHelpers";
 import { completedResearch } from "./researchHelpers";
 import { createNotification } from "./notificationHelpers";
+import { awardSeasonPoints, ensureActiveSeason } from "./seasonLedger";
+import { SEASON_SCORING_RULES } from "./seasonScoringRules";
 import { subtractAvailableUnits, unitCountsValidator, validateMissionUnits } from "./armyRules";
 import {
   addUnits,
@@ -77,6 +79,7 @@ async function createPlateauRun(
   }
 
   const activeCount = await activePlayerCount(ctx, now);
+  const scoringSeason = await ensureActiveSeason(ctx, now);
   const randomShiftMagnitude = seededInt(
     `${now}:plateau:difficulty:magnitude`,
     PLATEAU_RUN_RULES.difficultyRandomMin,
@@ -106,6 +109,7 @@ async function createPlateauRun(
     difficulty,
     spherePool,
     gemheartReward: PLATEAU_RUN_RULES.gemheartReward,
+    scoringSeasonId: scoringSeason._id,
     ...(options.scheduleKey ? { scheduleKey: options.scheduleKey } : {}),
   });
 
@@ -506,6 +510,17 @@ export const resolvePlateauRun = internalMutation({
           : `Your warcamp recovered ${sphereShare} spheres from the Plateau Run.${leftBehind > 0 ? " Some spheres were left behind because the army lacked Plunder." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`,
         createdAt: now,
       });
+      if (run.scoringSeasonId) {
+        const meaningful = entry.effectivePower >= SEASON_SCORING_RULES.military.plateauRunMinimumPower && entry.effectivePower >= run.difficulty * SEASON_SCORING_RULES.military.plateauRunMinimumDifficultyShare;
+        if (isWinner || meaningful) await awardSeasonPoints(ctx, {
+          seasonId: run.scoringSeasonId, playerId: player._id, category: "military",
+          sourceType: isWinner ? "plateau_run_winner" : "plateau_run_contribution",
+          sourceKey: `plateau-run:${run._id}:${isWinner ? "winner" : "contributor"}:${player._id}`,
+          basePoints: isWinner ? SEASON_SCORING_RULES.military.plateauRunWinner : SEASON_SCORING_RULES.military.plateauRunContributor,
+          description: isWinner ? "Won a successful Plateau Run" : "Made a meaningful contribution to a successful Plateau Run",
+          entityType: "plateau_run", entityId: String(run._id), now,
+        });
+      }
       await createNotification(ctx, {
         playerId: player._id, category: "plateau_runs", eventType: "plateau_run_resolved",
         title: isWinner ? "Gemheart Claimed" : "Plateau Run Reward",

@@ -4,6 +4,8 @@ import { internal } from "./_generated/api";
 import { conclaveRank, RESEARCH_RULES, type EconomicDoctrineKey, type ResearchProjectKey } from "./rules";
 import { plateauCountsForPlayer } from "./plateauHelpers";
 import { createNotification } from "./notificationHelpers";
+import { awardSeasonPoints } from "./seasonLedger";
+import { SEASON_SCORING_RULES } from "./seasonScoringRules";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -65,6 +67,11 @@ export async function reconcileResearch(ctx: MutationCtx, playerId: Id<"players"
     const unlockFuture = (key === "sprenStudies" || key === "religiousStudies") && level >= 4;
     await ctx.db.patch(state._id, { completedLevels, economicDoctrine: completingDoctrine ?? state.economicDoctrine, doctrineChangeCount: (state.doctrineChangeCount ?? 0) + (doctrineChanged ? 1 : 0), futurePathUnlocked: state.futurePathUnlocked || unlockFuture || undefined, activeProject: undefined, activeDoctrine: undefined, activeLevel: undefined, status: undefined, accumulatedBaseMs: undefined, lastAdvancedAt: undefined, projectedCompletionAt: undefined, updatedAt: now });
     const completedName = completingDoctrine ? completingDoctrine : rule!.name;
+    if (key) await awardSeasonPoints(ctx, {
+      playerId, category: "research", sourceType: "research_completion", sourceKey: `research:${state._id}:${key}:${level}`,
+      basePoints: SEASON_SCORING_RULES.research.levelPoints[Math.min(level, SEASON_SCORING_RULES.research.levelPoints.length) - 1] ?? 0,
+      description: `${rule!.name} level ${level} completed`, entityType: "research", entityId: String(state._id), now,
+    });
     await createNotification(ctx, {
       playerId, category: "research", eventType: "research_completed", title: "Research Complete",
       body: completingDoctrine ? `A new Economic Doctrine is now in force.` : `${completedName} level ${level} is complete.`, destinationView: "research",

@@ -51,6 +51,8 @@ const refs = {
   signOut: "auth:signOut",
   isAdmin: "admin:isAdmin",
   resetWorldKeepAccounts: "admin:resetWorldKeepAccounts",
+  getSeasonLedger: "seasonLedger:getMine",
+  rolloverSeason: "seasonLedger:rolloverSeason",
   finishActiveResearch: "admin:finishActiveResearch",
   backfillResearchSystem: "admin:backfillResearchSystem",
   bootstrapWorld: "game:bootstrapWorld",
@@ -226,7 +228,7 @@ async function load(options = {}) {
       return;
     }
 
-    const [raids, plateaus, plateauRun, inbox, intelligence, ardentia, research, notifications, pushConfiguration] = await Promise.all([
+    const [raids, plateaus, plateauRun, inbox, intelligence, ardentia, research, notifications, pushConfiguration, seasonLedger] = await Promise.all([
       client.query(refs.listVisibleRaids, {}),
       client.query(refs.listPlateaus, {}),
       client.query(refs.getCurrentPlateauRun, {}),
@@ -241,6 +243,7 @@ async function load(options = {}) {
       client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })),
       client.query(refs.listNotifications, {}).catch(() => ({ notifications: [], unreadCount: 0, preferences: { combat: true, missions: true, research: true, plateauRuns: true, messages: true }, devices: [], vapidPublicKey: null })),
       client.query(refs.getPushConfiguration, {}).catch(() => ({ vapidPublicKey: null, configured: false })),
+      client.query(refs.getSeasonLedger, {}).catch(() => ({ season: null, total: 0, categoryTotals: { military: 0, research: 0, economy: 0, territory: 0 }, events: [], achievements: [], rules: null, opponentChains: [] })),
     ]);
 
     if (requestId !== latestLoadRequest) return;
@@ -258,6 +261,7 @@ async function load(options = {}) {
       research,
       notifications,
       pushConfiguration,
+      seasonLedger,
       events,
       clock,
       adminStatus,
@@ -359,6 +363,7 @@ function buildState(data) {
     intelligence: data.intelligence || { kingdoms: [], territories: [], watchtower: { level: 0, territoryLevel: 0, counterIntelligence: 0 } },
     ardentia: data.ardentia || { owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 },
     research: data.research,
+    seasonLedger: data.seasonLedger,
     notifications: data.notifications?.notifications || [],
     notificationUnreadCount: data.notifications?.unreadCount || 0,
     notificationPreferences: data.notifications?.preferences || { combat: true, missions: true, research: true, plateauRuns: true, messages: true },
@@ -388,6 +393,7 @@ function render() {
   renderUnits();
   renderConclaveControls();
   renderResearch();
+  renderSeasonLedger();
   renderSelects();
   renderInboxBadge();
   renderNotifications();
@@ -661,6 +667,48 @@ function renderUnits() {
       action(() => client.mutation(refs.recruitConclave, name.trim() ? { name: name.trim() } : {}));
     });
   }
+}
+
+function renderSeasonLedger() {
+  const ledger = state.seasonLedger || {};
+  const totals = ledger.categoryTotals || {};
+  const rules = ledger.rules || {};
+  const categories = rules.categories || {
+    military: { name: "Military", description: "Combat accomplishments" },
+    research: { name: "Research", description: "Scholarship and discovery" },
+    economy: { name: "Economy", description: "Kingdom investment" },
+    territory: { name: "Territory", description: "Expansion and control" },
+  };
+  if ($("ledger-season-name")) $("ledger-season-name").textContent = ledger.season?.name || "Season awaiting initialization";
+  if ($("ledger-total")) $("ledger-total").textContent = number(ledger.total || 0);
+  if ($("ledger-categories")) $("ledger-categories").innerHTML = Object.entries(categories).map(([key, category]) =>
+    '<article class="ledger-category-card"><span>' + escapeHtml(category.name) + '</span><strong>' + number(totals[key] || 0) + '</strong><small>' + escapeHtml(category.description || "") + '</small></article>'
+  ).join("");
+
+  const earned = Object.fromEntries((ledger.achievements || []).map((entry) => [entry.key, entry]));
+  const achievementRules = rules.achievements || {};
+  if ($("ledger-achievements")) $("ledger-achievements").innerHTML = Object.entries(achievementRules).map(([key, badge]) => {
+    const record = earned[key];
+    return '<article class="ledger-badge-card ' + (record ? "earned" : "locked") + '"><span class="ledger-badge-icon">' + escapeHtml(badge.icon || "•") + '</span><strong>' + escapeHtml(badge.name) + '</strong><p>' + escapeHtml(badge.flavor || "") + '</p><small>' + escapeHtml(badge.requirement) + ' · +' + number(badge.points) + ' ' + escapeHtml(categories[badge.category]?.name || badge.category) + (record ? ' · Earned ' + escapeHtml(new Date(record.earnedAt).toLocaleString()) : '') + '</small></article>';
+  }).join("") || '<div class="empty">Badge definitions are not available yet.</div>';
+
+  if ($("ledger-events")) $("ledger-events").innerHTML = (ledger.events || []).map((event) =>
+    '<article class="ledger-event"><b>+' + number(event.points) + '</b><span><strong>' + escapeHtml(categories[event.category]?.name || event.category) + '</strong><small>' + escapeHtml(event.description) + (event.multiplier && event.multiplier < 1 ? ' · ' + Math.round(event.multiplier * 100) + '% value' : '') + '</small></span><small>' + escapeHtml(new Date(event.createdAt).toLocaleString()) + '</small></article>'
+  ).join("") || '<div class="empty">No scoring events yet. Your next accomplishment will appear here.</div>';
+
+  const military = rules.military || {};
+  const research = rules.research || {};
+  const economy = rules.economy || {};
+  const territory = rules.territory || {};
+  const chain = rules.opponentChains || {};
+  const hours = (ms) => Math.round(Number(ms || 0) / 3600000);
+  if ($("ledger-rules")) $("ledger-rules").innerHTML = '<div class="ledger-rule-grid">' +
+    '<article><h3>Military</h3><ul><li>Successful Parshendi raid with Sphere recovery: +' + number(military.parshendiRaidVictory || 0) + '</li><li>PvP siege capture: +' + number(military.pvpSiegeVictory || 0) + ' before chain adjustment</li><li>Successful siege defense: +' + number(military.pvpSiegeDefense || 0) + '</li><li>Successful Plateau Run: winner +' + number(military.plateauRunWinner || 0) + ', meaningful contributor +' + number(military.plateauRunContributor || 0) + '</li><li>Failed Plateau Runs award no score.</li></ul></article>' +
+    '<article><h3>Research</h3><ul><li>Research levels: ' + (research.levelPoints || []).map((value, index) => 'L' + (index + 1) + ' +' + value).join(', ') + '</li><li>Ancient Plateau scholarship every ' + hours(research.ancientHoldIntervalMs) + ' hours: +' + number(research.ancientHoldPoints || 0) + '</li><li>Doctrine switching awards no score.</li></ul></article>' +
+    '<article><h3>Economy</h3><ul><li>Market upgrade: +' + number(economy.buildingPoints?.market || 0) + '</li><li>Other building upgrade: +' + number(economy.buildingPoints?.watchtower || 0) + '</li><li>Sphere balances and passive accumulation award no score.</li></ul></article>' +
+    '<article><h3>Territory</h3><ul><li>Control milestones: ' + (territory.milestones || []).map((entry) => entry.count + ' plateaus +' + entry.points).join(', ') + '</li><li>Each held plateau every ' + hours(territory.holdIntervalMs) + ' hours: +' + number(territory.holdPoints || 0) + '</li><li>Ancient and Gemheart plateaus receive a modest bonus.</li></ul></article>' +
+    '<article><h3>Repeated opponents</h3><p>Every PvP siege launch extends that opponent chain. Values are ' + (chain.multipliers || []).map((value) => Math.round(value * 100) + '%').join(', ') + ' and reset after ' + hours(chain.resetAfterMs) + ' hours without another launch against that kingdom. Defending score is never reduced.</p></article>' +
+    '</div>';
 }
 
 function renderConclaveControls() {
@@ -2385,10 +2433,18 @@ $("backfill-plateaus").addEventListener("click", () => action(async () => {
 }));
 $("finish-research").addEventListener("click", () => action(() => client.mutation(refs.finishActiveResearch, {})));
 $("backfill-research").addEventListener("click", () => action(() => client.mutation(refs.backfillResearchSystem, {})));
+if ($("rollover-season")) {
+  $("rollover-season").addEventListener("click", async () => {
+    const confirmText = window.prompt('This archives the current Ledger and starts a zero-score season without resetting gameplay. Resolve active operations first. Type "START NEW SEASON" to continue.');
+    if (confirmText !== "START NEW SEASON") return;
+    const result = await action(() => client.mutation(refs.rolloverSeason, { confirm: confirmText }));
+    if (result) alert(result.name + " is now active. Existing territory is the new baseline and hold timers restart now.");
+  });
+}
 if ($("reset-world-keep-accounts")) {
   $("reset-world-keep-accounts").addEventListener("click", async () => {
     const confirmText = window.prompt(
-      'This wipes raids, sieges, Plateau Runs, messages, plateaus, and kingdom progress, but keeps login accounts and warcamp names. Type "RESET WORLD" to continue.',
+      'This wipes raids, sieges, Plateau Runs, messages, plateaus, kingdom progress, and all Season Ledger history, but keeps login accounts and warcamp names. Type "RESET WORLD" to continue.',
     );
     if (confirmText !== "RESET WORLD") return;
 
