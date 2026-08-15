@@ -81,6 +81,7 @@ h3 { font-size: 1rem; color: var(--accent); }
 .notification-bell .nav-badge { position: absolute; top: -7px; right: -7px; }
 .notification-backdrop { display: none; }
 .notification-panel { position: absolute; z-index: 30; top: calc(100% + 10px); right: 0; width: min(410px, calc(100vw - 30px)); max-height: min(680px, calc(100vh - 100px)); overflow: auto; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #0a1728; box-shadow: var(--shadow); }
+.notification-panel-top { position: sticky; z-index: 2; top: -16px; margin: -16px -16px 12px; padding: 16px; border-bottom: 1px solid rgba(216,229,245,.18); background: #0a1728; }
 .notification-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .notification-heading-actions { display: flex; align-items: center; gap: 8px; }
 .notification-close { display: none; width: 36px; min-height: 36px; padding: 0; font-size: 1rem; }
@@ -91,7 +92,7 @@ h3 { font-size: 1rem; color: var(--accent); }
 .notification-item strong, .notification-item span, .notification-item small { display: block; }
 .notification-item span { margin-top: 3px; color: var(--muted); font-size: .8rem; line-height: 1.35; }
 .notification-item small { margin-top: 6px; color: var(--accent-2); font-size: .7rem; text-transform: capitalize; }
-.notification-settings { margin-top: 14px; border-top: 1px solid rgba(216,229,245,.18); padding-top: 12px; }
+.notification-settings { border-top: 1px solid rgba(216,229,245,.18); padding-top: 12px; }
 .notification-settings summary { cursor: pointer; font-weight: 800; }
 .notification-preferences { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 12px 0; }
 .notification-preferences label, .notification-settings .preference-toggle { display: flex; gap: 8px; align-items: center; }
@@ -352,6 +353,7 @@ h3 { font-size: 1rem; color: var(--accent); }
     overscroll-behavior: contain;
     transform: translate(-50%, -50%);
   }
+  .notification-panel-top { top: -14px; margin: -14px -14px 12px; padding: 14px; }
   .notification-heading { align-items: flex-start; }
   .notification-heading-actions { flex-shrink: 0; }
   .notification-close { display: inline-grid; place-items: center; }
