@@ -1432,8 +1432,7 @@ function renderNotifications() {
     list.querySelectorAll("[data-notification-id]").forEach((button) => button.addEventListener("click", async () => {
       const item = state.notifications.find((entry) => String(entry._id) === button.dataset.notificationId);
       if (item && !item.readAt) await client.mutation(refs.markNotificationRead, { notificationId: item._id }).catch(() => null);
-      $("notification-panel").classList.add("hidden");
-      $("notification-bell").setAttribute("aria-expanded", "false");
+      setNotificationPanelOpen(false);
       showView(button.dataset.notificationView || "overview");
       await load();
     }));
@@ -2235,15 +2234,25 @@ document.querySelectorAll("[data-inbox-filter]").forEach((button) => button.addE
 }));
 $("auto-read-inbox").checked = localStorage.getItem("sp-auto-read-inbox") === "true";
 $("auto-read-inbox").addEventListener("change", () => localStorage.setItem("sp-auto-read-inbox", String($("auto-read-inbox").checked)));
+
+function setNotificationPanelOpen(open) {
+  $("notification-panel").classList.toggle("hidden", !open);
+  $("notification-backdrop").classList.toggle("hidden", !open);
+  $("notification-bell").setAttribute("aria-expanded", String(open));
+  document.body.classList.toggle("notification-modal-open", open && isMobileLayout());
+  if (open && isMobileLayout()) $("close-notifications").focus();
+}
+
 $("notification-bell").addEventListener("click", (event) => {
   event.stopPropagation();
-  const open = $("notification-panel").classList.toggle("hidden") === false;
-  $("notification-bell").setAttribute("aria-expanded", String(open));
+  setNotificationPanelOpen($("notification-panel").classList.contains("hidden"));
 });
 $("notification-panel").addEventListener("click", (event) => event.stopPropagation());
-document.addEventListener("click", () => {
-  $("notification-panel")?.classList.add("hidden");
-  $("notification-bell")?.setAttribute("aria-expanded", "false");
+$("notification-backdrop").addEventListener("click", () => setNotificationPanelOpen(false));
+$("close-notifications").addEventListener("click", () => setNotificationPanelOpen(false));
+document.addEventListener("click", () => setNotificationPanelOpen(false));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !$("notification-panel").classList.contains("hidden")) setNotificationPanelOpen(false);
 });
 $("mark-notifications-read").addEventListener("click", () => action(() => client.mutation(refs.markAllNotificationsRead, {})));
 document.querySelectorAll("[data-notification-preference]").forEach((input) => input.addEventListener("change", () => {
@@ -2382,6 +2391,8 @@ document.addEventListener("click", (event) => {
   showTapTooltip(text);
 });
 window.addEventListener("resize", () => {
+  const notificationsOpen = !$("notification-panel")?.classList.contains("hidden");
+  document.body.classList.toggle("notification-modal-open", Boolean(notificationsOpen && isMobileLayout()));
   if (!isMobileLayout()) {
     closeMobileMenu();
     hideTapTooltip();

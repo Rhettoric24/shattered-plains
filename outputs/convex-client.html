@@ -83,8 +83,9 @@
             <div class="header-actions">
               <div class="notification-shell">
                 <button id="notification-bell" class="notification-bell secondary" type="button" aria-expanded="false" aria-controls="notification-panel" aria-label="Notifications">🔔<span id="notification-badge" class="nav-badge hidden">0</span></button>
-                <section id="notification-panel" class="notification-panel hidden" aria-label="Notification center">
-                  <div class="notification-heading"><div><p class="eyebrow">Dispatches</p><h3>Notifications</h3></div><button id="mark-notifications-read" class="secondary compact-button" type="button">Mark all read</button></div>
+                <div id="notification-backdrop" class="notification-backdrop hidden" aria-hidden="true"></div>
+                <section id="notification-panel" class="notification-panel hidden" role="dialog" aria-modal="true" aria-labelledby="notification-title">
+                  <div class="notification-heading"><div><p class="eyebrow">Dispatches</p><h3 id="notification-title">Notifications</h3></div><div class="notification-heading-actions"><button id="mark-notifications-read" class="secondary compact-button" type="button">Mark all read</button><button id="close-notifications" class="notification-close secondary" type="button" aria-label="Close notifications">✕</button></div></div>
                   <div id="notification-list" class="notification-list"></div>
                   <details class="notification-settings"><summary>Notification settings</summary>
                     <div class="notification-preferences">

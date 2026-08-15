@@ -79,8 +79,11 @@ h3 { font-size: 1rem; color: var(--accent); }
 .notification-shell { position: relative; }
 .notification-bell { position: relative; width: 44px; padding: 0; font-size: 1.1rem; }
 .notification-bell .nav-badge { position: absolute; top: -7px; right: -7px; }
+.notification-backdrop { display: none; }
 .notification-panel { position: absolute; z-index: 30; top: calc(100% + 10px); right: 0; width: min(410px, calc(100vw - 30px)); max-height: min(680px, calc(100vh - 100px)); overflow: auto; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #0a1728; box-shadow: var(--shadow); }
 .notification-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.notification-heading-actions { display: flex; align-items: center; gap: 8px; }
+.notification-close { display: none; width: 36px; min-height: 36px; padding: 0; font-size: 1rem; }
 .compact-button { min-height: 34px; padding: 0 10px; font-size: .76rem; }
 .notification-list { display: grid; gap: 8px; }
 .notification-item { width: 100%; min-height: 0; padding: 10px; text-align: left; color: var(--text); background: rgba(18,36,61,.7); border-color: rgba(216,229,245,.18); }
@@ -327,6 +330,31 @@ h3 { font-size: 1rem; color: var(--accent); }
 }
 @media (max-width: 680px) {
   body { padding-bottom: 0; }
+  body.notification-modal-open { overflow: hidden; }
+  .notification-backdrop {
+    display: block;
+    position: fixed;
+    z-index: 39;
+    inset: 0;
+    background: rgba(2, 8, 16, 0.72);
+    backdrop-filter: blur(3px);
+  }
+  .notification-panel {
+    position: fixed;
+    z-index: 40;
+    top: 50%;
+    left: 50%;
+    right: auto;
+    width: min(430px, calc(100vw - 24px));
+    max-height: calc(100dvh - 32px);
+    padding: 14px;
+    border-radius: 12px;
+    overscroll-behavior: contain;
+    transform: translate(-50%, -50%);
+  }
+  .notification-heading { align-items: flex-start; }
+  .notification-heading-actions { flex-shrink: 0; }
+  .notification-close { display: inline-grid; place-items: center; }
   button:hover { transform: none; }
   .shell { width: 100%; padding: 0; }
   .account-panel { grid-template-columns: 1fr; }
