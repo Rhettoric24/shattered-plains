@@ -12,6 +12,7 @@ import {
   BUILDING_RULES,
   ARDENTIA_RULES,
   calculateBuildingStats,
+  doctrineCostMultiplier,
   getBuildingCost,
   pendingEconomy,
   researchEffect,
@@ -108,7 +109,7 @@ export const upgradeBuilding = mutation({
     }
     const completed = await completedResearch(ctx, player._id);
     const baseCost = getBuildingCost(args.building, currentLevel);
-    const cost = Math.round(baseCost * (1 - Number(researchEffect(completed, "soulcasting")) / 100));
+    const cost = Math.round(baseCost * (1 - Number(researchEffect(completed, "soulcasting")) / 100) * doctrineCostMultiplier(completed, "building"));
 
     if (settledPlayer.spheres < cost) {
       throw new Error(

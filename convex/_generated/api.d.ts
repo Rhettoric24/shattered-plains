@@ -39,6 +39,7 @@ import type * as raids from "../raids.js";
 import type * as research from "../research.js";
 import type * as researchHelpers from "../researchHelpers.js";
 import type * as rules from "../rules.js";
+import type * as spren from "../spren.js";
 
 import type {
   ApiFromModules,
@@ -78,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   research: typeof research;
   researchHelpers: typeof researchHelpers;
   rules: typeof rules;
+  spren: typeof spren;
 }>;
 
 /**

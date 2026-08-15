@@ -121,11 +121,11 @@ describe("notifications", () => {
     }));
     await t.mutation(internal.research.completeActive, { playerId });
     await t.mutation(internal.research.completeActive, { playerId });
-    await t.run(async (ctx) => await ctx.db.insert("plateaus", {
-      name: "Ancient Crown", type: "ancient", status: "owned", ownerPlayerId: playerId,
-      highground: false, neutralDefenseInitial: 10, neutralDefenseRemaining: 0,
-      heldSince: Date.now(), createdAt: 1, updatedAt: 1,
-    }));
+    await t.run(async (ctx) => {
+      for (const [name, type] of [["Ancient Crown", "ancient"], ["Ancient Steps", "ancient"], ["Gemheart Reach", "gemheart"]] as const) {
+        await ctx.db.insert("plateaus", { name, type, status: "owned", ownerPlayerId: playerId, highground: false, neutralDefenseInitial: 10, neutralDefenseRemaining: 0, heldSince: Date.now(), createdAt: 1, updatedAt: 1 });
+      }
+    });
     await t.mutation(internal.research.completeActive, { playerId });
     await t.mutation(internal.research.completeActive, { playerId });
     const rows = await t.run(async (ctx) => await ctx.db.query("notifications").collect());

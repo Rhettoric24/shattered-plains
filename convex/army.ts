@@ -10,11 +10,14 @@ import {
 import { ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import {
   calculateArmyStats,
+  doctrineCostMultiplier,
+  doctrineFromResearch,
   normalizeUnits,
   pendingEconomy,
   trainingDiscount,
   UNIT_RULES,
 } from "./rules";
+import { completedResearch } from "./researchHelpers";
 
 const unitKey = v.union(
   v.literal("bridgeman"),
@@ -30,6 +33,7 @@ export const getArmy = query({
   handler: async (ctx) => {
     const player = await requireCurrentPlayer(ctx);
     const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
+    const completed = await completedResearch(ctx, player._id);
     const plateauAttributes = await plateauAttributeCountsForPlayer(ctx, player._id);
     const pending = pendingEconomy({ ...player, plateauCounts }, Date.now());
     const ownedUnits = await ownedUnitsIncludingAway(ctx, player._id, player.units);
@@ -49,7 +53,7 @@ export const getArmy = query({
       effectiveSpheres: player.spheres + pending.income,
       pendingIncome: pending.income,
       gemhearts: player.gemhearts,
-      stats: calculateArmyStats(player.units),
+      stats: calculateArmyStats(player.units, completed),
       unitRules: UNIT_RULES,
       plateauCounts,
       plateauAttributes,
@@ -82,12 +86,13 @@ export const trainUnit = mutation({
     }
 
     const plateauCounts = await plateauCountsForPlayer(ctx, settledPlayer._id);
+    const completed = await completedResearch(ctx, settledPlayer._id);
     const plateauAttributes = await plateauAttributeCountsForPlayer(
       ctx,
       settledPlayer._id,
     );
     const discount = trainingDiscount(plateauCounts);
-    const sphereCost = Math.ceil(rule.cost * count * (1 - discount));
+    const sphereCost = Math.ceil(rule.cost * count * (1 - discount) * doctrineCostMultiplier(completed, "military"));
     const gemheartCost = (rule.gemheartCost ?? 0) * count;
 
     if (settledPlayer.spheres < sphereCost) {
@@ -106,6 +111,7 @@ export const trainUnit = mutation({
     );
     const nextOwnedUnits = normalizeUnits(ownedUnits);
     nextOwnedUnits[args.unit] += count;
+    if (args.unit === "chull" && doctrineFromResearch(completed) === "gemheartBaron" && nextOwnedUnits.chull > 10) throw new Error("Gemheart Baron doctrine limits the kingdom to 10 owned Chulls.");
     const provisions = provisionsStatus(
       settledPlayer.buildings,
       plateauCounts,
@@ -151,7 +157,7 @@ export const trainUnit = mutation({
       remainingSpheres: settledPlayer.spheres - sphereCost,
       remainingGemhearts: settledPlayer.gemhearts - gemheartCost,
       units,
-      stats: calculateArmyStats(units),
+      stats: calculateArmyStats(units, completed),
       provisions,
     };
   },

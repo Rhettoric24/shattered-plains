@@ -24,4 +24,11 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "deliver subtle Spren reports",
+  { hours: 6 },
+  internal.spren.deliverReports,
+  {},
+);
+
 export default crons;

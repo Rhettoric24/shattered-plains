@@ -19,7 +19,7 @@ import {
   releaseConclave,
   resolveConclaveInvestigation,
 } from "./ardentiaHelpers";
-import { completedResearch, reconcileResearch } from "./researchHelpers";
+import { completedResearch, reconcileResearch, recordSuccessfulDefensiveSiege } from "./researchHelpers";
 import { createNotification } from "./notificationHelpers";
 import { subtractAvailableUnits, unitCountsValidator, validateMissionUnits } from "./armyRules";
 import {
@@ -44,6 +44,7 @@ import {
   casualtySummary,
   emergencyDefenseCost,
   effectivePower,
+  effectiveSpeed,
   emptyUnits,
   identityPlateauType,
   normalizeUnits,
@@ -62,8 +63,8 @@ function cleanUnits(units: UnitCounts) {
   return normalizeUnits(units);
 }
 
-function applyLossRate(units: UnitCounts, lossRate: number, seed: string, completed?: Record<string, number>) {
-  return applySurvivalLosses(normalizeUnits(units), lossRate, seed, completed);
+function applyLossRate(units: UnitCounts, lossRate: number, seed: string, completed?: Record<string, number>, conclaveCombat = false) {
+  return applySurvivalLosses(normalizeUnits(units), lossRate, seed, completed, conclaveCombat);
 }
 
 async function validateConclaveAttachment(
@@ -207,10 +208,12 @@ export const listPlateaus = query({
     );
     const playersById = new Map(players.map((player) => [String(player._id), player]));
     const researchRows = await ctx.db.query("playerResearch").take(200);
-    const researchByPlayer = new Map(researchRows.map((row) => [String(row.playerId), row.completedLevels]));
+    const researchByPlayer = new Map(researchRows.map((row) => [String(row.playerId), { ...row.completedLevels, ...(row.economicDoctrine === "gemheartBaron" ? { __doctrineGemheartBaron: 1 } : {}) }]));
     const gemheartIntervalForPlayer = (playerId: Id<"players"> | undefined) => {
-      const gemHours = Number(researchEffect(playerId ? researchByPlayer.get(String(playerId)) : undefined, "gemCutting"));
-      return gemHours > 0 ? gemHours * 60 * 60 * 1000 : PLATEAU_RULES.gemheartIntervalMs;
+      const completed = playerId ? researchByPlayer.get(String(playerId)) : undefined;
+      const gemHours = Number(researchEffect(completed, "gemCutting"));
+      const baseHours = gemHours > 0 ? gemHours : PLATEAU_RULES.gemheartIntervalMs / 3600000;
+      return (baseHours - (completed?.__doctrineGemheartBaron ? 1 : 0)) * 60 * 60 * 1000;
     };
     const activeSieges = await ctx.db
       .query("sieges")
@@ -384,15 +387,16 @@ export const launchNeutralSiege = mutation({
     const now = Date.now();
     const plateauCounts = await plateauCountsForPlayer(ctx, attacker._id);
     const completed = await completedResearch(ctx, attacker._id);
-    const resolveAt = now + travelMsForUnits(units, plateauCounts, completed);
+    const conclaveCombat = Boolean(args.conclaveId);
+    const resolveAt = now + travelMsForUnits(units, plateauCounts, completed, conclaveCombat);
     const remainingUnits = subtractAvailableUnits(attacker.units, units);
     const siegeId = await ctx.db.insert("sieges", {
       plateauId: plateau._id,
       attackerId: attacker._id,
       targetType: "neutral",
       attackerUnits: units,
-      attackerPower: effectivePower(units, completed),
-      attackerSpeed: unitSpeed(units),
+      attackerPower: effectivePower(units, completed, conclaveCombat),
+      attackerSpeed: effectiveSpeed(units, completed, conclaveCombat),
       fortifyPercent: 0,
       emergencyDefensePercent: 0,
       emergencyDefenseSpheresSpent: 0,
@@ -467,8 +471,8 @@ export const launchPlayerSiege = mutation({
       defenderId: defender._id,
       targetType: "player",
       attackerUnits: units,
-      attackerPower: effectivePower(units, completed),
-      attackerSpeed: unitSpeed(units),
+      attackerPower: effectivePower(units, completed, Boolean(args.conclaveId)),
+      attackerSpeed: effectiveSpeed(units, completed, Boolean(args.conclaveId)),
       defenderUnits: emptyUnits(),
       defenderPower: 0,
       defenderSpeed: 0,
@@ -727,6 +731,7 @@ export const resolveSiege = internalMutation({
     let won = false;
     let resultText = "";
     let survivors = siege.attackerUnits;
+    let awardedConclaveXp: number | undefined;
 
     if (siege.targetType === "neutral") {
       won = siege.attackerPower >= plateau.neutralDefenseRemaining;
@@ -735,6 +740,7 @@ export const resolveSiege = internalMutation({
         baseCasualtyRate(siege.attackerPower, plateau.neutralDefenseRemaining),
         `${siege._id}:neutral:${now}`,
         attackerCompleted,
+        Boolean(siege.conclaveId),
       );
       survivors = lossResult.survivors;
       const investigation = resolveConclaveInvestigation(
@@ -743,7 +749,7 @@ export const resolveSiege = internalMutation({
         `${siege._id}:neutral:${now}`,
       );
       const conclaveXp = siege.conclaveId ? (investigation.succeeded ? missionXpBudget(plateau.neutralDefenseInitial) : Math.ceil(missionXpBudget(plateau.neutralDefenseInitial) / 2)) : 0;
-      await releaseConclave(ctx, siege.conclaveId, conclaveXp);
+      awardedConclaveXp = siege.conclaveId ? await releaseConclave(ctx, siege.conclaveId, conclaveXp) : undefined;
       await recordTerritoryReport(ctx, {
         viewerPlayerId: attacker._id,
         plateau,
@@ -813,6 +819,7 @@ export const resolveSiege = internalMutation({
           baseCasualtyRate(siege.attackerPower, defenderPower),
           `${siege._id}:player:attacker:${now}`,
           attackerCompleted,
+          Boolean(siege.conclaveId),
         );
         survivors = attackerLossResult.survivors;
         const investigation = resolveConclaveInvestigation(
@@ -821,7 +828,7 @@ export const resolveSiege = internalMutation({
           `${siege._id}:player:${now}`,
         );
         const conclaveXp = siege.conclaveId ? (investigation.succeeded ? missionXpBudget(defenderPower) : Math.ceil(missionXpBudget(defenderPower) / 2)) : 0;
-        await releaseConclave(ctx, siege.conclaveId, conclaveXp);
+        awardedConclaveXp = siege.conclaveId ? await releaseConclave(ctx, siege.conclaveId, conclaveXp) : undefined;
         const attackerReportLevel = (won ? 2 : 1) + (investigation.succeeded ? 1 : 0);
         await recordKingdomReport(ctx, {
           viewerPlayerId: attacker._id,
@@ -884,6 +891,7 @@ export const resolveSiege = internalMutation({
             updatedAt: now,
           });
           outcomeText = `${defender.name} held ${plateau.name} against ${attacker.name}.`;
+          await recordSuccessfulDefensiveSiege(ctx, defender._id, now);
         }
         const attackerResultText = `${outcomeText} Your casualties: ${casualtySummary(attackerLossResult.casualties)}. ${casualtyIntelSummary(defenderLossResult.casualties, attackerReportLevel)}${investigationText} Updated snapshots are available in Intelligence.`;
         const defenderResultText = `${outcomeText} Your casualties: ${casualtySummary(defenderLossResult.casualties)}. ${casualtyIntelSummary(attackerLossResult.casualties, defenderIntelLevel)} Intelligence reflects what your warcamp could confirm.`;
@@ -907,6 +915,8 @@ export const resolveSiege = internalMutation({
     await ctx.db.patch(siege._id, {
       status: "resolved",
       resolvedAt: now,
+      conclaveXpAwarded: awardedConclaveXp,
+      ...(siege.targetType === "player" ? { defenderHeld: !won } : {}),
     });
     await ctx.db.insert("messages", {
       toPlayerId: attacker._id,

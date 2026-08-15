@@ -15,6 +15,8 @@ import {
   baseCasualtyRate,
   casualtySummary,
   effectivePower,
+  effectiveSpeed,
+  doctrineFromResearch,
   bridgedTravelReduction,
   normalizeUnits,
   missionRiskLabel,
@@ -181,8 +183,7 @@ export const getCurrent = query({
         .sort((a, b) => a.committedAt - b.committedAt)
         .map((commitment, index) => {
         const player = players.find((entry) => entry._id === commitment.playerId);
-        const joinOrderSpeedBonus =
-          PLATEAU_RUN_RULES.joinOrderSpeedBonuses[index] ?? 0;
+        const joinOrderSpeedBonus = (PLATEAU_RUN_RULES.joinOrderSpeedBonuses[index] ?? 0) * (commitment.doctrineJoinSpeedMultiplier ?? 1);
         return {
           ...commitment,
           joinOrder: index + 1,
@@ -256,13 +257,14 @@ export const joinPlateauRun = mutation({
       : player.units;
     const remainingUnits = subtractAvailableUnits(availableUnits, units);
     const completed = await completedResearch(ctx, player._id);
-    const power = effectivePower(units, completed);
+    const conclaveCombat = Boolean(args.conclaveId);
+    const power = effectivePower(units, completed, conclaveCombat);
     const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
     const bridgedReduction = bridgedTravelReduction(plateauCounts);
-    const speed = unitSpeed(units) + Number(completed.bridgeEngineering ?? 0) * 2 + bridgedReduction * 100;
+    const speed = effectiveSpeed(units, completed, conclaveCombat) + bridgedReduction * 100;
     const travelMinutes = Math.max(
       1,
-      Math.round(travelMsForUnits(units, plateauCounts, completed) / 60000),
+      Math.round(travelMsForUnits(units, plateauCounts, completed, conclaveCombat) / 60000),
     );
 
     await ctx.db.patch(player._id, {
@@ -276,6 +278,7 @@ export const joinPlateauRun = mutation({
       speed,
       bridgedTravelReductionPercent: Math.round(bridgedReduction * 100),
       travelMinutes,
+      doctrineJoinSpeedMultiplier: doctrineFromResearch(completed) === "gemheartBaron" ? 2 : 1,
       ...(args.conclaveId ? { conclaveId: args.conclaveId } : {}),
     };
     const commitmentId = existingCommitment
@@ -380,8 +383,7 @@ export const resolvePlateauRun = internalMutation({
 
     const sorted = [...commitments].sort((a, b) => a.committedAt - b.committedAt);
     const entries = sorted.map((commitment, index) => {
-      const joinOrderSpeedBonus =
-        PLATEAU_RUN_RULES.joinOrderSpeedBonuses[index] ?? 0;
+      const joinOrderSpeedBonus = (PLATEAU_RUN_RULES.joinOrderSpeedBonuses[index] ?? 0) * (commitment.doctrineJoinSpeedMultiplier ?? 1);
       return {
         ...commitment,
         joinOrder: index + 1,
@@ -420,9 +422,10 @@ export const resolvePlateauRun = internalMutation({
           runBaseCasualtyRate,
           `${run._id}:${entry._id}:failed:${now}`,
           completed,
+          Boolean(entry.conclaveId),
         );
-        await releaseConclave(ctx, entry.conclaveId, conclaveXp);
-        await ctx.db.patch(entry._id, { conclaveXpAwarded: entry.conclaveId ? conclaveXp : undefined });
+        const awardedXp = entry.conclaveId ? await releaseConclave(ctx, entry.conclaveId, conclaveXp) : undefined;
+        await ctx.db.patch(entry._id, { conclaveXpAwarded: awardedXp });
         await ctx.db.patch(player._id, {
           units: addUnits(player.units, lossResult.survivors),
           lastActiveAt: now,
@@ -473,6 +476,7 @@ export const resolvePlateauRun = internalMutation({
         runBaseCasualtyRate,
         `${run._id}:${entry._id}:success:${now}`,
         completed,
+        Boolean(entry.conclaveId),
       );
       const isWinner = entry._id === winner._id;
       const availableSphereShare =
@@ -481,9 +485,9 @@ export const resolvePlateauRun = internalMutation({
           : finalEntries.length === 1
             ? run.spherePool
             : 0;
-      const plunder = unitPlunder(entry.units, completed);
-      await releaseConclave(ctx, entry.conclaveId, conclaveXp);
-      await ctx.db.patch(entry._id, { conclaveXpAwarded: entry.conclaveId ? conclaveXp : undefined });
+      const plunder = unitPlunder(entry.units, completed, Boolean(entry.conclaveId));
+      const awardedXp = entry.conclaveId ? await releaseConclave(ctx, entry.conclaveId, conclaveXp) : undefined;
+      await ctx.db.patch(entry._id, { conclaveXpAwarded: awardedXp });
       const sphereShare = Math.min(availableSphereShare, plunder);
       const leftBehind = Math.max(0, availableSphereShare - sphereShare);
 

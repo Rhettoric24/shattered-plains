@@ -416,6 +416,7 @@ export const backfillResearchSystem = mutation({
   handler: async (ctx) => {
     await requireAdmin(ctx);
     await ctx.scheduler.runAfter(0, internal.ardentia.backfillIndividualConclaves, {});
+    await ctx.scheduler.runAfter(0, internal.research.migrateResearchState, {});
     return { scheduled: true };
   },
 });
@@ -427,7 +428,7 @@ export const finishActiveResearch = mutation({
     const players = await ctx.db.query("players").take(200);
     for (const player of players) {
       const state = await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", player._id)).unique();
-      if (state?.activeProject) await ctx.db.patch(state._id, { accumulatedBaseMs: Number.MAX_SAFE_INTEGER, lastAdvancedAt: Date.now() });
+      if (state?.activeProject || state?.activeDoctrine) await ctx.db.patch(state._id, { accumulatedBaseMs: Number.MAX_SAFE_INTEGER, lastAdvancedAt: Date.now() });
       await ctx.scheduler.runAfter(0, internal.research.completeActive, { playerId: player._id });
     }
     return { scheduled: players.length };

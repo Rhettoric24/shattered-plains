@@ -114,6 +114,7 @@ export default defineSchema({
     ardentiaConclave: v.optional(v.boolean()),
     conclaveId: v.optional(v.id("ardentConclaves")),
     conclaveXpAwarded: v.optional(v.number()),
+    defenderHeld: v.optional(v.boolean()),
     departAt: v.number(),
     resolveAt: v.number(),
     resolvedAt: v.optional(v.number()),
@@ -214,6 +215,7 @@ export default defineSchema({
     travelMinutes: v.optional(v.number()),
     conclaveId: v.optional(v.id("ardentConclaves")),
     conclaveXpAwarded: v.optional(v.number()),
+    doctrineJoinSpeedMultiplier: v.optional(v.number()),
     committedAt: v.number(),
   })
     .index("by_run", ["plateauRunId"])
@@ -246,6 +248,12 @@ export default defineSchema({
     accumulatedBaseMs: v.optional(v.number()),
     lastAdvancedAt: v.optional(v.number()),
     projectedCompletionAt: v.optional(v.number()),
+    activeDoctrine: v.optional(v.union(v.literal("taxItAll"), v.literal("militaryState"), v.literal("gemheartBaron"))),
+    economicDoctrine: v.optional(v.union(v.literal("taxItAll"), v.literal("militaryState"), v.literal("gemheartBaron"))),
+    doctrineChangeCount: v.optional(v.number()),
+    successfulDefensiveSieges: v.optional(v.number()),
+    futurePathUnlocked: v.optional(v.boolean()),
+    lastSprenReportWindow: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_playerId", ["playerId"]),
@@ -284,6 +292,9 @@ export default defineSchema({
     plateauType: v.optional(plateauType),
     highground: v.optional(v.boolean()),
     large: v.optional(v.boolean()),
+    bonusFactKind: v.optional(v.string()),
+    bonusFactText: v.optional(v.string()),
+    bonusObservedAt: v.optional(v.number()),
   })
     .index("by_viewerPlayerId_and_targetType", ["viewerPlayerId", "targetType"])
     .index("by_viewerPlayerId_and_targetPlayerId", ["viewerPlayerId", "targetPlayerId"])

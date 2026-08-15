@@ -35,29 +35,75 @@ export const RESEARCH_RULES = {
   speedCapPercent: 30,
   monasterySpeedPerLevelPercent: 1,
   ancientPlateausPerSpeedPercent: 2,
-  durationsMs: [60 * 60 * 1000, 4 * 60 * 60 * 1000, 12 * 60 * 60 * 1000],
-  sphereCosts: [1000, 3000, 7500],
+  libraries: {
+    economic: { name: "Economic Studies", description: "Ardents pursue the subtle crafts of markets, trade, Soulcasting, and warcamp economics." },
+    military: { name: "Military Studies", description: "Ardents refine the movement, protection, and supply of armies crossing the Plains." },
+    ancient: { name: "Ancient Lore", description: "Patient scholars follow stranger patterns left by spren, faith, and the peoples who understood these lands before us." },
+  },
+  doctrine: {
+    baseSphereCost: 7000,
+    baseDurationMs: 12 * 60 * 60 * 1000,
+    switchSphereIncrease: 2000,
+    switchDurationIncreaseMs: 5 * 60 * 60 * 1000,
+    militaryStatePercent: 15,
+    taxMarketPercent: 10,
+    taxMilitaryCostPercent: 10,
+    gemheartIntervalReductionHours: 1,
+    gemheartBaronJoinSpeedMultiplier: 2,
+    gemheartBaronChullCap: 10,
+  },
+  spren: { reportChance: 0.25, bonusDiscoveryChance: 0.25, reportIntervalMs: 6 * 60 * 60 * 1000 },
   projects: {
-    bridgeEngineering: { name: "Bridge Engineering", library: "Military", description: "Ardents and bridge crews refine construction, deployment, and crossing methods so armies move across the Plains with greater confidence and speed.", ancient: [0, 1, 2], gemhearts: [0, 0, 0], effects: [2, 4, 6], effect: "effective Speed" },
-    packHarnessDesign: { name: "Pack Harness Design", library: "Military", description: "Improved harnesses, loading practices, and chull handling let armies transport more wealth without abandoning their heavy logistical support.", ancient: [0, 1, 2], gemhearts: [0, 0, 0], effects: [10, 20, 30], effect: "% Chull Plunder" },
-    painrialMedicine: { name: "Painrial Medicine", library: "Military", description: "Battlefield surgeons adapt painrials for desperate marches and retreats, reducing the number of wounds that become deaths.", ancient: [0, 1, 2], gemhearts: [0, 1, 2], effects: [5, 10, 15], effect: "% casualty reduction" },
-    soulcastArmor: { name: "Soulcast Armor", library: "Military", description: "Standardized Soulcast armor components let disciplined spear formations strike and endure with greater force.", ancient: [0, 1, 2], gemhearts: [0, 1, 2], effects: [0.1, 0.2, 0.3], effect: "Power per Spearman" },
-    siegeEngineering: { name: "Siege Engineering", library: "Military", description: "Warcamp engineers study barricades, chokepoints, and temporary fortifications that turn narrow plateau approaches into weapons.", ancient: [0, 1, 2], gemhearts: [0, 0, 1], effects: [8, 16, 24], effect: "% Emergency Defense cost reduction" },
-    gemCutting: { name: "Gem Cutting", library: "Commerce", description: "Skilled gemcutters preserve more useful Stormlight within harvested gemhearts and prepare them more efficiently.", ancient: [1, 2, 3], gemhearts: [1, 2, 3], effects: [11.5, 11, 10], effect: "hour Gemheart interval" },
-    soulcasting: { name: "Soulcasting", library: "Commerce", description: "More efficient Soulcasting reduces waste in stone, lumber, metal, and other supplies used for major construction.", ancient: [0, 1, 2], gemhearts: [0, 1, 1], effects: [5, 10, 15], effect: "% building cost reduction" },
-    marketEconomics: { name: "Market Economics", library: "Commerce", description: "Ardents study taxation, merchant incentives, and the circulation of infused currency through the warcamp.", ancient: [0, 0, 1], gemhearts: [0, 0, 1], effects: [10, 20, 30], effect: "% Market income" },
+    bridgeEngineering: { name: "Bridge Engineering", library: "military", description: "Ardents and bridge crews refine construction, deployment, and crossing methods so armies move across the Plains with greater confidence and speed.", ancient: [0, 1, 2], gemhearts: [0, 0, 1], monastery: [1, 2, 3], costs: [5000, 7000, 7000], durationsMs: [3600000, 14400000, 43200000], effects: [10, 20, 30], effect: "total army Speed" },
+    packHarnessDesign: { name: "Pack Harnesses", library: "military", description: "Reworked harnesses let Chulls carry far richer loads, though every fitted beast slows the column.", ancient: [0, 0, 0], gemhearts: [0, 0, 0], monastery: [1, 2, 3], costs: [5000, 7000, 10000], durationsMs: [3600000, 14400000, 43200000], effects: [10, 25, 50], speedEffects: [-3, -3, -2], effect: "Plunder per Chull" },
+    painrialMedicine: { name: "Painrials", library: "military", description: "Battlefield painrials help spear formations endure wounds and maintain fighting strength.", ancient: [0, 0, 0], gemhearts: [0, 1, 1], monastery: [1, 2, 3], costs: [5000, 5000, 7000], durationsMs: [3600000, 14400000, 43200000], effects: [1, 1, 2], powerEffects: [0, 0.5, 0.5], effect: "Survival per Spearman" },
+    soulcastArmor: { name: "Soulcast Armor", library: "military", description: "Heavier Soulcast armor turns disciplined spear formations into a stronger line, initially at the cost of marching speed.", ancient: [1, 2, 3], gemhearts: [0, 1, 2], monastery: [1, 2, 3], costs: [5000, 10000, 15000], durationsMs: [3600000, 14400000, 43200000], effects: [0.5, 1, 1], speedEffects: [-0.5, -0.5, 0], effect: "Power per Spearman" },
+    siegeEngineering: { name: "Siege Engineering", library: "military", description: "Warcamp engineers study barricades and chokepoints that make emergency fortifications more affordable.", ancient: [0, 0, 0], gemhearts: [0, 0, 0], monastery: [1, 2, 3], costs: [3000, 5000, 7000], durationsMs: [3600000, 14400000, 43200000], effects: [10, 15, 20], defensiveSieges: [0, 0, 5], effect: "% Emergency Defense discount" },
+    gemCutting: { name: "Gem Cutting", library: "economic", description: "Skilled gemcutters preserve more useful Stormlight and shorten the interval between viable harvests.", ancient: [2, 2, 3], gemhearts: [1, 1, 2], monastery: [1, 2, 3], costs: [5000, 7000, 10000], durationsMs: [3600000, 14400000, 43200000], effects: [11.5, 11, 10], requiresGemheartPlateau: [true, true, true], effect: "hour Gemheart interval" },
+    soulcasting: { name: "Soulcasting", library: "economic", description: "More efficient Soulcasting reduces waste in the materials used for major construction.", ancient: [0, 0, 0], gemhearts: [0, 0, 0], monastery: [1, 2, 3], costs: [2000, 5000, 7000], durationsMs: [3600000, 14400000, 43200000], effects: [5, 10, 20], effect: "% total building discount" },
+    marketEconomics: { name: "Market Economics", library: "economic", description: "Ardents study taxation, merchant incentives, and the circulation of infused currency through the warcamp.", ancient: [0, 0, 1], gemhearts: [0, 0, 1], monastery: [1, 2, 3], costs: [1000, 3000, 7500], durationsMs: [3600000, 14400000, 43200000], effects: [10, 20, 30], effect: "% total Market income" },
+    sprenStudies: { name: "Spren Studies", library: "ancient", description: "Spren communicate in strange, indirect ways. Patient observation reveals patterns others overlook.", ancient: [1, 1, 2, 3], gemhearts: [0, 0, 1, 2], monastery: [1, 2, 3, 3], costs: [5000, 7000, 10000, 15000], durationsMs: [3600000, 14400000, 43200000, 86400000], effects: [1, 2, 3, 4], effect: "stage of Spren understanding" },
+    religiousStudies: { name: "Religious Studies", library: "ancient", description: "Ardents compare doctrine, devotion, and the strange ways belief shapes service on the Plains.", ancient: [0, 1, 2, 3], gemhearts: [0, 0, 1, 2], monastery: [1, 2, 3, 3], costs: [5000, 7000, 10000, 15000], durationsMs: [3600000, 14400000, 43200000, 86400000], effects: [1, 2, 3, 4], effect: "stage of Ardent discipline" },
   },
 } as const;
 
+export const ECONOMIC_DOCTRINES = {
+  taxItAll: { name: "Tax It All", description: "The warcamp extracts aggressively from markets and merchants, swelling the treasury while making military mobilization more expensive.", effects: ["Market-generated Spheres +10%", "Military Sphere costs +10%"] },
+  militaryState: { name: "Military State", description: "Resources are redirected toward soldiers, equipment, and readiness at the expense of civil development and scholarship.", effects: ["Military Sphere costs −15%", "Building Sphere costs +15%", "Research Sphere costs +15%"] },
+  gemheartBaron: { name: "Gemheart Baron", description: "The kingdom organizes its economy around Gemhearts, sacrificing heavy logistics in pursuit of premium resources.", effects: ["First three Plateau Run join Speed bonuses doubled", "Gemheart production interval −1 hour", "Maximum 10 owned Chulls"] },
+} as const;
+
 export type ResearchProjectKey = keyof typeof RESEARCH_RULES.projects;
+export type EconomicDoctrineKey = keyof typeof ECONOMIC_DOCTRINES;
 
 export function researchLevel(completed: Record<string, number> | undefined, project: ResearchProjectKey) {
-  return Math.max(0, Math.min(3, Math.floor(completed?.[project] ?? 0)));
+  return Math.max(0, Math.min(RESEARCH_RULES.projects[project].effects.length, Math.floor(completed?.[project] ?? 0)));
 }
 
 export function researchEffect(completed: Record<string, number> | undefined, project: ResearchProjectKey) {
   const level = researchLevel(completed, project);
   return level > 0 ? RESEARCH_RULES.projects[project].effects[level - 1] : 0;
+}
+
+export function researchSecondaryEffect(completed: Record<string, number> | undefined, project: ResearchProjectKey, field: string) {
+  const level = researchLevel(completed, project);
+  if (level < 1) return 0;
+  const values = (RESEARCH_RULES.projects[project] as unknown as Record<string, readonly number[]>)[field];
+  return Number(values?.[level - 1] ?? 0);
+}
+
+export function doctrineFromResearch(completed?: Record<string, number>): EconomicDoctrineKey | undefined {
+  if (completed?.__doctrineTaxItAll) return "taxItAll";
+  if (completed?.__doctrineMilitaryState) return "militaryState";
+  if (completed?.__doctrineGemheartBaron) return "gemheartBaron";
+  return undefined;
+}
+
+export function doctrineCostMultiplier(completed: Record<string, number> | undefined, kind: "military" | "building" | "research") {
+  const doctrine = doctrineFromResearch(completed);
+  if (kind === "military") return doctrine === "taxItAll" ? 1.1 : doctrine === "militaryState" ? 0.85 : 1;
+  if (kind === "building") return doctrine === "militaryState" ? 1.15 : 1;
+  return doctrine === "militaryState" ? 1.15 : 1;
 }
 
 export function conclaveRank(xp: number) {
@@ -576,17 +622,24 @@ export function shardbearerBreakthroughBonus(units: Partial<UnitCounts>) {
   );
 }
 
-export function effectivePower(units: Partial<UnitCounts>, completed?: Record<string, number>) {
+export function effectiveSurvivability(units: Partial<UnitCounts>, completed?: Record<string, number>, conclaveCombat = false) {
   const normalized = normalizeUnits(units);
-  return basePower(normalized) + normalized.spearman * Number(researchEffect(completed, "soulcastArmor")) + shardbearerBreakthroughBonus(normalized);
+  const beforeConclave = unitSurvivability(normalized) + normalized.spearman * Number(researchEffect(completed, "painrialMedicine"));
+  if (!conclaveCombat || researchLevel(completed, "religiousStudies") < 3) return beforeConclave;
+  return beforeConclave + Math.min(100, Math.max(0, beforeConclave)) * 0.5;
 }
 
-export function unitPlunder(units: Partial<UnitCounts>, completed?: Record<string, number>) {
+export function effectivePower(units: Partial<UnitCounts>, completed?: Record<string, number>, conclaveCombat = false) {
   const normalized = normalizeUnits(units);
-  return unitKeys().reduce(
-    (sum, key) => sum + normalized[key] * UNIT_RULES[key].plunder * (key === "chull" ? 1 + Number(researchEffect(completed, "packHarnessDesign")) / 100 : 1),
-    0,
-  );
+  const beforeConclave = basePower(normalized) + normalized.spearman * (Number(researchEffect(completed, "soulcastArmor")) + researchSecondaryEffect(completed, "painrialMedicine", "powerEffects")) + shardbearerBreakthroughBonus(normalized);
+  if (!conclaveCombat || researchLevel(completed, "religiousStudies") < 3) return beforeConclave;
+  return beforeConclave + 10 + Math.min(100, Math.max(0, beforeConclave)) * 0.5;
+}
+
+export function unitPlunder(units: Partial<UnitCounts>, completed?: Record<string, number>, conclaveCombat = false) {
+  const normalized = normalizeUnits(units);
+  const base = unitKeys().reduce((sum, key) => sum + normalized[key] * UNIT_RULES[key].plunder, 0);
+  return base + normalized.chull * Number(researchEffect(completed, "packHarnessDesign")) + (conclaveCombat && researchLevel(completed, "religiousStudies") >= 3 ? 25 : 0);
 }
 
 export function emergencyDefenseCost(percent: number, completed?: Record<string, number>) {
@@ -598,16 +651,22 @@ export function emergencyDefenseCost(percent: number, completed?: Record<string,
     PLATEAU_RULES.emergencyDefenseMaxCost *
       (cappedPercent / PLATEAU_RULES.emergencyDefenseMaxPercent) **
         PLATEAU_RULES.emergencyDefenseCostExponent
-  ) * (1 - Number(researchEffect(completed, "siegeEngineering")) / 100));
+  ) * (1 - Number(researchEffect(completed, "siegeEngineering")) / 100) * doctrineCostMultiplier(completed, "military"));
+}
+
+export function effectiveSpeed(units: Partial<UnitCounts>, completed?: Record<string, number>, conclaveCombat = false) {
+  const normalized = normalizeUnits(units);
+  return unitSpeed(normalized) + Number(researchEffect(completed, "bridgeEngineering")) + normalized.chull * researchSecondaryEffect(completed, "packHarnessDesign", "speedEffects") + normalized.spearman * researchSecondaryEffect(completed, "soulcastArmor", "speedEffects") + (conclaveCombat && researchLevel(completed, "religiousStudies") >= 3 ? 1 : 0);
 }
 
 export function travelMsForUnits(
   units: Partial<UnitCounts>,
   plateauCounts: PlateauCounts = emptyPlateauCounts(),
   completed?: Record<string, number>,
+  conclaveCombat = false,
 ) {
   const baseMs = TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
-  const speed = unitSpeed(units) + Number(researchEffect(completed, "bridgeEngineering"));
+  const speed = effectiveSpeed(units, completed, conclaveCombat);
   const constant = TIME_RULES.statDiminishingConstant;
   const travelMultiplier =
     speed >= 0 ? constant / (constant + speed) : 1 + Math.abs(speed) / constant;
@@ -632,6 +691,7 @@ export function applySurvivalLosses(
   baseCasualtyRate: number,
   seed: string,
   completed?: Record<string, number>,
+  conclaveCombat = false,
 ) {
   const normalized = normalizeUnits(units);
   const survivors = { ...normalized };
@@ -646,8 +706,8 @@ export function applySurvivalLosses(
 
   const finalCasualtyRate = casualtyRateAfterSurvivability(
     baseCasualtyRate,
-    unitSurvivability(normalized),
-  ) * (1 - Number(researchEffect(completed, "painrialMedicine")) / 100);
+    effectiveSurvivability(normalized, completed, conclaveCombat),
+  );
   const expectedCasualties = unitPool.length * finalCasualtyRate;
   const wholeCasualties = Math.floor(expectedCasualties);
   const fractionalCasualty =
@@ -731,11 +791,11 @@ export function survivalProfile(units: Partial<UnitCounts>) {
   };
 }
 
-export function calculateArmyStats(units: Partial<UnitCounts>, completed?: Record<string, number>) {
+export function calculateArmyStats(units: Partial<UnitCounts>, completed?: Record<string, number>, conclaveCombat = false) {
   const normalized = normalizeUnits(units);
   const base = basePower(normalized);
-  const speed = unitSpeed(normalized);
-  const survivability = unitSurvivability(normalized);
+  const speed = effectiveSpeed(normalized, completed, conclaveCombat);
+  const survivability = effectiveSurvivability(normalized, completed, conclaveCombat);
   const breakthroughPower = shardbearerBreakthroughBonus(normalized);
   const survival = survivalProfile(normalized);
 
@@ -743,8 +803,8 @@ export function calculateArmyStats(units: Partial<UnitCounts>, completed?: Recor
     totalUnits: totalUnits(normalized),
     basePower: base,
     speed,
-    power: effectivePower(normalized, completed),
-    plunder: unitPlunder(normalized, completed),
+    power: effectivePower(normalized, completed, conclaveCombat),
+    plunder: unitPlunder(normalized, completed, conclaveCombat),
     survivability,
     survivalLabel: survival.label,
     survivalDetails: survival.details,
@@ -769,9 +829,10 @@ export function incomeBreakdown(player: {
 }) {
   const counts = player.plateauCounts ?? emptyPlateauCounts();
   const baseKingdomIncomePerDay = ECONOMY_RULES.baseSphereIncomePerGameDay;
+  const doctrineMarketBonus = doctrineFromResearch(player.completedResearch) === "taxItAll" ? RESEARCH_RULES.doctrine.taxMarketPercent : 0;
   const marketIncomePerDay = player.buildings.market *
     ECONOMY_RULES.marketSpheresPerLevelPerGameDay *
-    (1 + Number(researchEffect(player.completedResearch, "marketEconomics")) / 100);
+    (1 + (Number(researchEffect(player.completedResearch, "marketEconomics")) + doctrineMarketBonus) / 100);
   const passiveIncomeBeforeMultiplier =
     baseKingdomIncomePerDay + marketIncomePerDay;
   const sphereBonus = sphereIncomeBonus(counts);

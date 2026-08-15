@@ -1,7 +1,7 @@
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { ARDENTIA_RULES, conclaveRank } from "./rules";
-import { reconcileResearch } from "./researchHelpers";
+import { reconcileResearch, researchForPlayer } from "./researchHelpers";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -49,7 +49,12 @@ export async function assignConclave(ctx: MutationCtx, playerId: Id<"players">, 
   const conclave = await ctx.db.get(conclaveId);
   if (!conclave || conclave.ownerPlayerId !== playerId) throw new Error("Choose one of your Scout Conclaves.");
   if (conclave.missionId) throw new Error(`${conclave.name} is already away on a mission.`);
-  await ctx.db.patch(conclave._id, { missionKind, missionId, updatedAt: Date.now() });
+  const now = Date.now();
+  const state = await researchForPlayer(ctx, playerId);
+  const combatResearch = Math.floor(state?.completedLevels.religiousStudies ?? 0) >= 3;
+  if (combatResearch) await reconcileResearch(ctx, playerId, now);
+  await ctx.db.patch(conclave._id, { missionKind, missionId, updatedAt: now });
+  if (combatResearch) await reconcileResearch(ctx, playerId, now);
   return conclave._id;
 }
 
@@ -57,9 +62,14 @@ export async function releaseConclave(ctx: MutationCtx, conclaveId: Id<"ardentCo
   if (!conclaveId) return 0;
   const conclave = await ctx.db.get(conclaveId);
   if (!conclave) return 0;
-  await ctx.db.patch(conclave._id, { xp: conclave.xp + xp, missionKind: undefined, missionId: undefined, updatedAt: Date.now() });
-  if (xp > 0) await reconcileResearch(ctx, conclave.ownerPlayerId);
-  return xp;
+  const now = Date.now();
+  const state = await researchForPlayer(ctx, conclave.ownerPlayerId);
+  const religiousLevel = Math.floor(state?.completedLevels.religiousStudies ?? 0);
+  const awardedXp = xp * (religiousLevel >= 1 ? 2 : 1);
+  if (xp > 0 || religiousLevel >= 3) await reconcileResearch(ctx, conclave.ownerPlayerId, now);
+  await ctx.db.patch(conclave._id, { xp: conclave.xp + awardedXp, missionKind: undefined, missionId: undefined, updatedAt: now });
+  if (xp > 0 || religiousLevel >= 3) await reconcileResearch(ctx, conclave.ownerPlayerId, now);
+  return awardedXp;
 }
 
 export function missionXpBudget(difficulty: number) {

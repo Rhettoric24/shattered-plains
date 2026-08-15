@@ -95,6 +95,18 @@ export async function recordTerritoryReport(
       q.eq("viewerPlayerId", args.viewerPlayerId).eq("plateauId", args.plateau._id),
     )
     .unique();
+  const research = await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", args.viewerPlayerId)).unique();
+  const sprenLevel = Math.floor(research?.completedLevels.sprenStudies ?? 0);
+  const seed = `${args.viewerPlayerId}:${args.plateau._id}:${args.observedAt}`;
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) { hash ^= seed.charCodeAt(index); hash = Math.imul(hash, 16777619); }
+  const discovered = sprenLevel >= 2 && (hash >>> 0) / 4294967296 < 0.25;
+  const bonusFacts = [
+    { kind: "resistance", text: `An unusual cluster of spren marks the resistance precisely: ${args.plateau.neutralDefenseRemaining} Power.` },
+    { kind: "terrain", text: `Spren repeatedly gather around the ${args.plateau.highground ? "high approaches" : "lower approaches"}; the plateau ${args.plateau.large ? "is unusually large" : "is of ordinary size"}.` },
+    { kind: "identity", text: `The pattern resolves around a ${args.plateau.type.replaceAll("_", " ")} plateau.` },
+  ];
+  const bonus = discovered ? bonusFacts[(hash >>> 8) % bonusFacts.length] : undefined;
   const report = {
     viewerPlayerId: args.viewerPlayerId,
     targetType: "territory" as const,
@@ -106,6 +118,7 @@ export async function recordTerritoryReport(
     plateauType: args.plateau.type,
     highground: args.plateau.highground,
     large: Boolean(args.plateau.large),
+    ...(bonus ? { bonusFactKind: bonus.kind, bonusFactText: bonus.text, bonusObservedAt: args.observedAt } : {}),
   };
   if (existing) {
     await ctx.db.patch(existing._id, report);

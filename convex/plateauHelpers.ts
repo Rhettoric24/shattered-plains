@@ -12,6 +12,7 @@ import {
   type PlateauCounts,
   type PlateauType,
   researchEffect,
+  doctrineFromResearch,
 } from "./rules";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -265,9 +266,11 @@ export async function grantGemheartPlateauIncome(
   now: number,
 ) {
   const plateaus = await ownedPlateaus(ctx, player._id);
-  const completed = (await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", player._id)).unique())?.completedLevels ?? {};
+  const research = await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", player._id)).unique();
+  const completed = { ...(research?.completedLevels ?? {}), ...(research?.economicDoctrine === "gemheartBaron" ? { __doctrineGemheartBaron: 1 } : {}) };
   const gemHours = Number(researchEffect(completed, "gemCutting"));
-  const intervalMs = gemHours > 0 ? gemHours * 60 * 60 * 1000 : PLATEAU_RULES.gemheartIntervalMs;
+  const baseHours = gemHours > 0 ? gemHours : PLATEAU_RULES.gemheartIntervalMs / 3600000;
+  const intervalMs = (baseHours - (doctrineFromResearch(completed) === "gemheartBaron" ? 1 : 0)) * 60 * 60 * 1000;
   let gemhearts = 0;
 
   for (const plateau of plateaus) {

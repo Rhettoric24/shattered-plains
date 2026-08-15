@@ -206,7 +206,23 @@ h3 { font-size: 1rem; color: var(--accent); }
 .conclave-xp-heading strong { color: var(--accent); }
 .conclave-xp-track { height: 9px; overflow: hidden; border: 1px solid rgba(127, 183, 255, 0.35); border-radius: 999px; background: rgba(0, 0, 0, 0.25); }
 .conclave-xp-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #d7c37b); transition: width 250ms ease; }
+.research-libraries { display: grid; gap: 16px; margin-top: 22px; }
+.research-library { border: 1px solid rgba(127, 183, 255, 0.2); border-radius: 12px; overflow: hidden; background: rgba(8, 16, 26, 0.34); }
+.research-library-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 0; padding: 16px 18px; border: 0; border-radius: 0; text-align: left; background: rgba(127, 183, 255, 0.06); }
+.research-library-toggle span { display: grid; gap: 4px; }
+.research-library-toggle strong { font-size: 1.05rem; color: var(--text); }
+.research-library-toggle small { color: var(--muted); font-weight: 400; }
+.research-library-toggle b { color: var(--accent); white-space: nowrap; font-size: 0.78rem; }
+.research-library-body { display: grid; gap: 16px; padding: 16px; }
+.research-library.collapsed .research-library-body { display: none; }
+.doctrine-section { padding: 14px; border: 1px solid rgba(215, 195, 123, 0.48); border-radius: 10px; background: rgba(215, 195, 123, 0.05); }
+.doctrine-section .section-heading { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 12px; }
+.doctrine-section .section-heading p { margin: 5px 0 0; color: var(--muted); }
+.doctrine-card { border-color: rgba(215, 195, 123, 0.42); }
+.doctrine-effects, .research-speed-breakdown { display: flex; flex-wrap: wrap; gap: 7px; }
+.doctrine-effects span, .research-speed-breakdown span { padding: 5px 8px; border-radius: 999px; background: rgba(127, 183, 255, 0.09); color: var(--muted); font-size: 0.76rem; }
 @media (max-width: 720px) { .cohort-heading, .conclave-xp-heading { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 720px) { .research-library-toggle, .doctrine-section .section-heading { align-items: flex-start; flex-direction: column; } .research-library-toggle b { white-space: normal; } }
 .unit-card { min-height: 220px; align-content: space-between; }
 .unit-card strong { font-size: 1.15rem; }
 .unit-card .train-buttons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }

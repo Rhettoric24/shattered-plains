@@ -232,6 +232,7 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
     neutralPlateauCount: neutral.filter((plateau) => !plateau.activeSiegeId)
       .length,
     armyStats: calculateArmyStats(player.units, completed),
+    completedResearch: completed,
     provisions: provisionsStatus(
       player.buildings,
       plateauCounts,

@@ -66,6 +66,7 @@ const refs = {
   renameConclave: "ardentia:renameConclave",
   getResearchStatus: "research:getStatus",
   startResearch: "research:start",
+  startDoctrine: "research:startDoctrine",
   launchSphereRaid: "raids:launchSphereRaid",
   listVisibleRaids: "raids:listVisibleRaids",
   forceResolveRaid: "raids:forceResolveRaid",
@@ -334,6 +335,7 @@ function buildState(data) {
       totalAvailableUnits: totalUnitsAtHome,
       power: availableStats.power,
       homePower: availableStats.power,
+      completedResearch: data.dashboard.completedResearch || {},
     },
     players: playerRows,
     playerMap: Object.fromEntries(playerRows.map((entry) => [entry.id, entry])),
@@ -565,8 +567,9 @@ function renderBuildings() {
   $("buildings").innerHTML = visibleBuildings.map(([key, building]) => {
     const level = state.me.buildings[key] ?? building.level ?? 0;
     const soulcastingLevel = Number(state.research?.completedLevels?.soulcasting || 0);
-    const soulcastingDiscount = soulcastingLevel * 5;
-    const nextCost = Math.round(Number(building?.nextCost || 0) * (1 - soulcastingDiscount / 100));
+    const soulcastingDiscount = [0, 5, 10, 20][soulcastingLevel] || 0;
+    const doctrineMultiplier = state.research?.economicDoctrine === "militaryState" ? 1.15 : 1;
+    const nextCost = Math.round(Number(building?.nextCost || 0) * (1 - soulcastingDiscount / 100) * doctrineMultiplier);
     const affordable = state.me.spheres >= nextCost;
     const ancientOwned = state.plateaus.mine.filter((plateau) => plateau.type === "ancient" || plateau.type === "ancient_ruins").length;
     const monasteryTerritoryReady = key !== "ardentMonastery" || ancientOwned >= Number(state.config.ardentiaRules?.monasteryAncientPlateausRequired || 2);
@@ -625,7 +628,8 @@ function renderUnits() {
     const available = state.me.availableUnits[key] || 0;
     const away = state.me.unitsAway[key] || 0;
     const count = available + away;
-    const resourceCost = unit.gemheartCost || unit.cost || 0;
+    const militaryMultiplier = state.research?.economicDoctrine === "taxItAll" ? 1.1 : state.research?.economicDoctrine === "militaryState" ? 0.85 : 1;
+    const resourceCost = unit.gemheartCost || Math.ceil((unit.cost || 0) * militaryMultiplier);
     const resourceName = unit.gemheartCost ? "Gemheart" + (resourceCost === 1 ? "" : "s") : "Spheres";
     const provisionCost = unit.provisionsCost || 0;
     const draft = Math.max(0, Math.floor(Number(lastSelections.recruitment[key]) || 0));
@@ -640,8 +644,9 @@ function renderUnits() {
   const ardentia = state.ardentia;
   const rules = state.config.ardentiaRules || { recruitmentCost: 2000, provisionsCost: 10 };
   const canRecruit = monasteryLevel > 0 && ardentia.owned < ardentia.capacity && state.me.spheres >= rules.recruitmentCost && state.me.provisions.remaining >= rules.provisionsCost;
+  const conclaveCombatReady = Number(state.research?.completedLevels?.religiousStudies || 0) >= 3;
   const conclaveCard = monasteryLevel > 0
-    ? '<article class="upgrade-card unit-card conclave-card"><div class="card-heading"><div><strong>Ardentia Scout Conclave</strong><span>Field intelligence specialists</span></div><span class="status-badge">' + number(ardentia.ready) + ' ready / ' + number(ardentia.owned) + ' formed</span></div><div class="unit-identity"><p>Accompanies an army to improve the resulting intelligence report. The Conclave does not add combat Power.</p><small><strong>Capacity:</strong> ' + number(ardentia.owned) + ' / ' + number(ardentia.capacity) + ' supported by Ardent Monastery level ' + monasteryLevel + '.</small></div><div class="unit-costs"><span><small>Formation cost</small><strong>' + number(rules.recruitmentCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rules.provisionsCost) + '</strong></span></div><p class="rule-callout">One Conclave may accompany each expedition. It always has at least a 25% chance to complete its investigation and is never permanently destroyed.</p><button type="button" data-recruit-conclave' + (canRecruit ? '' : ' disabled') + '>' + (ardentia.owned >= ardentia.capacity ? 'Monastery capacity reached' : 'Form Scout Conclave') + '</button></article>'
+    ? '<article class="upgrade-card unit-card conclave-card"><div class="card-heading"><div><strong>Ardentia Scout Conclave</strong><span>Field intelligence specialists</span></div><span class="status-badge">' + number(ardentia.ready) + ' ready / ' + number(ardentia.owned) + ' formed</span></div><div class="unit-identity"><p>' + (conclaveCombatReady ? 'May accompany an army as an unkillable support cohort, strengthening its Power and Survival. A deployed Conclave stops contributing Research speed until it returns.' : 'Accompanies an army to improve the resulting intelligence report. It does not add combat Power until the necessary Religious Studies are complete.') + '</p><small><strong>Capacity:</strong> ' + number(ardentia.owned) + ' / ' + number(ardentia.capacity) + ' supported by Ardent Monastery level ' + monasteryLevel + '.</small></div><div class="unit-costs"><span><small>Formation cost</small><strong>' + number(rules.recruitmentCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rules.provisionsCost) + '</strong></span></div><p class="rule-callout">One Conclave may accompany each expedition. It always has at least a 25% chance to complete its investigation and is never permanently destroyed.</p><button type="button" data-recruit-conclave' + (canRecruit ? '' : ' disabled') + '>' + (ardentia.owned >= ardentia.capacity ? 'Monastery capacity reached' : 'Form Scout Conclave') + '</button></article>'
     : '';
   $("unit-roster").innerHTML = unitCards + conclaveCard;
   attachRecruitmentControls();
@@ -696,6 +701,28 @@ function renderConclaveControls() {
   });
 }
 
+function researchEffectText(key, level, project) {
+  if (!level) return "Not yet researched";
+  const value = project.effects[level - 1];
+  const secondary = project.speedEffects?.[level - 1] || 0;
+  if (key === "bridgeEngineering") return "+" + value + " total army Speed";
+  if (key === "packHarnessDesign") return "+" + value + " Plunder and " + secondary + " Speed per Chull";
+  if (key === "painrialMedicine") return "+" + value + " Survival and +" + (project.powerEffects?.[level - 1] || 0) + " Power per Spearman";
+  if (key === "soulcastArmor") return "+" + value + " Power and " + secondary + " Speed per Spearman";
+  if (key === "siegeEngineering") return "Emergency Defenses " + value + "% cheaper";
+  if (key === "gemCutting") return value + "-hour Gemheart production interval";
+  if (key === "soulcasting") return value + "% total building discount";
+  if (key === "marketEconomics") return "+" + value + "% total Market income";
+  if (key === "sprenStudies") return ["", "Subtle Signals: occasional strange reports", "Spren Observation: chance of a bonus Territory fact", "Ancient Insight: +1 permanent research-only AP", "A deeper path begins to answer"][level];
+  if (key === "religiousStudies") return ["", "Conclaves earn mission XP twice as quickly", "+1 effective Conclave rank for Research", "Conclaves may strengthen armies instead of Research", "A deeper path begins to answer"][level];
+  return String(value) + " " + project.effect;
+}
+
+function researchLibraryOpen(key) {
+  const saved = localStorage.getItem("sp-research-library-" + key);
+  return saved == null ? key === "economic" : saved === "open";
+}
+
 function renderResearch() {
   const container = $("research-content");
   if (!container) return;
@@ -706,21 +733,29 @@ function renderResearch() {
   }
   const rules = research.rules || state.config.researchRules;
   const active = research.active;
-  const activeHtml = active ? '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>Active Research</strong><span>' + escapeHtml(rules.projects[active.project]?.name || active.project) + ' · Level ' + active.level + '</span></div><span class="status-badge ' + (active.status === "paused" ? 'blocked' : 'ready') + '">' + escapeHtml(active.status) + '</span></div><p>Research speed +' + number(research.speed.total) + '% (Monastery +' + number(research.speed.monastery) + '%, Conclaves +' + number(research.speed.conclave) + '%, Ancient Plateaus +' + number(research.speed.ancient) + '%)</p><small>' + (active.projectedCompletionAt ? 'Expected ' + new Date(active.projectedCompletionAt).toLocaleString() : 'Paused until the territory requirement is restored.') + '</small></article>' : '<div class="empty">No research is active. Choose a project below.</div>';
-  const projects = Object.entries(rules.projects).map(([key, project]) => {
+  const activeName = active?.kind === "doctrine" ? research.doctrines?.[active.doctrine]?.name : rules.projects[active?.project]?.name;
+  const activeHtml = active ? '<article class="upgrade-card investment-card active-research-card"><div class="card-heading"><div><strong>Active Research</strong><span>' + escapeHtml(activeName || "Research") + (active.level ? ' · Level ' + active.level : '') + '</span></div><span class="status-badge ' + (active.status === "paused" ? 'blocked' : 'ready') + '">' + escapeHtml(active.status) + '</span></div><p>Research speed +' + number(research.speed.total) + '%</p><div class="research-speed-breakdown"><span>Monastery +' + number(research.speed.monastery) + '%</span><span>Available Conclaves +' + number(research.speed.conclave) + '%</span><span>Ancient Plateaus +' + number(research.speed.ancient) + '%</span></div><small>' + (active.projectedCompletionAt ? 'Expected ' + new Date(active.projectedCompletionAt).toLocaleString() : 'Paused until the territory requirement is restored.') + '</small></article>' : '<div class="empty">No research is active. Choose a project below.</div>';
+  const projectCards = Object.entries(rules.projects).map(([key, project]) => {
     const level = Number(research.completedLevels?.[key] || 0);
     const next = level + 1;
-    if (next > 3) return '<article class="upgrade-card investment-card research-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>' + escapeHtml(project.library) + '</span></div><span class="status-badge ready">Level III complete</span></div><p class="research-description">' + escapeHtml(project.description || "") + '</p><p class="research-effect"><strong>Current effect:</strong> ' + escapeHtml(String(project.effects[2]) + ' ' + project.effect) + '</p></article>';
-    const spheres = rules.sphereCosts[next - 1];
+    const max = project.effects.length;
+    if (next > max) return { library: project.library, html: '<article class="upgrade-card investment-card research-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>Level ' + max + '</span></div><span class="status-badge ready">Complete</span></div><p class="research-description">' + escapeHtml(project.description || "") + '</p><p class="research-effect"><strong>Current effect:</strong> ' + escapeHtml(researchEffectText(key, level, project)) + '</p></article>' };
+    const baseSpheres = project.costs[next - 1];
+    const spheres = Math.round(baseSpheres * (research.economicDoctrine === "militaryState" ? 1.15 : 1));
     const gems = project.gemhearts[next - 1];
     const ancient = project.ancient[next - 1];
-    const baseMinutes = Math.round(Number(rules.durationsMs[next - 1]) / 60000);
+    const monastery = project.monastery[next - 1];
+    const baseMinutes = Math.round(Number(project.durationsMs[next - 1]) / 60000);
     const adjustedMinutes = Math.max(1, Math.round(baseMinutes / (1 + Number(research.speed?.total || 0) / 100)));
     const speedTooltip = 'Base duration: ' + formatDuration(baseMinutes) + '\nTotal research speed: +' + number(research.speed?.total || 0) + '%\nMonastery: +' + number(research.speed?.monastery || 0) + '%\nConclaves: +' + number(research.speed?.conclave || 0) + '%\nAncient Plateaus: +' + number(research.speed?.ancient || 0) + '%\nAdjusted duration = Base ÷ (1 + total speed).';
-    const canStart = !active && Number(state.me.buildings.ardentMonastery || 0) >= next && state.me.spheres >= spheres && state.me.gemhearts >= gems && Number(research.speed?.ancientCount || 0) >= ancient;
-    return '<article class="upgrade-card investment-card research-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>' + escapeHtml(project.library) + ' · Level ' + next + '</span></div><span class="status-badge ' + (canStart ? 'ready' : 'blocked') + '">' + (canStart ? 'Ready' : 'Requirements unmet') + '</span></div><p class="research-description">' + escapeHtml(project.description || "") + '</p><p class="research-effect"><strong>Next effect:</strong> ' + escapeHtml(String(project.effects[next - 1]) + ' ' + project.effect) + '</p><div class="research-requirements"><div><span>Sphere cost</span><strong>' + number(spheres) + ' Spheres</strong></div><div><span>Gemheart cost</span><strong>' + number(gems) + ' Gemhearts</strong></div><div><span>Territory</span><strong>' + number(ancient) + ' Ancient Plateaus</strong></div><div><span>Monastery</span><strong>Level ' + next + '</strong></div></div><button type="button" class="research-time-cell" title="' + escapeHtml(speedTooltip) + '"><span>Research time</span><strong>' + formatDuration(baseMinutes) + '</strong><small>Adjusted: ' + formatDuration(adjustedMinutes) + ' with +' + number(research.speed?.total || 0) + '% speed</small></button><button data-research-project="' + key + '"' + (canStart ? '' : ' disabled') + '>Research Level ' + next + '</button></article>';
-    return '<article class="upgrade-card investment-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>' + escapeHtml(project.library) + ' · Level ' + next + '</span></div><span class="status-badge ' + (canStart ? 'ready' : 'blocked') + '">' + (canStart ? 'Ready' : 'Requirements unmet') + '</span></div><p>Next effect: ' + escapeHtml(String(project.effects[next - 1]) + ' ' + project.effect) + '</p><div class="cost-line"><span>' + number(spheres) + ' Spheres · ' + number(gems) + ' Gemhearts</span><strong>' + number(ancient) + ' Ancient · Monastery ' + next + '</strong></div><button data-research-project="' + key + '"' + (canStart ? '' : ' disabled') + '>Research Level ' + next + '</button></article>';
-  }).join("");
+    const needsGemPlateau = Boolean(project.requiresGemheartPlateau?.[next - 1]);
+    const defenses = Number(project.defensiveSieges?.[next - 1] || 0);
+    const canStart = !active && Number(state.me.buildings.ardentMonastery || 0) >= monastery && state.me.spheres >= spheres && state.me.gemhearts >= gems && Number(research.speed?.researchAncientCount || research.speed?.ancientCount || 0) >= ancient && (!needsGemPlateau || Number(research.speed?.gemheartPlateauCount || 0) > 0) && Number(research.successfulDefensiveSieges || 0) >= defenses;
+    const currentEffect = level ? '<p class="research-effect"><strong>Current effect:</strong> ' + escapeHtml(researchEffectText(key, level, project)) + '</p>' : '';
+    const special = (needsGemPlateau ? '<div><span>Gemheart territory</span><strong>' + number(research.speed?.gemheartPlateauCount || 0) + ' held</strong></div>' : '') + (defenses ? '<div><span>Defensive sieges</span><strong>' + number(research.successfulDefensiveSieges || 0) + ' / ' + defenses + '</strong></div>' : '');
+    const html = '<article class="upgrade-card investment-card research-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>Current Level ' + level + ' · Next Level ' + next + '</span></div><span class="status-badge ' + (canStart ? 'ready' : 'blocked') + '">' + (canStart ? 'Ready' : 'Requirements unmet') + '</span></div><p class="research-description">' + escapeHtml(project.description || "") + '</p>' + currentEffect + '<p class="research-effect"><strong>Next total effect:</strong> ' + escapeHtml(researchEffectText(key, next, project)) + '</p><div class="research-requirements"><div><span>Sphere cost</span><strong>' + number(spheres) + ' Spheres</strong></div><div><span>Gemheart cost</span><strong>' + number(gems) + ' Gemhearts</strong></div><div><span>Research AP</span><strong>' + number(research.speed?.researchAncientCount || research.speed?.ancientCount || 0) + ' / ' + ancient + '</strong></div><div><span>Monastery</span><strong>Level ' + monastery + '</strong></div>' + special + '</div><button type="button" class="research-time-cell" title="' + escapeHtml(speedTooltip) + '"><span>Base time</span><strong>' + formatDuration(baseMinutes) + '</strong><small>Adjusted: ' + formatDuration(adjustedMinutes) + ' with +' + number(research.speed?.total || 0) + '% speed</small></button><button data-research-project="' + key + '"' + (canStart ? '' : ' disabled') + '>Research Level ' + next + '</button></article>';
+    return { library: project.library, html };
+  });
   const rankThresholds = state.config.ardentiaRules?.rankThresholds || [0, 500, 1000, 1500, 2000];
   const rankDescriptions = [
     "Newly sworn ardents learn to turn field observations into disciplined inquiry.",
@@ -729,6 +764,7 @@ function renderResearch() {
     "Veteran researchers return from the field with hard-won insights few others can see.",
     "Master ardents guide the kingdom's scholarship with unmatched judgment and experience.",
   ];
+  const religiousLevel = Number(research.completedLevels?.religiousStudies || 0);
   const conclaves = (state.ardentia?.conclaves || []).map((entry) => {
     const rank = Math.max(1, Number(entry.rank || 1));
     const xp = Number(entry.xp || 0);
@@ -736,11 +772,34 @@ function renderResearch() {
     const nextThreshold = rankThresholds[rank];
     const progress = nextThreshold == null ? 100 : Math.max(0, Math.min(100, ((xp - rankFloor) / (Number(nextThreshold) - rankFloor)) * 100));
     const xpLabel = nextThreshold == null ? number(xp) + " XP · Maximum rank" : number(xp) + " / " + number(nextThreshold) + " XP";
-    return '<article class="upgrade-card conclave-progress-card"><div class="card-heading"><div><strong>' + escapeHtml(entry.name) + '</strong><span>Rank ' + rank + '</span></div><span class="status-badge ' + (entry.missionId ? 'blocked' : 'ready') + '">' + (entry.missionId ? 'Away' : 'Ready') + '</span></div><p class="rank-narrative">' + escapeHtml(rankDescriptions[rank - 1] || rankDescriptions[rankDescriptions.length - 1]) + '</p><div class="conclave-xp-heading"><span>' + escapeHtml(xpLabel) + '</span><strong>+' + rank + '% research speed</strong></div><div class="conclave-xp-track" role="progressbar" aria-label="' + escapeHtml(entry.name) + ' rank progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(progress) + '"><span style="width:' + progress + '%"></span></div><button class="secondary" data-rename-conclave="' + entry._id + '" data-conclave-name="' + escapeHtml(entry.name) + '">Rename</button></article>';
+    const effectiveRank = rank + (religiousLevel >= 2 ? 1 : 0);
+    const activeBonus = religiousLevel >= 3 && entry.missionId ? 0 : effectiveRank;
+    return '<article class="upgrade-card conclave-progress-card"><div class="card-heading"><div><strong>' + escapeHtml(entry.name) + '</strong><span>Rank ' + rank + (effectiveRank !== rank ? ' · Effective ' + effectiveRank : '') + '</span></div><span class="status-badge ' + (entry.missionId ? 'blocked' : 'ready') + '">' + (entry.missionId ? 'Away' : 'Ready') + '</span></div><p class="rank-narrative">' + escapeHtml(rankDescriptions[rank - 1] || rankDescriptions[rankDescriptions.length - 1]) + '</p><div class="conclave-xp-heading"><span>' + escapeHtml(xpLabel) + '</span><strong>+' + activeBonus + '% active research speed</strong></div><div class="conclave-xp-track" role="progressbar" aria-label="' + escapeHtml(entry.name) + ' rank progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(progress) + '"><span style="width:' + progress + '%"></span></div><button class="secondary" data-rename-conclave="' + entry._id + '" data-conclave-name="' + escapeHtml(entry.name) + '">Rename</button></article>';
   }).join("");
   const cohortBonus = Number(research.speed?.conclave || 0);
-  container.innerHTML = '<div class="building-grid">' + activeHtml + '</div><div class="cohort-heading"><div><h3>Ardent Cohort</h3><p>Field experience strengthens every Conclave and accelerates the kingdom\'s research.</p></div><span class="status-badge ready">+' + number(cohortBonus) + '% combined speed</span></div><div class="building-grid">' + (conclaves || '<div class="empty">Form a Scout Conclave from the Army page.</div>') + '</div><h3>Libraries</h3><div class="building-grid">' + projects + '</div>';
+  const doctrineChanges = Number(research.doctrineChangeCount || 0);
+  const nextDoctrineSwitch = research.economicDoctrine ? doctrineChanges + 1 : 0;
+  const doctrineCost = Number(rules.doctrine.baseSphereCost) + nextDoctrineSwitch * Number(rules.doctrine.switchSphereIncrease);
+  const doctrineMinutes = Math.round((Number(rules.doctrine.baseDurationMs) + nextDoctrineSwitch * Number(rules.doctrine.switchDurationIncreaseMs)) / 60000);
+  const doctrineAdjustedMinutes = Math.max(1, Math.round(doctrineMinutes / (1 + Number(research.speed?.total || 0) / 100)));
+  const doctrineSpeedTooltip = 'Base duration: ' + formatDuration(doctrineMinutes) + '\nTotal research speed: +' + number(research.speed?.total || 0) + '%\nMonastery: +' + number(research.speed?.monastery || 0) + '%\nConclaves: +' + number(research.speed?.conclave || 0) + '%\nAncient Plateaus: +' + number(research.speed?.ancient || 0) + '%';
+  const doctrines = Object.entries(research.doctrines || {}).map(([key, doctrine]) => {
+    const selected = research.economicDoctrine === key;
+    const canChoose = !active && !selected && state.me.spheres >= doctrineCost;
+    return '<article class="upgrade-card doctrine-card"><div class="card-heading"><div><strong>' + escapeHtml(doctrine.name) + '</strong><span>' + (selected ? 'Current doctrine' : 'Economic Doctrine') + '</span></div><span class="status-badge ' + (selected ? 'ready' : canChoose ? 'ready' : 'blocked') + '">' + (selected ? 'Active' : canChoose ? 'Available' : 'Unavailable') + '</span></div><p class="research-description">' + escapeHtml(doctrine.description) + '</p><div class="doctrine-effects">' + doctrine.effects.map((effect) => '<span>' + escapeHtml(effect) + '</span>').join('') + '</div><div class="research-requirements"><div><span>Sphere cost</span><strong>' + number(doctrineCost) + ' Spheres</strong></div></div><button type="button" class="research-time-cell" title="' + escapeHtml(doctrineSpeedTooltip) + '"><span>Base time</span><strong>' + formatDuration(doctrineMinutes) + '</strong><small>Adjusted: ' + formatDuration(doctrineAdjustedMinutes) + ' with +' + number(research.speed?.total || 0) + '% speed</small></button><button data-research-doctrine="' + key + '"' + (canChoose ? '' : ' disabled') + '>' + (selected ? 'Doctrine active' : research.economicDoctrine ? 'Change doctrine' : 'Adopt doctrine') + '</button></article>';
+  }).join('');
+  const libraries = ["economic", "military", "ancient"].map((key) => {
+    const library = rules.libraries[key];
+    const cards = projectCards.filter((entry) => entry.library === key);
+    const done = cards.filter((entry) => entry.html.includes('>Complete<')).length;
+    const open = researchLibraryOpen(key);
+    const doctrineSection = key === 'economic' ? '<div class="doctrine-section"><div class="section-heading"><div><strong>Economic Doctrine</strong><p>One doctrine may guide the kingdom at a time. A replacement takes effect only when its Research completes; repeated changes cost more time and Spheres.</p></div><span>' + doctrineChanges + ' prior change' + (doctrineChanges === 1 ? '' : 's') + '</span></div><div class="building-grid">' + doctrines + '</div></div>' : key === 'ancient' && research.futurePathUnlocked ? '<div class="rule-callout"><strong>A veiled path has opened.</strong><br>The ardents have found a question the Monastery is not yet prepared to name.</div>' : '';
+    return '<section class="research-library ' + (open ? 'open' : 'collapsed') + '" data-research-library="' + key + '"><button type="button" class="research-library-toggle" aria-expanded="' + String(open) + '"><span><strong>' + escapeHtml(library.name) + '</strong><small>' + escapeHtml(library.description) + '</small></span><b>' + done + ' / ' + cards.length + ' complete · ' + (open ? 'Collapse' : 'Expand') + '</b></button><div class="research-library-body">' + doctrineSection + '<div class="building-grid">' + cards.map((entry) => entry.html).join('') + '</div></div></section>';
+  }).join('');
+  container.innerHTML = '<div class="building-grid">' + activeHtml + '</div><div class="cohort-heading"><div><h3>Ardent Cohort</h3><p>Field experience strengthens every Conclave and accelerates the kingdom\'s research. Research AP: ' + number(research.speed?.ancientCount || 0) + ' actual' + (research.speed?.virtualAncient ? ' + ' + number(research.speed.virtualAncient) + ' permanent insight' : '') + '.</p></div><span class="status-badge ready">+' + number(cohortBonus) + '% combined speed</span></div><div class="building-grid">' + (conclaves || '<div class="empty">Form a Scout Conclave from the Army page.</div>') + '</div><div class="research-libraries">' + libraries + '</div>';
   container.querySelectorAll("[data-research-project]").forEach((button) => button.addEventListener("click", () => action(() => client.mutation(refs.startResearch, { project: button.dataset.researchProject }))));
+  container.querySelectorAll("[data-research-doctrine]").forEach((button) => button.addEventListener("click", () => action(() => client.mutation(refs.startDoctrine, { doctrine: button.dataset.researchDoctrine }))));
+  container.querySelectorAll("[data-research-library]").forEach((library) => library.querySelector(".research-library-toggle")?.addEventListener("click", () => { const open = !library.classList.contains("open"); library.classList.toggle("open", open); library.classList.toggle("collapsed", !open); localStorage.setItem("sp-research-library-" + library.dataset.researchLibrary, open ? "open" : "closed"); renderResearch(); }));
   container.querySelectorAll("[data-rename-conclave]").forEach((button) => button.addEventListener("click", () => {
     const name = window.prompt("Name this Scout Conclave", button.dataset.conclaveName);
     if (name !== null) action(() => client.mutation(refs.renameConclave, { conclaveId: button.dataset.renameConclave, name }));
@@ -771,14 +830,17 @@ function renderRecruitmentPreview(card, key) {
   const unit = state.config.units[key];
   const count = Math.max(0, Math.floor(Number(card.querySelector("[data-recruit-quantity]").value) || 0));
   const resourceName = unit.gemheartCost ? "Gemhearts" : "Spheres";
+  const militaryMultiplier = state.research?.economicDoctrine === "taxItAll" ? 1.1 : state.research?.economicDoctrine === "militaryState" ? 0.85 : 1;
   const unitCost = unit.gemheartCost || unit.cost || 0;
   const availableResource = unit.gemheartCost ? state.me.gemhearts : state.me.spheres;
-  const totalCost = count * unitCost;
+  const totalCost = unit.gemheartCost ? count * unitCost : Math.ceil(count * unitCost * militaryMultiplier);
   const provisionCost = count * (unit.provisionsCost || 0);
   const after = state.me.provisions.used + provisionCost;
   const shortages = [];
   if (totalCost > availableResource) shortages.push("Needs " + number(totalCost - availableResource) + " more " + resourceName);
   if (after > state.me.provisions.capacity) shortages.push("Needs " + number(after - state.me.provisions.capacity) + " more Provisions");
+  const owned = Number(state.me.availableUnits[key] || 0) + Number(state.me.unitsAway[key] || 0);
+  if (key === "chull" && state.research?.economicDoctrine === "gemheartBaron" && owned + count > 10) shortages.push("Gemheart Baron permits at most 10 owned Chulls");
   const preview = card.querySelector("[data-recruit-preview]");
   card.classList.toggle("has-draft", count > 0);
   preview.classList.toggle("empty-draft", count < 1);
@@ -916,7 +978,7 @@ function attackPlannerCanSubmit(type, planner, units) {
 }
 
 function previewMarkup(units, type, planner) {
-  const stats = raidStats(units);
+  const stats = raidStats(units, type);
   const isPlayerSiege = planner.timing === "fixed";
   const travel = isPlayerSiege ? fixedSiegeTravelMinutes() : travelMinutes(stats.speed, true);
   const target = type === "spheres" ? sphereTargetPreview() : type === "plateau" ? plateauTargetPreview(stats) : type === "neutralSiege" ? neutralSiegePreview(stats) : type === "playerSiege" ? playerSiegePreview(stats) : "Choose a target";
@@ -1613,10 +1675,8 @@ function intelligenceTooltip(report) {
 }
 
 function renderIntelligence() {
-  const kingdomContainer = $("kingdom-dossiers");
   const territoryContainer = $("territory-reports");
-  if (!kingdomContainer || !territoryContainer) return;
-  const kingdoms = state.intelligence?.kingdoms || [];
+  if (!territoryContainer) return;
   const territories = state.intelligence?.territories || [];
   const watchtower = state.intelligence?.watchtower || { level: 0, territoryLevel: 0, counterIntelligence: 0 };
   const watchtowerStatus = $("watchtower-intelligence-status");
@@ -1624,14 +1684,6 @@ function renderIntelligence() {
     const coverage = ["No passive surveys", "Plateau identities revealed", "Broad resistance ranges", "Narrow resistance estimates"][Math.min(3, watchtower.level)] || "No passive surveys";
     watchtowerStatus.innerHTML = pulseItem("Watchtower", "Level " + watchtower.level) + pulseItem("Territory coverage", coverage) + pulseItem("Counter-Intelligence", watchtower.counterIntelligence ? "+" + watchtower.counterIntelligence : "None");
   }
-
-  kingdomContainer.innerHTML = kingdoms.length ? kingdoms.map((report) => {
-    const power = formatIntelValue(report.militaryPower);
-    const narrative = report.militaryPower?.mode === "exact"
-      ? "Our observers recorded military strength " + number(report.militaryPower.value) + ". Treat this as a dated snapshot."
-      : "Our observers describe " + report.targetName + " as " + (report.militaryPower?.label || "uncertain").toLowerCase() + ".";
-    return '<article class="dossier-card" tabindex="0" title="' + escapeHtml(intelligenceTooltip(report)) + '"><div class="card-heading"><div><strong>' + escapeHtml(report.targetName) + '</strong><span>' + escapeHtml(intelLevelName(report.effectiveLevel)) + '</span></div><span class="freshness-badge ' + report.freshness + '">' + intelligenceReportAge(report.observedAt) + '</span></div><p>' + escapeHtml(narrative) + '</p><div class="dossier-facts"><span>Military</span><strong>' + escapeHtml(power) + '</strong></div><small>Source: ' + escapeHtml(intelligenceSourceName(report.source)) + ' · Tap or hover for report mechanics</small></article>';
-  }).join("") : '<div class="empty-intelligence"><strong>No kingdom dossiers yet.</strong><span>Completed raids against rival warcamps will begin building your records.</span></div>';
 
   territoryContainer.innerHTML = territories.length ? territories.map((report) => {
     const resistance = formatIntelValue(report.resistance);
@@ -1641,7 +1693,8 @@ function renderIntelligence() {
       ? ' data-territory-plateau="' + escapeHtml(report.plateauId) + '" role="link"'
       : '';
     const actionHint = report.plateauId ? ' · Open in Plateaus' : '';
-    return '<article class="dossier-card territory-report-link" tabindex="0"' + destination + ' title="' + escapeHtml(intelligenceTooltip(report)) + '"><div class="card-heading"><div><strong>' + escapeHtml(report.targetName) + '</strong><span>' + escapeHtml(intelLevelName(report.effectiveLevel)) + '</span></div><span class="freshness-badge ' + report.freshness + '">' + intelligenceReportAge(report.observedAt) + '</span></div><p>' + escapeHtml(narrative) + '</p><div class="dossier-facts"><span>Resistance</span><strong>' + escapeHtml(resistance) + '</strong><span>Observed identity</span><strong>' + escapeHtml(report.plateauType || "Unknown") + '</strong><span>Attributes</span><strong>' + escapeHtml(attributes) + '</strong></div><small>Source: ' + escapeHtml(intelligenceSourceName(report.source)) + actionHint + '</small></article>';
+    const bonusFact = report.bonusFactText ? '<p class="rule-callout"><strong>Spren observation:</strong> ' + escapeHtml(report.bonusFactText) + '</p>' : '';
+    return '<article class="dossier-card territory-report-link" tabindex="0"' + destination + ' title="' + escapeHtml(intelligenceTooltip(report)) + '"><div class="card-heading"><div><strong>' + escapeHtml(report.targetName) + '</strong><span>' + escapeHtml(intelLevelName(report.effectiveLevel)) + '</span></div><span class="freshness-badge ' + report.freshness + '">' + intelligenceReportAge(report.observedAt) + '</span></div><p>' + escapeHtml(narrative) + '</p>' + bonusFact + '<div class="dossier-facts"><span>Resistance</span><strong>' + escapeHtml(resistance) + '</strong><span>Observed identity</span><strong>' + escapeHtml(report.plateauType || "Unknown") + '</strong><span>Attributes</span><strong>' + escapeHtml(attributes) + '</strong></div><small>Source: ' + escapeHtml(intelligenceSourceName(report.source)) + actionHint + '</small></article>';
   }).join("") : '<div class="empty-intelligence"><strong>No territory reports yet.</strong><span>Completed neutral expeditions will be recorded here.</span></div>';
 
   territoryContainer.querySelectorAll("[data-territory-plateau]").forEach((card) => {
@@ -1879,7 +1932,7 @@ function unitSummary(units = {}, unitsConfig = {}) {
   return parts.length ? parts.join(", ") : "No units";
 }
 
-function raidStats(units) {
+function raidStats(units, missionType = "") {
   const stats = Object.entries(units).reduce((total, [key, count]) => {
     const unit = state.config.units[key];
     if (!unit) return total;
@@ -1896,6 +1949,20 @@ function raidStats(units) {
     Number(units.shardbearer || 0) * Number(state.config.armyRules?.shardbearerSupportPowerPerUnit || 100),
   );
   stats.power += stats.breakthroughPower;
+  const completed = state.me.completedResearch || {};
+  const rules = state.config.researchRules?.projects || {};
+  const value = (key, field = "effects") => { const level = Number(completed[key] || 0); return level > 0 ? Number(rules[key]?.[field]?.[level - 1] || 0) : 0; };
+  stats.power += Number(units.spearman || 0) * (value("soulcastArmor") + value("painrialMedicine", "powerEffects"));
+  stats.speed += value("bridgeEngineering") + Number(units.chull || 0) * value("packHarnessDesign", "speedEffects") + Number(units.spearman || 0) * value("soulcastArmor", "speedEffects");
+  stats.plunder += Number(units.chull || 0) * value("packHarnessDesign");
+  stats.survivability += Number(units.spearman || 0) * value("painrialMedicine");
+  const conclaveSelected = missionType === "spheres" ? Boolean($("sphere-conclave")?.value) : missionType === "neutralSiege" ? Boolean($("neutral-conclave-select")?.value) : missionType === "playerSiege" ? Boolean($("player-conclave-select")?.value) : missionType === "plateau" ? Boolean($("plateau-conclave")?.value) : false;
+  if (conclaveSelected && Number(completed.religiousStudies || 0) >= 3) {
+    stats.power += 10 + Math.min(100, Math.max(0, stats.power)) * 0.5;
+    stats.survivability += Math.min(100, Math.max(0, stats.survivability)) * 0.5;
+    stats.speed += 1;
+    stats.plunder += 25;
+  }
   return stats;
 }
 
@@ -1971,7 +2038,9 @@ function emergencyDefenseTotalCost(percent) {
   const maxCost = plateauRuleValue("emergencyDefenseMaxCost", 12000);
   const exponent = plateauRuleValue("emergencyDefenseCostExponent", 2);
   const cappedPercent = Math.max(0, Math.min(maxPercent, Math.floor(Number(percent) || 0)));
-  return Math.round(maxCost * Math.pow(cappedPercent / maxPercent, exponent));
+  const siegeDiscount = [0, 10, 15, 20][Number(state.research?.completedLevels?.siegeEngineering || 0)] || 0;
+  const doctrineMultiplier = state.research?.economicDoctrine === "taxItAll" ? 1.1 : state.research?.economicDoctrine === "militaryState" ? 0.85 : 1;
+  return Math.round(maxCost * Math.pow(cappedPercent / maxPercent, exponent) * (1 - siegeDiscount / 100) * doctrineMultiplier);
 }
 
 function emergencyDefenseIncrementalCost(currentPercent, targetPercent) {
