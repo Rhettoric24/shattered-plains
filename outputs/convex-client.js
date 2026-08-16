@@ -1,4 +1,5 @@
 import { ConvexHttpClient } from "convex/browser";
+import { syncEspionageControlLock } from "./espionage-ui-state.js";
 
 const CONVEX_URL =
   window.SHATTERED_PLAINS_CONFIG?.convexUrl ||
@@ -1946,8 +1947,7 @@ function renderEspionage() {
     return '<article class="list-item espionage-mission-row"><strong>' + escapeHtml(mission.targetName) + ' — ' + escapeHtml(mission.category[0].toUpperCase() + mission.category.slice(1)) + '</strong><span>' + escapeHtml(result) + '</span><small>' + escapeHtml(time) + '</small></article>';
   }).join("") || '<div class="empty">No investigations launched yet.</div>';
   const controls = $("espionage-controls");
-  if (controls) controls.classList.toggle("network-locked", networkLocked);
-  controls?.querySelectorAll("input, select, button").forEach((control) => { if (networkLocked) control.disabled = true; });
+  syncEspionageControlLock(controls, networkLocked);
 }
 
 function renderIntelligence() {

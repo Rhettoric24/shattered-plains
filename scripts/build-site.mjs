@@ -53,6 +53,9 @@ await esbuild.build({
         build.onResolve({ filter: /^convex\/browser$/ }, () => ({
           path: path.join(root, "node_modules", "convex", "dist", "esm", "browser", "index.js"),
         }));
+        build.onResolve({ filter: /^\.\/espionage-ui-state\.js$/ }, () => ({
+          path: path.join(root, "outputs", "espionage-ui-state.js"),
+        }));
         build.onResolve({ filter: /^\.\.?\// }, (args) => {
           const importer = args.importer.replace(/\\/g, "/");
           if (!importer.includes("node_modules/convex/")) {
