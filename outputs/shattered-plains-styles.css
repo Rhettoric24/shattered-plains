@@ -308,6 +308,11 @@ h3 { font-size: 1rem; color: var(--accent); }
 .intel-markers { display: flex; gap: 6px; }
 .intel-markers i { width: 9px; height: 9px; border: 1px solid var(--accent-2); border-radius: 50%; background: transparent; }
 .intel-markers i.filled { background: var(--accent-2); box-shadow: 0 0 8px rgba(127,183,255,.5); }
+.network-required-callout { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 14px; border: 1px solid rgba(244,194,95,.38); border-radius: 7px; background: rgba(244,194,95,.08); }
+.network-required-callout div { display: grid; gap: 4px; }
+.network-required-callout span { color: var(--muted); line-height: 1.4; }
+.network-required-callout button { width: auto; min-width: 150px; }
+.operative-section-heading { margin-top: 20px; }
 .operative-roster { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-top: 14px; }
 .operative-card { display: grid; gap: 12px; border: 1px solid rgba(216,229,245,.16); border-radius: 7px; background: #09182a; padding: 14px; }
 .operative-state-line { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
@@ -544,6 +549,8 @@ h3 { font-size: 1rem; color: var(--accent); }
   }
   .dashboard-stats, .stats-grid, .unit-input-grid, .raid-form, .raid-preview, .siege-defense-preview { grid-template-columns: 1fr; }
   .operative-roster, .espionage-control-grid, .operative-input-grid { grid-template-columns: 1fr; }
+  .network-required-callout { align-items: stretch; flex-direction: column; }
+  .network-required-callout button { width: 100%; min-height: 44px; }
   .espionage-form { grid-template-columns: 1fr; }
   .intel-detail-grid { grid-template-columns: 1fr; }
   .capacity-banner { display: grid; }

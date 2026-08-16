@@ -72,6 +72,28 @@ describe("espionage rules", () => {
 });
 
 describe("espionage backend", () => {
+  test("legacy kingdoms receive a season and visible locked espionage defaults without a reset", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "legacy@example.com" }));
+    const playerId = await t.run(async (ctx) => await ctx.db.insert("players", {
+      authUserId: String(userId), name: "Legacy Warcamp", normalizedName: "legacy warcamp", acres: 20,
+      spheres: 10_000, gemhearts: 2, units,
+      buildings: { market: 0, watchtower: 0, ardentMonastery: 0, barracks: 0, soulcastBunker: 0 },
+      lastActiveAt: 1, createdAt: 1,
+    }));
+
+    await t.mutation(api.game.bootstrapWorld, {});
+    const asLegacyPlayer = t.withIdentity({ subject: String(userId) });
+    const status = await asLegacyPlayer.query(api.espionage.getStatus, {});
+    expect(status.networkLevel).toBe(0);
+    expect(Object.keys(status.rules.operatives).sort()).toEqual(["ghostblood", "informant", "spy"]);
+    expect(status.available).toEqual(emptyOps);
+
+    const ledger = await asLegacyPlayer.query(api.espionage.getKingdomLedger, {});
+    expect(ledger.season).toBeTruthy();
+    expect(ledger.rows.find((row) => row.playerId === playerId)?.own).toBe(true);
+  });
+
   test("recruitment consumes Spheres and shared Provision", async () => {
     const t = convexTest(schema, modules);
     const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "recruit@example.com" }));

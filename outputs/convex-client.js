@@ -7,6 +7,29 @@ const client = new ConvexHttpClient(CONVEX_URL);
 const AUTH_TOKEN_KEY = "sp-convex-auth-token";
 const AUTH_REFRESH_KEY = "sp-convex-auth-refresh-token";
 const DASHBOARD_REFRESH_MS = 30000;
+const ESPIONAGE_UI_DEFAULTS = {
+  building: {
+    name: "Ghostblood Network",
+    levelCosts: [3000, 7500, 15000],
+    maxLevel: 3,
+    constructionTimeMs: 0,
+    description: "Recruits operatives, stores rival-specific Intel, and unlocks covert investigations.",
+  },
+  operatives: {
+    informant: { name: "Informant", networkLevel: 1, spyPower: 1, provisionsCost: 3, sphereCost: 150, trainingTimeMs: 0 },
+    spy: { name: "Spy", networkLevel: 2, spyPower: 3, provisionsCost: 2, sphereCost: 750, trainingTimeMs: 0 },
+    ghostblood: { name: "Ghostblood", networkLevel: 3, spyPower: 6, provisionsCost: 1, sphereCost: 3000, trainingTimeMs: 0 },
+  },
+  network: {
+    name: "Ghostblood Network",
+    levelCosts: [3000, 7500, 15000],
+    intelCaps: [50, 100, 150],
+    missionIntelSpendCaps: [5, 10, 15],
+    maxLevel: 3,
+    currentIntelCap: 0,
+    currentMissionIntelSpendCap: 0,
+  },
+};
 
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY);
 let refreshToken = localStorage.getItem(AUTH_REFRESH_KEY);
@@ -204,6 +227,7 @@ function clearAuthTokens() {
 async function load(options = {}) {
   const requestId = ++latestLoadRequest;
   const allowRefresh = options.allowRefresh ?? true;
+  const allowSeasonBootstrap = options.allowSeasonBootstrap ?? true;
   if (!authToken) return signedOut();
   captureSelections();
 
@@ -244,8 +268,14 @@ async function load(options = {}) {
         console.warn("Intelligence backend is not available yet.", error);
         return { kingdoms: [], territories: [], watchtower: { level: 0, territoryLevel: 0, counterIntelligence: 0 } };
       }),
-      client.query(refs.getEspionageStatus, {}).catch(() => ({ networkLevel: 0, available: {}, defending: {}, onMission: {}, counterIntelligence: 0, targets: [], missions: [], rules: { operatives: {}, network: {} } })),
-      client.query(refs.getKingdomLedger, {}).catch(() => ({ season: null, rows: [], generatedAt: Date.now() })),
+      client.query(refs.getEspionageStatus, {}).catch((error) => {
+        console.warn("Espionage backend is not available yet.", error);
+        return { networkLevel: 0, available: {}, defending: {}, onMission: {}, counterIntelligence: 0, targets: [], missions: [], rules: { operatives: ESPIONAGE_UI_DEFAULTS.operatives, network: ESPIONAGE_UI_DEFAULTS.network } };
+      }),
+      client.query(refs.getKingdomLedger, {}).catch((error) => {
+        console.warn("Kingdom Intelligence backend is unavailable.", error);
+        return { loadError: true, errorMessage: friendlyError(error), season: null, rows: [], generatedAt: Date.now() };
+      }),
       client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })),
       client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })),
       client.query(refs.listNotifications, {}).catch(() => ({ notifications: [], unreadCount: 0, preferences: { combat: true, missions: true, research: true, plateauRuns: true, messages: true }, devices: [], vapidPublicKey: null })),
@@ -257,6 +287,13 @@ async function load(options = {}) {
     ]);
 
     if (requestId !== latestLoadRequest) return;
+
+    // Worlds created before seasons existed have no active ledger. Bootstrap is
+    // idempotent and fills that migration gap without resetting existing data.
+    if (allowSeasonBootstrap && !seasonLedger.loadError && !seasonLedger.season) {
+      await client.mutation(refs.bootstrapWorld, {});
+      return await load({ allowRefresh: false, allowSeasonBootstrap: false });
+    }
 
     state = buildState({
       config,
@@ -299,10 +336,14 @@ function showAccountMessage(text) {
 function buildState(data) {
   const player = data.dashboard.player;
   const playerUnits = normalizeUnitObject(player.units);
-  const playerBuildings = normalizeBuildingObject(player.buildings, data.config.buildings);
+  const buildingRules = {
+    ...(data.config.buildings || {}),
+    espionageNetwork: data.config.buildings?.espionageNetwork || ESPIONAGE_UI_DEFAULTS.building,
+  };
+  const playerBuildings = normalizeBuildingObject(player.buildings, buildingRules);
   const config = {
     ...data.config,
-    buildings: decorateBuildings(data.config.buildings, playerBuildings),
+    buildings: decorateBuildings(buildingRules, playerBuildings),
     unlockedUnits: unlockedUnits(data.config.units, playerBuildings),
   };
   const outgoingRaids = data.raids.filter((raid) => raid.attackerId === player._id);
@@ -373,7 +414,15 @@ function buildState(data) {
     adminEmail: data.adminStatus?.email || null,
     alerts: [],
     intelligence: data.intelligence || { kingdoms: [], territories: [], watchtower: { level: 0, territoryLevel: 0, counterIntelligence: 0 } },
-    espionage: data.espionage || { networkLevel: 0, available: {}, defending: {}, onMission: {}, counterIntelligence: 0, targets: [], missions: [], rules: { operatives: {}, network: {} } },
+    espionage: {
+      networkLevel: 0, available: {}, defending: {}, onMission: {}, counterIntelligence: 0, targets: [], missions: [],
+      ...(data.espionage || {}),
+      rules: {
+        ...(data.espionage?.rules || {}),
+        operatives: { ...ESPIONAGE_UI_DEFAULTS.operatives, ...(data.espionage?.rules?.operatives || {}) },
+        network: { ...ESPIONAGE_UI_DEFAULTS.network, ...(data.espionage?.rules?.network || {}) },
+      },
+    },
     kingdomLedger: data.kingdomLedger || { season: null, rows: [], generatedAt: Date.now() },
     ardentia: data.ardentia || { owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 },
     research: data.research,
@@ -1786,6 +1835,10 @@ function intelMarkers(level) {
 function renderKingdomIntelligence() {
   const container = $("kingdom-intelligence-table");
   if (!container) return;
+  if (state.kingdomLedger?.loadError) {
+    container.innerHTML = '<div class="empty-intelligence error-state"><strong>Kingdom Intelligence is temporarily unavailable.</strong><span>The ledger service could not be reached. Your season data has not been lost; reload after the backend deployment completes.</span></div>';
+    return;
+  }
   const rows = state.kingdomLedger?.rows || [];
   if (!rows.length) {
     container.innerHTML = '<div class="empty-intelligence"><strong>No active Season Ledger.</strong><span>Kingdom intelligence will appear when the season is initialized.</span></div>';
@@ -1849,13 +1902,15 @@ function updateEspionagePreview() {
 function renderEspionage() {
   const espionage = state.espionage || {};
   const rules = espionage.rules || { operatives: {}, network: {} };
+  const networkLocked = Number(espionage.networkLevel || 0) < 1;
   const status = $("espionage-network-status");
   if (status) status.innerHTML = pulseItem("Ghostblood Network", "Level " + Number(espionage.networkLevel || 0)) + pulseItem("Counter-Intelligence", number(espionage.counterIntelligence || 0)) + pulseItem("Intel capacity", number(rules.network?.currentIntelCap || 0) + " per rival") + pulseItem("Mission boost cap", "+" + number(rules.network?.currentMissionIntelSpendCap || 0));
+  $("espionage-network-locked")?.classList.toggle("hidden", !networkLocked);
   const roster = $("espionage-roster");
   if (roster) roster.innerHTML = Object.entries(rules.operatives || {}).map(([tier, rule]) => {
     const unlocked = Number(espionage.networkLevel || 0) >= Number(rule.networkLevel || 0);
     const available = Number(espionage.available?.[tier] || 0), defending = Number(espionage.defending?.[tier] || 0), away = Number(espionage.onMission?.[tier] || 0);
-    return '<article class="operative-card"><div class="card-heading"><div><strong>' + escapeHtml(rule.name) + '</strong><span>Network ' + number(rule.networkLevel) + '</span></div><span class="status-badge ' + (unlocked ? 'ready' : 'blocked') + '">' + (unlocked ? number(available) + ' available' : 'Locked') + '</span></div><div class="operative-state-line"><span>Available <b>' + number(available) + '</b></span><span>On Mission <b>' + number(away) + '</b></span><span>Defending <b>' + number(defending) + '</b></span></div><div class="unit-costs"><span><small>Spy Power</small><strong>' + number(rule.spyPower) + '</strong></span><span><small>Provision</small><strong>' + number(rule.provisionsCost) + '</strong></span><span><small>Cost</small><strong>' + number(rule.sphereCost) + ' Spheres</strong></span></div><div class="operative-recruit"><input data-operative-recruit-count="' + tier + '" type="number" min="1" value="1" inputmode="numeric" aria-label="' + escapeHtml(rule.name) + ' recruitment count"><button type="button" data-recruit-operative="' + tier + '"' + (unlocked ? '' : ' disabled') + '>Recruit</button></div></article>';
+    return '<article class="operative-card"><div class="card-heading"><div><strong>' + escapeHtml(rule.name) + '</strong><span>Requires Ghostblood Network ' + number(rule.networkLevel) + '</span></div><span class="status-badge ' + (unlocked ? 'ready' : 'blocked') + '">' + (unlocked ? number(available) + ' available' : 'Locked') + '</span></div><div class="operative-state-line"><span>Available <b>' + number(available) + '</b></span><span>On Mission <b>' + number(away) + '</b></span><span>Defending <b>' + number(defending) + '</b></span></div><div class="unit-costs"><span><small>Spy Power</small><strong>' + number(rule.spyPower) + '</strong></span><span><small>Provision</small><strong>' + number(rule.provisionsCost) + '</strong></span><span><small>Cost</small><strong>' + number(rule.sphereCost) + ' Spheres</strong></span></div><div class="operative-recruit"><input data-operative-recruit-count="' + tier + '" type="number" min="1" value="1" inputmode="numeric" aria-label="' + escapeHtml(rule.name) + ' recruitment count"' + (unlocked ? '' : ' disabled') + '><button type="button" data-recruit-operative="' + tier + '"' + (unlocked ? '' : ' disabled') + '>Recruit</button></div></article>';
   }).join("") || '<div class="empty-intelligence"><strong>Construct a Ghostblood Network.</strong><span>The Network unlocks operatives and investigations.</span></div>';
   roster?.querySelectorAll("[data-recruit-operative]").forEach((button) => button.addEventListener("click", () => {
     const input = roster.querySelector('[data-operative-recruit-count="' + button.dataset.recruitOperative + '"]');
@@ -1891,8 +1946,8 @@ function renderEspionage() {
     return '<article class="list-item espionage-mission-row"><strong>' + escapeHtml(mission.targetName) + ' — ' + escapeHtml(mission.category[0].toUpperCase() + mission.category.slice(1)) + '</strong><span>' + escapeHtml(result) + '</span><small>' + escapeHtml(time) + '</small></article>';
   }).join("") || '<div class="empty">No investigations launched yet.</div>';
   const controls = $("espionage-controls");
-  if (controls) controls.classList.toggle("network-locked", Number(espionage.networkLevel || 0) < 1);
-  controls?.querySelectorAll("input, select, button").forEach((control) => { if (Number(espionage.networkLevel || 0) < 1) control.disabled = true; });
+  if (controls) controls.classList.toggle("network-locked", networkLocked);
+  controls?.querySelectorAll("input, select, button").forEach((control) => { if (networkLocked) control.disabled = true; });
 }
 
 function renderIntelligence() {
@@ -2488,6 +2543,10 @@ $("plateau-form").addEventListener("submit", (event) => {
 $("close-kingdom-intel-dialog")?.addEventListener("click", () => $("kingdom-intel-dialog").close());
 $("kingdom-intel-dialog")?.addEventListener("click", (event) => {
   if (event.target === $("kingdom-intel-dialog")) $("kingdom-intel-dialog").close();
+});
+$("open-ghostblood-building")?.addEventListener("click", () => {
+  showView("buildings");
+  document.querySelector('[data-building="espionageNetwork"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 $("espionage-defense-form")?.addEventListener("submit", (event) => {
   event.preventDefault();
