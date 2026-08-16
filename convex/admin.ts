@@ -20,12 +20,17 @@ import {
   WORLD_KEY,
 } from "./rules";
 import { createFreshSeason } from "./seasonLedger";
+import { emptyOperatives } from "./espionageRules";
 
 type AnyCtx = QueryCtx | MutationCtx;
 type GameplayTable =
   | "ardentConclaves"
   | "playerResearch"
   | "intelligenceReports"
+  | "espionageMissions"
+  | "kingdomIntelligence"
+  | "kingdomIntelResources"
+  | "espionageBonusDiscoveries"
   | "plateauCommitments"
   | "plateauRuns"
   | "raids"
@@ -113,6 +118,10 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
   const now = Date.now();
   const players = await ctx.db.query("players").take(200);
   const deleted = {
+    espionageBonusDiscoveries: await deleteGameplayTable(ctx, "espionageBonusDiscoveries"),
+    kingdomIntelligence: await deleteGameplayTable(ctx, "kingdomIntelligence"),
+    kingdomIntelResources: await deleteGameplayTable(ctx, "kingdomIntelResources"),
+    espionageMissions: await deleteGameplayTable(ctx, "espionageMissions"),
     seasonPlateauHolds: await deleteGameplayTable(ctx, "seasonPlateauHolds"),
     seasonPlateauClaims: await deleteGameplayTable(ctx, "seasonPlateauClaims"),
     seasonTerritoryStates: await deleteGameplayTable(ctx, "seasonTerritoryStates"),
@@ -156,6 +165,8 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
       ardentiaConclaves: 0,
       units: emptyUnits(),
       buildings: emptyBuildings(),
+      operatives: emptyOperatives(),
+      defendingOperatives: emptyOperatives(),
       lastEconomyAt: now,
       lastActiveAt: now,
       createdAt: now,
@@ -217,6 +228,10 @@ async function pendingOperations(ctx: AnyCtx) {
     .query("plateauRuns")
     .withIndex("by_status", (q) => q.eq("status", "open"))
     .take(25);
+  const espionageMissions = await ctx.db
+    .query("espionageMissions")
+    .withIndex("by_status_and_resolveAt", (q) => q.eq("status", "pending"))
+    .take(100);
 
   return {
     raids: raids.map((raid) => ({
@@ -252,6 +267,13 @@ async function pendingOperations(ctx: AnyCtx) {
       opensAt: run.opensAt,
       closesAt: run.closesAt,
     })),
+    espionageMissions: espionageMissions.map((mission) => ({
+      id: mission._id,
+      attackerName: playerNames[mission.attackerId] ?? "Unknown",
+      targetPlayerName: playerNames[mission.targetPlayerId] ?? "Unknown",
+      category: mission.category,
+      resolvesAt: mission.resolveAt,
+    })),
   };
 }
 
@@ -268,6 +290,10 @@ async function scheduleAllPendingOperations(ctx: MutationCtx) {
     .query("plateauRuns")
     .withIndex("by_status", (q) => q.eq("status", "open"))
     .take(25);
+  const espionageMissions = await ctx.db
+    .query("espionageMissions")
+    .withIndex("by_status_and_resolveAt", (q) => q.eq("status", "pending"))
+    .take(100);
 
   for (const raid of raids) {
     await ctx.scheduler.runAfter(0, internal.raids.resolveRaid, {
@@ -284,12 +310,16 @@ async function scheduleAllPendingOperations(ctx: MutationCtx) {
       plateauRunId: plateauRun._id,
     });
   }
+  for (const mission of espionageMissions) {
+    await ctx.scheduler.runAfter(0, internal.espionage.resolveInvestigation, { missionId: mission._id });
+  }
 
   return {
     raids: raids.length,
     sieges: sieges.length,
     plateauRuns: plateauRuns.length,
-    scheduled: raids.length + sieges.length + plateauRuns.length,
+    espionageMissions: espionageMissions.length,
+    scheduled: raids.length + sieges.length + plateauRuns.length + espionageMissions.length,
   };
 }
 
@@ -298,7 +328,8 @@ async function scheduleOperation(
   target:
     | { kind: "raid"; raidId: Id<"raids"> }
     | { kind: "siege"; siegeId: Id<"sieges"> }
-    | { kind: "plateau_run"; plateauRunId: Id<"plateauRuns"> },
+    | { kind: "plateau_run"; plateauRunId: Id<"plateauRuns"> }
+    | { kind: "espionage"; missionId: Id<"espionageMissions"> },
 ) {
   if (target.kind === "raid") {
     await ctx.scheduler.runAfter(0, internal.raids.resolveRaid, {
@@ -316,6 +347,9 @@ async function scheduleOperation(
     await ctx.scheduler.runAfter(0, internal.plateauRuns.resolvePlateauRun, {
       plateauRunId: target.plateauRunId,
     });
+  }
+  if (target.kind === "espionage") {
+    await ctx.scheduler.runAfter(0, internal.espionage.resolveInvestigation, { missionId: target.missionId });
   }
 
   return { scheduled: true, kind: target.kind };
@@ -366,6 +400,10 @@ export const forceResolveOperation = mutation({
         kind: v.literal("plateau_run"),
         plateauRunId: v.id("plateauRuns"),
       }),
+      v.object({
+        kind: v.literal("espionage"),
+        missionId: v.id("espionageMissions"),
+      }),
     ),
   },
   handler: async (ctx, args) => {
@@ -389,6 +427,10 @@ export const forceResolveOperationFromDashboard = mutation({
       v.object({
         kind: v.literal("plateau_run"),
         plateauRunId: v.id("plateauRuns"),
+      }),
+      v.object({
+        kind: v.literal("espionage"),
+        missionId: v.id("espionageMissions"),
       }),
     ),
   },

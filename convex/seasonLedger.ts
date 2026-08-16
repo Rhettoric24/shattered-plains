@@ -264,7 +264,8 @@ export const rolloverSeason = mutation({
     const pendingRaid = await ctx.db.query("raids").withIndex("by_status_arrival", (q) => q.eq("status", "pending")).first();
     const pendingSiege = await ctx.db.query("sieges").withIndex("by_status_resolve", (q) => q.eq("status", "pending")).first();
     const openRun = await ctx.db.query("plateauRuns").withIndex("by_status", (q) => q.eq("status", "open")).first();
-    if (pendingRaid || pendingSiege || openRun) throw new Error("Resolve all raids, sieges, and Plateau Runs before starting a new season.");
+    const pendingEspionage = await ctx.db.query("espionageMissions").withIndex("by_status_and_resolveAt", (q) => q.eq("status", "pending")).first();
+    if (pendingRaid || pendingSiege || openRun || pendingEspionage) throw new Error("Resolve all raids, sieges, Plateau Runs, and espionage investigations before starting a new season.");
     const now = Date.now();
     const current = await activeSeason(ctx);
     if (current) await ctx.db.patch(current._id, { status: "closed", endsAt: now, closedAt: now });

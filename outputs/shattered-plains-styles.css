@@ -294,6 +294,46 @@ h3 { font-size: 1rem; color: var(--accent); }
 .ledger-rule-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 14px; }
 .ledger-rule-grid article { border-left: 2px solid rgba(215,195,123,.45); padding-left: 12px; }
 .ledger-rule-grid li { margin: 6px 0; color: var(--muted); }
+.kingdom-intelligence-panel { border-color: rgba(127,183,255,.42); }
+.kingdom-intelligence-scroll { margin-top: 14px; overflow-x: auto; border: 1px solid rgba(216,229,245,.16); border-radius: 8px; }
+.kingdom-intelligence-table { width: 100%; min-width: 760px; border-collapse: collapse; background: #09182a; }
+.kingdom-intelligence-table th, .kingdom-intelligence-table td { border-bottom: 1px solid rgba(216,229,245,.12); padding: 8px; text-align: center; }
+.kingdom-intelligence-table thead th { position: sticky; top: 0; z-index: 1; background: #10233b; color: var(--muted); font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; }
+.kingdom-intelligence-table tbody th { min-width: 150px; text-align: left; color: var(--accent); }
+.kingdom-intelligence-table tbody th small { display: block; color: var(--muted); font-weight: 650; }
+.kingdom-intelligence-table .own-row { background: rgba(127,183,255,.07); }
+.intel-cell { display: grid; place-items: center; gap: 5px; width: 100%; min-width: 92px; min-height: 62px; padding: 7px; background: rgba(18,36,61,.65); color: var(--text); border-color: rgba(216,229,245,.2); }
+.intel-cell.own { border: 1px solid rgba(216,229,245,.12); border-radius: 6px; }
+.intel-cell strong { font-size: .9rem; white-space: nowrap; }
+.intel-markers { display: flex; gap: 6px; }
+.intel-markers i { width: 9px; height: 9px; border: 1px solid var(--accent-2); border-radius: 50%; background: transparent; }
+.intel-markers i.filled { background: var(--accent-2); box-shadow: 0 0 8px rgba(127,183,255,.5); }
+.operative-roster { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-top: 14px; }
+.operative-card { display: grid; gap: 12px; border: 1px solid rgba(216,229,245,.16); border-radius: 7px; background: #09182a; padding: 14px; }
+.operative-state-line { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
+.operative-state-line span { padding: 7px; border-radius: 5px; background: rgba(127,183,255,.07); color: var(--muted); font-size: .7rem; }
+.operative-state-line b { display: block; margin-top: 3px; color: var(--accent); font-size: 1rem; }
+.operative-recruit { display: grid; grid-template-columns: 90px 1fr; gap: 8px; }
+.espionage-control-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin-top: 16px; }
+.espionage-control-grid.network-locked { opacity: .55; }
+.espionage-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; align-content: start; border: 1px solid rgba(127,183,255,.24); border-radius: 7px; background: rgba(7,17,31,.5); padding: 14px; }
+.espionage-form > button { grid-column: 1 / -1; }
+.operative-input-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.operative-input { display: grid; grid-template-columns: 1fr 78px; align-items: center; gap: 8px; border: 1px solid rgba(216,229,245,.14); border-radius: 6px; padding: 9px; background: #09182a; }
+.operative-input span { color: var(--text); font-weight: 800; }
+.operative-input small { display: block; margin-top: 3px; color: var(--muted); font-weight: 600; }
+.espionage-mission-heading { margin-top: 18px; }
+.espionage-mission-row span { text-transform: capitalize; }
+.kingdom-intel-dialog { width: min(620px,calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #0a1728; color: var(--text); padding: 18px; box-shadow: var(--shadow); }
+.kingdom-intel-dialog::backdrop { background: rgba(2,8,16,.76); backdrop-filter: blur(3px); }
+.dialog-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+.dialog-heading button { width: 42px; padding: 0; }
+.intel-detail-grid { display: grid; grid-template-columns: minmax(130px,.65fr) 1fr; gap: 1px; border: 1px solid rgba(216,229,245,.14); border-radius: 7px; overflow: hidden; }
+.intel-detail-grid span, .intel-detail-grid strong { padding: 10px; background: #09182a; }
+.intel-detail-grid span { color: var(--muted); font-size: .78rem; }
+.bonus-discovery { margin-top: 12px; border-left: 3px solid var(--accent-2); padding: 10px 12px; background: rgba(127,183,255,.08); }
+.bonus-discovery p { margin-top: 5px; line-height: 1.45; }
+.bonus-discovery small { display: block; margin-top: 6px; color: var(--muted); }
 .plateau-card strong, .plateau-card span, .plateau-card small { display: block; }
 .plateau-card strong { color: var(--accent); font-size: 1.15rem; }
 .plateau-card span { margin-top: 5px; color: var(--text); font-weight: 850; }
@@ -503,6 +543,9 @@ h3 { font-size: 1rem; color: var(--accent); }
     font-size: 0.8rem;
   }
   .dashboard-stats, .stats-grid, .unit-input-grid, .raid-form, .raid-preview, .siege-defense-preview { grid-template-columns: 1fr; }
+  .operative-roster, .espionage-control-grid, .operative-input-grid { grid-template-columns: 1fr; }
+  .espionage-form { grid-template-columns: 1fr; }
+  .intel-detail-grid { grid-template-columns: 1fr; }
   .capacity-banner { display: grid; }
   .capacity-banner small { text-align: left; }
   .world-alert { grid-template-columns: 1fr; }

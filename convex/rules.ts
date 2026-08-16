@@ -359,6 +359,14 @@ export const BUILDING_RULES = {
     constructionTimeMs: 0,
     description: "Increases total Provisions capacity for larger armies",
   },
+  espionageNetwork: {
+    name: "Ghostblood Network",
+    baseCost: 3000,
+    levelCosts: [3000, 7500, 15000],
+    maxLevel: 3,
+    constructionTimeMs: 0,
+    description: "Recruits operatives, stores rival-specific Intel, and unlocks covert investigations.",
+  },
 } as const;
 
 export type UnitKey = keyof typeof UNIT_RULES;
@@ -421,6 +429,7 @@ export function emptyBuildings(): BuildingLevels {
     ardentMonastery: 0,
     barracks: 0,
     soulcastBunker: 0,
+    espionageNetwork: 0,
   };
 }
 

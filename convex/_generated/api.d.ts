@@ -19,6 +19,8 @@ import type * as config from "../config.js";
 import type * as crons from "../crons.js";
 import type * as economy from "../economy.js";
 import type * as economyHelpers from "../economyHelpers.js";
+import type * as espionage from "../espionage.js";
+import type * as espionageRules from "../espionageRules.js";
 import type * as eventHelpers from "../eventHelpers.js";
 import type * as game from "../game.js";
 import type * as http from "../http.js";
@@ -61,6 +63,8 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   economy: typeof economy;
   economyHelpers: typeof economyHelpers;
+  espionage: typeof espionage;
+  espionageRules: typeof espionageRules;
   eventHelpers: typeof eventHelpers;
   game: typeof game;
   http: typeof http;

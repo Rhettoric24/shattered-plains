@@ -7,7 +7,7 @@ import {
   plateauAttributeCountsForPlayer,
   plateauCountsForPlayer,
 } from "./plateauHelpers";
-import { ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
+import { ownedOperativesIncludingAway, ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import {
   BUILDING_RULES,
   ARDENTIA_RULES,
@@ -27,6 +27,7 @@ const buildingKey = v.union(
   v.literal("ardentMonastery"),
   v.literal("barracks"),
   v.literal("soulcastBunker"),
+  v.literal("espionageNetwork"),
 );
 
 type BuildingKey = keyof typeof BUILDING_RULES;
@@ -54,6 +55,7 @@ export const getBuildings = query({
     const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
     const plateauAttributes = await plateauAttributeCountsForPlayer(ctx, player._id);
     const ownedUnits = await ownedUnitsIncludingAway(ctx, player._id, player.units);
+    const ownedOperatives = await ownedOperativesIncludingAway(ctx, player._id, player.operatives, player.defendingOperatives);
     const completed = await completedResearch(ctx, player._id);
     const effects = calculateBuildingStats(
       player.acres,
@@ -87,6 +89,7 @@ export const getBuildings = query({
           ownedUnits,
           plateauAttributes.large,
           player.ardentiaConclaves ?? 0,
+          ownedOperatives,
         ),
       },
     };

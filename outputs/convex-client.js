@@ -13,7 +13,7 @@ let refreshToken = localStorage.getItem(AUTH_REFRESH_KEY);
 if (authToken) client.setAuth(authToken);
 let state = null;
 let currentView = new URLSearchParams(location.search).get("view") || localStorage.getItem("sp-current-view") || "overview";
-let lastSelections = { trainUnit: "", target: "", attackUnits: {}, recruitment: {} };
+let lastSelections = { trainUnit: "", target: "", attackUnits: {}, recruitment: {}, espionageMission: {}, espionageDefense: {} };
 let previewListenersReady = false;
 let tooltipTimer = null;
 let inboxFilter = "all";
@@ -102,6 +102,11 @@ const refs = {
   setPushDeviceSound: "notifications:setDeviceSound",
   listEvents: "game:listEvents",
   listDossiers: "intelligence:listDossiers",
+  getEspionageStatus: "espionage:getStatus",
+  getKingdomLedger: "espionage:getKingdomLedger",
+  recruitOperatives: "espionage:recruitOperatives",
+  setEspionageDefense: "espionage:setDefense",
+  launchInvestigation: "espionage:launchInvestigation",
 };
 
 async function createAccount() {
@@ -228,7 +233,7 @@ async function load(options = {}) {
       return;
     }
 
-    const [raids, plateaus, plateauRun, inbox, intelligence, ardentia, research, notifications, pushConfiguration, seasonLedger] = await Promise.all([
+    const [raids, plateaus, plateauRun, inbox, intelligence, espionage, kingdomLedger, ardentia, research, notifications, pushConfiguration, seasonLedger] = await Promise.all([
       client.query(refs.listVisibleRaids, {}),
       client.query(refs.listPlateaus, {}),
       client.query(refs.getCurrentPlateauRun, {}),
@@ -239,6 +244,8 @@ async function load(options = {}) {
         console.warn("Intelligence backend is not available yet.", error);
         return { kingdoms: [], territories: [], watchtower: { level: 0, territoryLevel: 0, counterIntelligence: 0 } };
       }),
+      client.query(refs.getEspionageStatus, {}).catch(() => ({ networkLevel: 0, available: {}, defending: {}, onMission: {}, counterIntelligence: 0, targets: [], missions: [], rules: { operatives: {}, network: {} } })),
+      client.query(refs.getKingdomLedger, {}).catch(() => ({ season: null, rows: [], generatedAt: Date.now() })),
       client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })),
       client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })),
       client.query(refs.listNotifications, {}).catch(() => ({ notifications: [], unreadCount: 0, preferences: { combat: true, missions: true, research: true, plateauRuns: true, messages: true }, devices: [], vapidPublicKey: null })),
@@ -260,6 +267,8 @@ async function load(options = {}) {
       plateauRun,
       inbox,
       intelligence,
+      espionage,
+      kingdomLedger,
       ardentia,
       research,
       notifications,
@@ -364,6 +373,8 @@ function buildState(data) {
     adminEmail: data.adminStatus?.email || null,
     alerts: [],
     intelligence: data.intelligence || { kingdoms: [], territories: [], watchtower: { level: 0, territoryLevel: 0, counterIntelligence: 0 } },
+    espionage: data.espionage || { networkLevel: 0, available: {}, defending: {}, onMission: {}, counterIntelligence: 0, targets: [], missions: [], rules: { operatives: {}, network: {} } },
+    kingdomLedger: data.kingdomLedger || { season: null, rows: [], generatedAt: Date.now() },
     ardentia: data.ardentia || { owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 },
     research: data.research,
     seasonLedger: data.seasonLedger,
@@ -572,7 +583,7 @@ function showView(view) {
 }
 
 function renderBuildings() {
-  const visibleBuildings = Object.entries(state.config.buildings).filter(([key]) => key === "market" || key === "watchtower" || key === "ardentMonastery" || key === "soulcastBunker");
+  const visibleBuildings = Object.entries(state.config.buildings).filter(([key]) => key === "market" || key === "watchtower" || key === "ardentMonastery" || key === "soulcastBunker" || key === "espionageNetwork");
   $("buildings").innerHTML = visibleBuildings.map(([key, building]) => {
     const level = state.me.buildings[key] ?? building.level ?? 0;
     const soulcastingLevel = Number(state.research?.completedLevels?.soulcasting || 0);
@@ -624,6 +635,11 @@ function buildingEffectValues(key, level) {
       current: capacity ? "Supports " + capacity + " Scout Conclave" + (capacity === 1 ? "" : "s") : "Scout Conclaves unavailable",
       next: "Supports " + nextCapacity + " Scout Conclave" + (nextCapacity === 1 ? "" : "s"),
     };
+  }
+  if (key === "espionageNetwork") {
+    const caps = [0, 50, 100, 150];
+    const boosts = [0, 5, 10, 15];
+    return { current: level ? caps[Math.min(3, level)] + " Intel/rival · +" + boosts[Math.min(3, level)] + " mission boost" : "Espionage unavailable", next: caps[Math.min(3, level + 1)] + " Intel/rival · +" + boosts[Math.min(3, level + 1)] + " mission boost" };
   }
   const current = soulcastBunkerCapacity(level);
   const next = soulcastBunkerCapacity(level + 1);
@@ -762,6 +778,11 @@ function renderConclaveControls() {
     select.innerHTML = '<option value="">No Conclave</option>' + readyConclaves.map((entry) => '<option value="' + entry._id + '">' + escapeHtml(entry.name) + ' · Rank ' + entry.rank + '</option>').join("");
     select.disabled = readyConclaves.length < 1;
   });
+  if ($("espionage-target")) lastSelections.espionageTarget = $("espionage-target").value;
+  if ($("espionage-category")) lastSelections.espionageCategory = $("espionage-category").value;
+  if ($("espionage-intel-spend")) lastSelections.espionageIntelSpend = $("espionage-intel-spend").value;
+  document.querySelectorAll("[data-espionage-mission-tier]").forEach((input) => { lastSelections.espionageMission[input.dataset.espionageMissionTier] = input.value; });
+  document.querySelectorAll("[data-espionage-defense-tier]").forEach((input) => { lastSelections.espionageDefense[input.dataset.espionageDefenseTier] = input.value; });
 }
 
 function researchEffectText(key, level, project) {
@@ -1597,6 +1618,7 @@ function renderOverview() {
   const operations = [];
   state.raids.filter((raid) => raid.attackerId === state.me.id).forEach((raid) => operations.push({ label: "Sphere raid", detail: raid.targetName, at: raid.arrivalAt, view: "raids" }));
   state.plateaus.sieges.filter((siege) => siege.attackerId === state.me.id || siege.defenderId === state.me.id).forEach((siege) => operations.push({ label: siege.defenderId === state.me.id ? "Defending siege" : "Plateau siege", detail: state.plateaus.byId[siege.plateauId]?.name || "Plateau", at: siege.resolveAt, view: "plateaus" }));
+  (state.espionage?.missions || []).filter((mission) => mission.status === "pending").forEach((mission) => operations.push({ label: "Espionage investigation", detail: mission.targetName + " · " + mission.category, at: mission.resolveAt, view: "intelligence" }));
   if (state.plateauRun?.participants.some((entry) => entry.playerId === state.me.id)) operations.push({ label: "Plateau Run", detail: "Warcamp committed", at: state.plateauRun.joinUntil, view: "plateau" });
   operations.sort((a, b) => a.at - b.at);
   $("overview-operations").innerHTML = operations.length ? operations.map((item) => '<button type="button" class="operation-row" data-operation-view="' + item.view + '"><span><strong>' + escapeHtml(item.label) + '</strong><small>' + escapeHtml(item.detail) + '</small></span><b>' + formatDuration(Math.max(0, Math.ceil((item.at - Date.now()) / 60000))) + '</b></button>').join("") : '<div class="empty">No armies are currently committed. Your next move is yours.</div>';
@@ -1757,7 +1779,125 @@ function intelligenceTooltip(report) {
     "Reports lose one precision level every 6 hours. Opposing counter-intelligence is not disclosed.";
 }
 
+function intelMarkers(level) {
+  return '<span class="intel-markers" aria-label="Intel level ' + level + ' of 2"><i class="' + (level >= 1 ? 'filled' : '') + '"></i><i class="' + (level >= 2 ? 'filled' : '') + '"></i></span>';
+}
+
+function renderKingdomIntelligence() {
+  const container = $("kingdom-intelligence-table");
+  if (!container) return;
+  const rows = state.kingdomLedger?.rows || [];
+  if (!rows.length) {
+    container.innerHTML = '<div class="empty-intelligence"><strong>No active Season Ledger.</strong><span>Kingdom intelligence will appear when the season is initialized.</span></div>';
+    return;
+  }
+  const categoryKeys = ["military", "economy", "research", "territory"];
+  container.innerHTML = '<table class="kingdom-intelligence-table"><thead><tr><th>Kingdom</th>' + categoryKeys.map((category) => '<th>' + escapeHtml(category[0].toUpperCase() + category.slice(1)) + '</th>').join("") + '<th>Total</th></tr></thead><tbody>' + rows.map((row) => {
+    const cells = categoryKeys.map((category) => {
+      const cell = row.cells[category];
+      const body = '<strong>' + escapeHtml(cell.presentation.display) + '</strong>' + intelMarkers(cell.currentLevel);
+      return '<td>' + (row.own ? '<div class="intel-cell own">' + body + '</div>' : '<button type="button" class="intel-cell" data-kingdom-intel-player="' + escapeHtml(row.playerId) + '" data-kingdom-intel-category="' + category + '">' + body + '</button>') + '</td>';
+    }).join("");
+    const totalBody = '<strong>' + escapeHtml(row.total.display) + '</strong>' + intelMarkers(row.total.currentLevel);
+    const total = row.own ? '<div class="intel-cell own">' + totalBody + '</div>' : '<button type="button" class="intel-cell" data-kingdom-intel-player="' + escapeHtml(row.playerId) + '" data-kingdom-intel-category="total">' + totalBody + '</button>';
+    return '<tr class="' + (row.own ? 'own-row' : '') + '"><th scope="row">' + escapeHtml(row.kingdomName) + (row.own ? '<small>Your kingdom</small>' : '') + '</th>' + cells + '<td>' + total + '</td></tr>';
+  }).join("") + '</tbody></table>';
+  container.querySelectorAll("[data-kingdom-intel-player]").forEach((button) => button.addEventListener("click", () => openKingdomIntelDetail(button.dataset.kingdomIntelPlayer, button.dataset.kingdomIntelCategory)));
+}
+
+function openKingdomIntelDetail(playerId, category) {
+  const row = (state.kingdomLedger?.rows || []).find((entry) => entry.playerId === playerId);
+  const dialog = $("kingdom-intel-dialog");
+  if (!row || !dialog) return;
+  if (category === "total") {
+    $("kingdom-intel-dialog-title").textContent = row.kingdomName + " — Total Intelligence";
+    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid"><span>Current Intel</span><strong>Level ' + row.total.currentLevel + ' / 2</strong><span>Displayed information</span><strong>' + escapeHtml(row.total.display) + '</strong></div><p class="hint">A numerical Total is shown only when every category has sufficient intelligence. Hidden values are never used to fill arithmetic gaps.</p>';
+  } else {
+    const cell = row.cells[category];
+    if (!cell) return;
+    const next = cell.nextDecayAt ? formatDuration(Math.max(0, Math.ceil((cell.nextDecayAt - Date.now()) / 60000))) : "No further decay scheduled";
+    const observed = cell.observedAt ? intelligenceReportAge(cell.observedAt) : "Never investigated";
+    const discoveries = (cell.discoveries || []).map((fact) => '<article class="bonus-discovery"><strong>Bonus Discovery</strong><p>' + escapeHtml(fact.text) + '</p><small>Observed ' + escapeHtml(new Date(fact.observedAt).toLocaleString()) + '</small></article>').join("");
+    $("kingdom-intel-dialog-title").textContent = row.kingdomName + " — " + cell.categoryName + " Intelligence";
+    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid"><span>Current Intel</span><strong>Level ' + cell.currentLevel + ' / 2</strong><span>Best achieved</span><strong>Level ' + cell.bestLevel + ' / 2</strong><span>Current information</span><strong>' + escapeHtml(cell.presentation.display) + '</strong><span>Updated</span><strong>' + escapeHtml(observed) + '</strong><span>Next decay</span><strong>' + escapeHtml(next) + '</strong><span>Source</span><strong>' + escapeHtml(cell.source) + '</strong></div>' + discoveries;
+  }
+  if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
+}
+
+function operativeDraft(group, tier, fallback) {
+  const value = lastSelections[group]?.[tier];
+  return Math.max(0, Math.floor(Number(value === undefined ? fallback : value) || 0));
+}
+
+function selectedEspionageOperatives() {
+  const result = { informant: 0, spy: 0, ghostblood: 0 };
+  document.querySelectorAll("[data-espionage-mission-tier]").forEach((input) => { result[input.dataset.espionageMissionTier] = Math.max(0, Math.floor(Number(input.value) || 0)); });
+  return result;
+}
+
+function updateEspionagePreview() {
+  const preview = $("espionage-mission-preview");
+  if (!preview) return;
+  const rules = state.espionage?.rules || {};
+  const counts = selectedEspionageOperatives();
+  const base = Object.entries(counts).reduce((sum, [tier, count]) => sum + count * Number(rules.operatives?.[tier]?.spyPower || 0), 0);
+  const target = (state.espionage?.targets || []).find((entry) => entry.playerId === $("espionage-target")?.value);
+  const boost = Math.max(0, Math.floor(Number($("espionage-intel-spend")?.value) || 0));
+  preview.innerHTML = '<strong>' + number(base + boost) + ' final Spy Power</strong><span>' + number(base) + ' from operatives · +' + number(boost) + ' from Intel · ' + number(target?.intel || 0) + '/' + number(target?.intelCap || 0) + ' Intel available</span>';
+}
+
+function renderEspionage() {
+  const espionage = state.espionage || {};
+  const rules = espionage.rules || { operatives: {}, network: {} };
+  const status = $("espionage-network-status");
+  if (status) status.innerHTML = pulseItem("Ghostblood Network", "Level " + Number(espionage.networkLevel || 0)) + pulseItem("Counter-Intelligence", number(espionage.counterIntelligence || 0)) + pulseItem("Intel capacity", number(rules.network?.currentIntelCap || 0) + " per rival") + pulseItem("Mission boost cap", "+" + number(rules.network?.currentMissionIntelSpendCap || 0));
+  const roster = $("espionage-roster");
+  if (roster) roster.innerHTML = Object.entries(rules.operatives || {}).map(([tier, rule]) => {
+    const unlocked = Number(espionage.networkLevel || 0) >= Number(rule.networkLevel || 0);
+    const available = Number(espionage.available?.[tier] || 0), defending = Number(espionage.defending?.[tier] || 0), away = Number(espionage.onMission?.[tier] || 0);
+    return '<article class="operative-card"><div class="card-heading"><div><strong>' + escapeHtml(rule.name) + '</strong><span>Network ' + number(rule.networkLevel) + '</span></div><span class="status-badge ' + (unlocked ? 'ready' : 'blocked') + '">' + (unlocked ? number(available) + ' available' : 'Locked') + '</span></div><div class="operative-state-line"><span>Available <b>' + number(available) + '</b></span><span>On Mission <b>' + number(away) + '</b></span><span>Defending <b>' + number(defending) + '</b></span></div><div class="unit-costs"><span><small>Spy Power</small><strong>' + number(rule.spyPower) + '</strong></span><span><small>Provision</small><strong>' + number(rule.provisionsCost) + '</strong></span><span><small>Cost</small><strong>' + number(rule.sphereCost) + ' Spheres</strong></span></div><div class="operative-recruit"><input data-operative-recruit-count="' + tier + '" type="number" min="1" value="1" inputmode="numeric" aria-label="' + escapeHtml(rule.name) + ' recruitment count"><button type="button" data-recruit-operative="' + tier + '"' + (unlocked ? '' : ' disabled') + '>Recruit</button></div></article>';
+  }).join("") || '<div class="empty-intelligence"><strong>Construct a Ghostblood Network.</strong><span>The Network unlocks operatives and investigations.</span></div>';
+  roster?.querySelectorAll("[data-recruit-operative]").forEach((button) => button.addEventListener("click", () => {
+    const input = roster.querySelector('[data-operative-recruit-count="' + button.dataset.recruitOperative + '"]');
+    action(() => client.mutation(refs.recruitOperatives, { tier: button.dataset.recruitOperative, count: Math.floor(Number(input?.value) || 0) }));
+  }));
+  const tiers = Object.entries(rules.operatives || {});
+  const defenseInputs = $("espionage-defense-inputs");
+  if (defenseInputs) defenseInputs.innerHTML = tiers.map(([tier, rule]) => {
+    const pool = Number(espionage.available?.[tier] || 0) + Number(espionage.defending?.[tier] || 0);
+    return '<label class="operative-input"><span>' + escapeHtml(rule.name) + '<small>' + number(pool) + ' at home · ' + number(rule.spyPower) + ' power each</small></span><input data-espionage-defense-tier="' + tier + '" type="number" min="0" max="' + pool + '" value="' + operativeDraft("espionageDefense", tier, espionage.defending?.[tier] || 0) + '" inputmode="numeric"></label>';
+  }).join("");
+  const missionInputs = $("espionage-mission-operatives");
+  if (missionInputs) missionInputs.innerHTML = tiers.map(([tier, rule]) => '<label class="operative-input"><span>' + escapeHtml(rule.name) + '<small>' + number(espionage.available?.[tier] || 0) + ' available · ' + number(rule.spyPower) + ' power each</small></span><input data-espionage-mission-tier="' + tier + '" type="number" min="0" max="' + number(espionage.available?.[tier] || 0) + '" value="' + operativeDraft("espionageMission", tier, 0) + '" inputmode="numeric"></label>').join("");
+  const targetSelect = $("espionage-target");
+  if (targetSelect) {
+    targetSelect.innerHTML = (espionage.targets || []).map((target) => '<option value="' + escapeHtml(target.playerId) + '">' + escapeHtml(target.name) + ' · Intel ' + number(target.intel) + '/' + number(target.intelCap) + '</option>').join("") || '<option value="">No rival kingdoms</option>';
+    if ((espionage.targets || []).some((target) => target.playerId === lastSelections.espionageTarget)) targetSelect.value = lastSelections.espionageTarget;
+  }
+  if ($("espionage-category") && lastSelections.espionageCategory) $("espionage-category").value = lastSelections.espionageCategory;
+  const selectedTarget = (espionage.targets || []).find((target) => target.playerId === targetSelect?.value);
+  if ($("espionage-intel-spend")) {
+    $("espionage-intel-spend").max = String(Math.min(Number(selectedTarget?.intel || 0), Number(rules.network?.currentMissionIntelSpendCap || 0)));
+    $("espionage-intel-spend").value = String(Math.min(Number($("espionage-intel-spend").max), Math.max(0, Math.floor(Number(lastSelections.espionageIntelSpend) || 0))));
+  }
+  document.querySelectorAll("[data-espionage-mission-tier], #espionage-intel-spend").forEach((input) => input.addEventListener("input", updateEspionagePreview));
+  targetSelect?.addEventListener("change", () => { captureSelections(); lastSelections.espionageTarget = targetSelect.value; lastSelections.espionageIntelSpend = "0"; renderEspionage(); });
+  updateEspionagePreview();
+  const missions = $("espionage-missions");
+  if (missions) missions.innerHTML = (espionage.missions || []).map((mission) => {
+    const pending = mission.status === "pending";
+    const time = pending ? 'Resolves in ' + formatDuration(Math.max(0, Math.ceil((mission.resolveAt - Date.now()) / 60000))) : 'Resolved ' + intelligenceReportAge(mission.resolvedAt);
+    const result = pending ? number(mission.finalSpyPower) + ' Spy Power committed' : (mission.outcome || 'resolved').replace(/^./, (letter) => letter.toUpperCase()) + (mission.incidentalCategory ? ' · Incidental ' + mission.incidentalCategory : '') + (mission.bonusDiscoveryId ? ' · Bonus Discovery' : '');
+    return '<article class="list-item espionage-mission-row"><strong>' + escapeHtml(mission.targetName) + ' — ' + escapeHtml(mission.category[0].toUpperCase() + mission.category.slice(1)) + '</strong><span>' + escapeHtml(result) + '</span><small>' + escapeHtml(time) + '</small></article>';
+  }).join("") || '<div class="empty">No investigations launched yet.</div>';
+  const controls = $("espionage-controls");
+  if (controls) controls.classList.toggle("network-locked", Number(espionage.networkLevel || 0) < 1);
+  controls?.querySelectorAll("input, select, button").forEach((control) => { if (Number(espionage.networkLevel || 0) < 1) control.disabled = true; });
+}
+
 function renderIntelligence() {
+  renderKingdomIntelligence();
+  renderEspionage();
   const territoryContainer = $("territory-reports");
   if (!territoryContainer) return;
   const territories = state.intelligence?.territories || [];
@@ -2345,6 +2485,33 @@ $("plateau-form").addEventListener("submit", (event) => {
   if (!state.plateauRun) return alert("No Plateau Run is open.");
   action(() => client.mutation(refs.joinPlateauRun, { plateauRunId: state.plateauRun.id, units: validatedRaidUnits("plateau-run-units"), ...($("plateau-conclave")?.value ? { conclaveId: $("plateau-conclave").value } : {}) }));
 });
+$("close-kingdom-intel-dialog")?.addEventListener("click", () => $("kingdom-intel-dialog").close());
+$("kingdom-intel-dialog")?.addEventListener("click", (event) => {
+  if (event.target === $("kingdom-intel-dialog")) $("kingdom-intel-dialog").close();
+});
+$("espionage-defense-form")?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const operatives = { informant: 0, spy: 0, ghostblood: 0 };
+  document.querySelectorAll("[data-espionage-defense-tier]").forEach((input) => { operatives[input.dataset.espionageDefenseTier] = Math.max(0, Math.floor(Number(input.value) || 0)); });
+  action(() => client.mutation(refs.setEspionageDefense, { operatives }));
+});
+$("espionage-mission-form")?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const targetPlayerId = $("espionage-target").value;
+  if (!targetPlayerId) return alert("Choose a rival kingdom.");
+  const operatives = selectedEspionageOperatives();
+  const intelSpend = Math.max(0, Math.floor(Number($("espionage-intel-spend").value) || 0));
+  const category = $("espionage-category").value;
+  const power = Object.entries(operatives).reduce((sum, [tier, count]) => sum + count * Number(state.espionage?.rules?.operatives?.[tier]?.spyPower || 0), 0) + intelSpend;
+  const target = (state.espionage?.targets || []).find((entry) => entry.playerId === targetPlayerId);
+  if (!window.confirm("Launch a " + category + " investigation against " + (target?.name || "this rival") + " with " + number(power) + " final Spy Power? " + number(intelSpend) + " Intel will be consumed immediately.")) return;
+  lastSelections.espionageMission = {};
+  lastSelections.espionageIntelSpend = "0";
+  action(() => client.mutation(refs.launchInvestigation, { targetPlayerId, category, operatives, intelSpend }));
+});
+["espionage-defense-form", "espionage-mission-form"].forEach((formId) => $(formId)?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.target.closest("button")) event.preventDefault();
+}));
 $("cancel-plateau-commitment").addEventListener("click", () => {
   if (!state.plateauRun) return;
   if (!window.confirm("Withdraw your army from this Plateau Run? All committed units will return immediately.")) return;

@@ -7,7 +7,7 @@ import {
   plateauAttributeCountsForPlayer,
   plateauCountsForPlayer,
 } from "./plateauHelpers";
-import { ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
+import { ownedOperativesIncludingAway, ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import {
   calculateArmyStats,
   doctrineCostMultiplier,
@@ -37,12 +37,14 @@ export const getArmy = query({
     const plateauAttributes = await plateauAttributeCountsForPlayer(ctx, player._id);
     const pending = pendingEconomy({ ...player, plateauCounts }, Date.now());
     const ownedUnits = await ownedUnitsIncludingAway(ctx, player._id, player.units);
+    const ownedOperatives = await ownedOperativesIncludingAway(ctx, player._id, player.operatives, player.defendingOperatives);
     const provisions = provisionsStatus(
       player.buildings,
       plateauCounts,
       ownedUnits,
       plateauAttributes.large,
       player.ardentiaConclaves ?? 0,
+      ownedOperatives,
     );
 
     return {
@@ -111,6 +113,7 @@ export const trainUnit = mutation({
     );
     const nextOwnedUnits = normalizeUnits(ownedUnits);
     nextOwnedUnits[args.unit] += count;
+    const ownedOperatives = await ownedOperativesIncludingAway(ctx, settledPlayer._id, settledPlayer.operatives, settledPlayer.defendingOperatives);
     if (args.unit === "chull" && doctrineFromResearch(completed) === "gemheartBaron" && nextOwnedUnits.chull > 10) throw new Error("Gemheart Baron doctrine limits the kingdom to 10 owned Chulls.");
     const provisions = provisionsStatus(
       settledPlayer.buildings,
@@ -118,6 +121,7 @@ export const trainUnit = mutation({
       nextOwnedUnits,
       plateauAttributes.large,
       settledPlayer.ardentiaConclaves ?? 0,
+      ownedOperatives,
     );
     if (provisions.used > provisions.capacity) {
       throw new Error(

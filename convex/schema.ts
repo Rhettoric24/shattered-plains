@@ -17,7 +17,18 @@ const buildingLevels = v.object({
   ardentMonastery: v.optional(v.number()),
   barracks: v.number(),
   soulcastBunker: v.optional(v.number()),
+  espionageNetwork: v.optional(v.number()),
 });
+
+const operativeCounts = v.object({
+  informant: v.number(),
+  spy: v.number(),
+  ghostblood: v.number(),
+});
+
+const espionageCategory = v.union(
+  v.literal("military"), v.literal("economy"), v.literal("research"), v.literal("territory"),
+);
 
 const plateauType = v.union(
   v.literal("sphere"),
@@ -41,6 +52,8 @@ export default defineSchema({
     ardentiaConclaves: v.optional(v.number()),
     units: unitCounts,
     buildings: buildingLevels,
+    operatives: v.optional(operativeCounts),
+    defendingOperatives: v.optional(operativeCounts),
     lastEconomyAt: v.optional(v.number()),
     lastActiveAt: v.number(),
     createdAt: v.number(),
@@ -304,6 +317,59 @@ export default defineSchema({
     .index("by_viewerPlayerId_and_targetType", ["viewerPlayerId", "targetType"])
     .index("by_viewerPlayerId_and_targetPlayerId", ["viewerPlayerId", "targetPlayerId"])
     .index("by_viewerPlayerId_and_plateauId", ["viewerPlayerId", "plateauId"]),
+
+  espionageMissions: defineTable({
+    attackerId: v.id("players"),
+    targetPlayerId: v.id("players"),
+    seasonId: v.id("seasons"),
+    category: espionageCategory,
+    operatives: operativeCounts,
+    baseSpyPower: v.number(),
+    intelSpent: v.number(),
+    finalSpyPower: v.number(),
+    departAt: v.number(),
+    resolveAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+    status: v.union(v.literal("pending"), v.literal("resolved")),
+    outcome: v.optional(v.union(v.literal("failure"), v.literal("partial"), v.literal("success"), v.literal("overwhelm"))),
+    incidentalCategory: v.optional(espionageCategory),
+    bonusDiscoveryId: v.optional(v.id("espionageBonusDiscoveries")),
+  })
+    .index("by_status_and_resolveAt", ["status", "resolveAt"])
+    .index("by_attackerId_and_status_and_resolveAt", ["attackerId", "status", "resolveAt"])
+    .index("by_attackerId_and_departAt", ["attackerId", "departAt"]),
+
+  kingdomIntelligence: defineTable({
+    viewerPlayerId: v.id("players"),
+    targetPlayerId: v.id("players"),
+    category: espionageCategory,
+    achievedLevel: v.number(),
+    bestLevel: v.number(),
+    observedScore: v.number(),
+    observedAt: v.number(),
+    source: v.string(),
+    missionId: v.optional(v.id("espionageMissions")),
+  }).index("by_viewerPlayerId_and_targetPlayerId_and_category", ["viewerPlayerId", "targetPlayerId", "category"]),
+
+  kingdomIntelResources: defineTable({
+    viewerPlayerId: v.id("players"),
+    targetPlayerId: v.id("players"),
+    amount: v.number(),
+    updatedAt: v.number(),
+  }).index("by_viewerPlayerId_and_targetPlayerId", ["viewerPlayerId", "targetPlayerId"]),
+
+  espionageBonusDiscoveries: defineTable({
+    viewerPlayerId: v.id("players"),
+    targetPlayerId: v.id("players"),
+    category: espionageCategory,
+    missionId: v.id("espionageMissions"),
+    factKind: v.string(),
+    text: v.string(),
+    observedAt: v.number(),
+  })
+    .index("by_viewerPlayerId_and_observedAt", ["viewerPlayerId", "observedAt"])
+    .index("by_viewerPlayerId_and_targetPlayerId_and_category_and_observedAt", ["viewerPlayerId", "targetPlayerId", "category", "observedAt"])
+    .index("by_missionId", ["missionId"]),
 
   seasons: defineTable({
     number: v.number(),

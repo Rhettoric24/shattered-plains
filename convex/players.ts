@@ -12,7 +12,7 @@ import {
   plateauAttributeCountsForPlayer,
   plateauCountsForPlayer,
 } from "./plateauHelpers";
-import { ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
+import { ownedOperativesIncludingAway, ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import {
   calculateArmyStats,
   calculateBuildingStats,
@@ -25,6 +25,7 @@ import {
   WORLD_KEY,
 } from "./rules";
 import { completedResearch } from "./researchHelpers";
+import { emptyOperatives } from "./espionageRules";
 
 function normalizeName(name: string) {
   return name.trim().toLowerCase();
@@ -100,6 +101,8 @@ async function createPlayerForAuth(
     ardentiaConclaves: 0,
     units: emptyUnits(),
     buildings: emptyBuildings(),
+    operatives: emptyOperatives(),
+    defendingOperatives: emptyOperatives(),
     lastEconomyAt: now,
     lastActiveAt: now,
     createdAt: now,
@@ -221,6 +224,7 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
   const completed = await completedResearch(ctx, player._id);
   const pending = pendingEconomy({ ...player, plateauCounts, completedResearch: completed }, Date.now());
   const ownedUnits = await ownedUnitsIncludingAway(ctx, player._id, player.units);
+  const ownedOperatives = await ownedOperativesIncludingAway(ctx, player._id, player.operatives, player.defendingOperatives);
 
   return {
     player,
@@ -239,6 +243,7 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
       ownedUnits,
       plateauAttributes.large,
       player.ardentiaConclaves ?? 0,
+      ownedOperatives,
     ),
     plateauAttributes,
     plateauBonuses: {

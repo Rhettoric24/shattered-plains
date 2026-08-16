@@ -24,7 +24,7 @@ export const SEASON_SCORING_RULES = {
     ancientHoldPoints: 3,
   },
   economy: {
-    buildingPoints: { market: 2, watchtower: 1, ardentMonastery: 1, barracks: 1, soulcastBunker: 1 },
+    buildingPoints: { market: 2, watchtower: 1, ardentMonastery: 1, barracks: 1, soulcastBunker: 1, espionageNetwork: 1 },
   },
   territory: {
     milestones: [{ count: 2, points: 2 }, { count: 5, points: 8 }],

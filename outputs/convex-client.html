@@ -232,7 +232,7 @@
           </section>
 
           <section class="view" id="view-ledger" data-title="Season Ledger" data-eyebrow="Season progress">
-            <section class="panel full-panel season-ledger-hero"><p class="eyebrow" id="ledger-season-name">Current season</p><h2>Your seasonal score</h2><strong id="ledger-total" class="ledger-total">0</strong><p class="hint">Your ledger is exact. Rival scores remain private and may later require Kingdom Intelligence.</p></section>
+            <section class="panel full-panel season-ledger-hero"><p class="eyebrow" id="ledger-season-name">Current season</p><h2>Your seasonal score</h2><strong id="ledger-total" class="ledger-total">0</strong><p class="hint">Your ledger is exact. Investigate rivals from the Intelligence tab to reveal their seasonal strength.</p></section>
             <section class="panel full-panel"><div class="section-heading"><div><p class="eyebrow">Standing</p><h2>Score by category</h2></div></div><div id="ledger-categories" class="ledger-category-grid"></div></section>
             <section class="panel full-panel"><div class="section-heading"><div><p class="eyebrow">Distinctions</p><h2>Seasonal badges</h2></div></div><div id="ledger-achievements" class="ledger-badge-grid"></div></section>
             <section class="panel full-panel"><div class="section-heading"><div><p class="eyebrow">Audit trail</p><h2>Recent scoring events</h2></div></div><div id="ledger-events" class="ledger-event-list"></div></section>
@@ -247,7 +247,34 @@
             </section>
           </section>
 
-          <section class="view" id="view-intelligence" data-title="Territory reports" data-eyebrow="Intelligence">
+          <section class="view" id="view-intelligence" data-title="Kingdom intelligence" data-eyebrow="Intelligence">
+            <section class="panel full-panel kingdom-intelligence-panel">
+              <div class="section-heading"><p class="eyebrow">Season Intelligence</p><h2>Kingdom Intelligence</h2><p class="hint">Build knowledge of rival seasonal strength through targeted investigations.</p></div>
+              <div id="kingdom-intelligence-table" class="kingdom-intelligence-scroll"></div>
+            </section>
+            <section class="panel full-panel">
+              <div class="section-heading"><p class="eyebrow">Covert operations</p><h2>Espionage Network</h2></div>
+              <div id="espionage-network-status" class="pulse-grid"></div>
+              <div id="espionage-roster" class="operative-roster"></div>
+              <div id="espionage-controls" class="espionage-control-grid">
+                <form id="espionage-defense-form" class="contained-form espionage-form">
+                  <div class="form-wide"><h3>Home defense</h3><p class="hint">Defending operatives are unavailable for investigations and contribute their Spy Power to Counter-Intelligence.</p></div>
+                  <div id="espionage-defense-inputs" class="operative-input-grid form-wide"></div>
+                  <button type="submit">Assign defenders</button>
+                </form>
+                <form id="espionage-mission-form" class="contained-form espionage-form">
+                  <div class="form-wide"><h3>Launch investigation</h3><p class="hint">Intel is rival-specific and is consumed when the mission launches.</p></div>
+                  <label>Rival kingdom<select id="espionage-target"></select></label>
+                  <label>Ledger category<select id="espionage-category"><option value="military">Military</option><option value="economy">Economy</option><option value="research">Research</option><option value="territory">Territory</option></select></label>
+                  <div id="espionage-mission-operatives" class="operative-input-grid form-wide"></div>
+                  <label>Intel boost<input id="espionage-intel-spend" type="number" min="0" value="0" inputmode="numeric"></label>
+                  <div id="espionage-mission-preview" class="mission-summary"></div>
+                  <button type="submit">Launch 2-hour investigation</button>
+                </form>
+              </div>
+              <div class="section-heading espionage-mission-heading"><p class="eyebrow">Operations</p><h3>Active and recent investigations</h3></div>
+              <div id="espionage-missions" class="list"></div>
+            </section>
             <section class="panel full-panel">
               <div class="section-heading">
                 <p class="eyebrow">Observation network</p>
@@ -323,6 +350,10 @@
       </section>
     </main>
     <div id="tap-tooltip" class="tap-tooltip hidden" role="status"></div>
+    <dialog id="kingdom-intel-dialog" class="kingdom-intel-dialog" aria-labelledby="kingdom-intel-dialog-title">
+      <div class="dialog-heading"><div><p class="eyebrow">Kingdom Intelligence</p><h2 id="kingdom-intel-dialog-title">Intelligence detail</h2></div><button id="close-kingdom-intel-dialog" class="secondary" type="button" aria-label="Close">✕</button></div>
+      <div id="kingdom-intel-dialog-content"></div>
+    </dialog>
     <div id="notification-toasts" class="notification-toasts" aria-live="polite"></div>
     <script type="module" src="convex-client.js"></script>
   </body>

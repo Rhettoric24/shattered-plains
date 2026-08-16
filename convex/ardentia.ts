@@ -4,7 +4,7 @@ import { settlePlayerEconomy } from "./economyHelpers";
 import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
 import { plateauAttributeCountsForPlayer, plateauCountsForPlayer } from "./plateauHelpers";
-import { ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
+import { ownedOperativesIncludingAway, ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import { ARDENTIA_RULES } from "./rules";
 import { ardentiaConclaveStatus } from "./ardentiaHelpers";
 
@@ -45,6 +45,7 @@ export const recruitConclave = mutation({
     const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
     const attributes = await plateauAttributeCountsForPlayer(ctx, player._id);
     const ownedUnits = await ownedUnitsIncludingAway(ctx, player._id, player.units);
+    const ownedOperatives = await ownedOperativesIncludingAway(ctx, player._id, player.operatives, player.defendingOperatives);
     const nextOwned = status.owned + 1;
     const provisions = provisionsStatus(
       player.buildings,
@@ -52,6 +53,7 @@ export const recruitConclave = mutation({
       ownedUnits,
       attributes.large,
       nextOwned,
+      ownedOperatives,
     );
     if (provisions.used > provisions.capacity) {
       throw new Error(`Not enough Provisions. Forming this Conclave would use ${provisions.used}/${provisions.capacity}.`);
