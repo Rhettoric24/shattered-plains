@@ -47,7 +47,9 @@ type GameplayTable =
   | "seasonAchievements"
   | "seasonScoreEvents"
   | "seasonScores"
-  | "seasons";
+  | "seasons"
+  | "kingdomWorldPressure"
+  | "parshendiRetaliations";
 
 declare const process: {
   env: Record<string, string | undefined>;
@@ -118,6 +120,8 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
   const now = Date.now();
   const players = await ctx.db.query("players").take(200);
   const deleted = {
+    parshendiRetaliations: await deleteGameplayTable(ctx, "parshendiRetaliations"),
+    kingdomWorldPressure: await deleteGameplayTable(ctx, "kingdomWorldPressure"),
     espionageBonusDiscoveries: await deleteGameplayTable(ctx, "espionageBonusDiscoveries"),
     kingdomIntelligence: await deleteGameplayTable(ctx, "kingdomIntelligence"),
     kingdomIntelResources: await deleteGameplayTable(ctx, "kingdomIntelResources"),
@@ -249,7 +253,7 @@ async function pendingOperations(ctx: AnyCtx) {
       id: siege._id,
       plateauId: siege.plateauId,
       plateauName: plateauNames[siege.plateauId] ?? "Unknown plateau",
-      attackerName: playerNames[siege.attackerId] ?? "Unknown",
+      attackerName: siege.targetType === "parshendi_retaliation" ? "Parshendi" : playerNames[siege.attackerId] ?? "Unknown",
       defenderName: siege.defenderId
         ? playerNames[siege.defenderId] ?? "Parshendi"
         : "Parshendi",

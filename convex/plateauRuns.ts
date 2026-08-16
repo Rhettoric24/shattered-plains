@@ -31,6 +31,8 @@ import {
   travelMsForUnits,
   type UnitCounts,
 } from "./rules";
+import { applyHostility } from "./worldPressure";
+import { WORLD_PRESSURE_RULES } from "./worldPressureRules";
 
 function seededInt(seed: string, min: number, max: number) {
   let hash = 0;
@@ -501,6 +503,14 @@ export const resolvePlateauRun = internalMutation({
         gemhearts: player.gemhearts + (isWinner ? run.gemheartReward : 0),
         lastActiveAt: now,
       });
+      if (isWinner) {
+        await applyHostility(ctx, {
+          playerId: player._id,
+          gain: WORLD_PRESSURE_RULES.hostility.gains.plateauRunVictory,
+          playerInitiated: true,
+          now,
+        });
+      }
       await ctx.db.insert("messages", {
         toPlayerId: player._id,
         kind: "system",

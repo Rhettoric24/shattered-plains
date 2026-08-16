@@ -21,7 +21,7 @@ import {
 } from "./ardentiaHelpers";
 import { completedResearch, reconcileResearch, recordSuccessfulDefensiveSiege } from "./researchHelpers";
 import { createNotification } from "./notificationHelpers";
-import { observePlateauOwnership, recordOpponentAttack, recordSiegeDefenseScore, recordSiegeVictoryScore } from "./seasonLedger";
+import { activeSeason, observePlateauNeutralized, observePlateauOwnership, recordOpponentAttack, recordSiegeDefenseScore, recordSiegeVictoryScore } from "./seasonLedger";
 import { subtractAvailableUnits, unitCountsValidator, validateMissionUnits } from "./armyRules";
 import {
   effectiveIntelLevel,
@@ -59,6 +59,8 @@ import {
   travelMsForUnits,
   type UnitCounts,
 } from "./rules";
+import { applyHostility, completeRetaliation } from "./worldPressure";
+import { plateauCaptureHostility, reclamationDefense } from "./worldPressureRules";
 
 function cleanUnits(units: UnitCounts) {
   return normalizeUnits(units);
@@ -145,8 +147,8 @@ async function purchaseEmergencyDefense(
 ) {
   const defender = await requireCurrentPlayer(ctx);
   const siege = await ctx.db.get(args.siegeId);
-  if (!siege || siege.status !== "pending" || siege.targetType !== "player") {
-    throw new Error("Choose an active player siege.");
+  if (!siege || siege.status !== "pending" || (siege.targetType !== "player" && siege.targetType !== "parshendi_retaliation")) {
+    throw new Error("Choose an active defensive siege.");
   }
   if (siege.defenderId !== defender._id) {
     throw new Error("Only the defender can prepare emergency defenses.");
@@ -253,6 +255,7 @@ export const listPlateaus = query({
     };
     const visibleSieges = activeSieges.filter((siege) => {
       if (siege.attackerId === viewer._id || siege.defenderId === viewer._id) return true;
+      if (!siege.attackerId) return false;
       return Math.max(kingdomLevel(siege.attackerId), kingdomLevel(siege.defenderId)) >= 4;
     });
 
@@ -273,6 +276,10 @@ export const listPlateaus = query({
           status: plateau.status,
           intelligenceLevel,
           resistance: presentIntelNumber(plateau.neutralDefenseRemaining, intelligenceLevel),
+          ...(intelligenceLevel >= 2 ? {
+            parshendiReclamationCount: plateau.parshendiReclamationCount ?? 0,
+            baseNeutralDefense: plateau.baseNeutralDefense ?? plateau.neutralDefenseInitial,
+          } : {}),
           ...(identityKnown
             ? {
                 type: identityPlateauType(plateau.type),
@@ -300,6 +307,10 @@ export const listPlateaus = query({
             ownerPlayerId: plateau.ownerPlayerId,
             ownerName,
             intelligenceLevel,
+            ...(intelligenceLevel >= 2 ? {
+              parshendiReclamationCount: plateau.parshendiReclamationCount ?? 0,
+              baseNeutralDefense: plateau.baseNeutralDefense ?? plateau.neutralDefenseInitial,
+            } : {}),
             ...(intelligenceLevel >= 2 && identityPlateauType(plateau.type) === "gemheart"
               ? { gemheartProgress: gemheartProgressForPlateau(plateau, now, gemheartIntervalForPlayer(plateau.ownerPlayerId)) }
               : {}),
@@ -319,10 +330,10 @@ export const listPlateaus = query({
         return {
           _id: siege._id,
           plateauId: siege.plateauId,
-          attackerId: siege.attackerId,
+          ...(siege.attackerId ? { attackerId: siege.attackerId } : {}),
           ...(siege.defenderId ? { defenderId: siege.defenderId } : {}),
           targetType: siege.targetType,
-          attackerName: playerNames[siege.attackerId] ?? "Unknown",
+          attackerName: siege.targetType === "parshendi_retaliation" ? "Parshendi" : siege.attackerId ? playerNames[siege.attackerId] ?? "Unknown" : "Unknown",
           defenderName: siege.defenderId
             ? playerNames[siege.defenderId] ?? "Unknown"
             : "Parshendi",
@@ -386,6 +397,7 @@ export const launchNeutralSiege = mutation({
     );
 
     const now = Date.now();
+    await applyHostility(ctx, { playerId: attacker._id, playerInitiated: true, now });
     const plateauCounts = await plateauCountsForPlayer(ctx, attacker._id);
     const completed = await completedResearch(ctx, attacker._id);
     const conclaveCombat = Boolean(args.conclaveId);
@@ -546,8 +558,8 @@ export const commitSiegeDefenders = mutation({
   handler: async (ctx, args) => {
     const defender = await requireCurrentPlayer(ctx);
     const siege = await ctx.db.get(args.siegeId);
-    if (!siege || siege.status !== "pending" || siege.targetType !== "player") {
-      throw new Error("Choose an active player siege.");
+    if (!siege || siege.status !== "pending" || (siege.targetType !== "player" && siege.targetType !== "parshendi_retaliation")) {
+      throw new Error("Choose an active defensive siege.");
     }
     if (siege.defenderId !== defender._id) {
       throw new Error("Only the defender can commit to this siege.");
@@ -663,6 +675,8 @@ export const backfillPlateaus = mutation({
     for (const plateau of existingPlateaus) {
       const type = identityPlateauType(plateau.type);
       const updates: any = {};
+      if (plateau.baseNeutralDefense === undefined) updates.baseNeutralDefense = plateau.neutralDefenseInitial;
+      if (plateau.parshendiReclamationCount === undefined) updates.parshendiReclamationCount = 0;
       if (type !== plateau.type) updates.type = type;
       if (plateau.large === undefined) updates.large = false;
       if (
@@ -719,8 +733,8 @@ export const resolveSiege = internalMutation({
     if (!siege || siege.status !== "pending") return { resolved: false };
 
     const plateau = await ctx.db.get(siege.plateauId);
-    const attacker = await ctx.db.get(siege.attackerId);
-    if (!plateau || !attacker) {
+    const attacker = siege.attackerId ? await ctx.db.get(siege.attackerId) : null;
+    if (!plateau || (!attacker && siege.targetType !== "parshendi_retaliation")) {
       if (siege) {
         await ctx.db.patch(siege._id, {
           status: "resolved",
@@ -731,13 +745,109 @@ export const resolveSiege = internalMutation({
     }
 
     const now = Date.now();
-    const attackerCompleted = await completedResearch(ctx, attacker._id);
+    const attackerCompleted = attacker ? await completedResearch(ctx, attacker._id) : undefined;
     let won = false;
     let resultText = "";
     let survivors = siege.attackerUnits;
     let awardedConclaveXp: number | undefined;
 
+    if (siege.targetType === "parshendi_retaliation") {
+      const defender = siege.defenderId ? await ctx.db.get(siege.defenderId) : null;
+      if (!defender || !siege.retaliationId) {
+        await ctx.db.patch(siege._id, { status: "resolved", resolvedAt: now });
+        await ctx.db.patch(plateau._id, { activeSiegeId: undefined, updatedAt: now });
+        return { resolved: false };
+      }
+      const defenderUnits = normalizeUnits(siege.defenderUnits ?? emptyUnits());
+      const defenderCompleted = await completedResearch(ctx, defender._id);
+      const defenderPower = committedDefensePower(
+        defenderUnits,
+        plateau,
+        siege.emergencyDefensePercent ?? 0,
+        defenderCompleted,
+      );
+      const parshendiWon = siege.attackerPower > defenderPower;
+      const defenderLossResult = applyLossRate(
+        defenderUnits,
+        baseCasualtyRate(defenderPower, siege.attackerPower),
+        `${siege._id}:retaliation:defender:${now}`,
+        defenderCompleted,
+      );
+      await ctx.db.patch(defender._id, {
+        units: addUnits(defender.units, defenderLossResult.survivors),
+        lastActiveAt: now,
+      });
+
+      let subject: string;
+      if (!parshendiWon) {
+        const reward = await completeRetaliation(ctx, { retaliationId: siege.retaliationId, defended: true, now });
+        await ctx.db.patch(plateau._id, { activeSiegeId: undefined, updatedAt: now });
+        await recordSuccessfulDefensiveSiege(ctx, defender._id, now);
+        subject = "Parshendi Retaliation Defeated";
+        resultText = `${defender.name} held ${plateau.name} against the Parshendi. Reward: ${reward?.spheres ?? 0} Spheres. Casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
+      } else {
+        const season = await activeSeason(ctx);
+        const previousCount = season && plateau.reclamationSeasonId === season._id
+          ? Math.max(0, plateau.parshendiReclamationCount ?? 0)
+          : 0;
+        const reclamationCount = previousCount + 1;
+        const baseNeutralDefense = plateau.baseNeutralDefense ?? plateau.neutralDefenseInitial;
+        const nextDefense = reclamationDefense(baseNeutralDefense, reclamationCount);
+        await ctx.db.patch(plateau._id, {
+          status: "neutral",
+          ownerPlayerId: undefined,
+          baseNeutralDefense,
+          parshendiReclamationCount: reclamationCount,
+          ...(season ? { reclamationSeasonId: season._id } : {}),
+          neutralDefenseInitial: nextDefense,
+          neutralDefenseRemaining: nextDefense,
+          heldSince: undefined,
+          lastGemheartAt: undefined,
+          activeSiegeId: undefined,
+          updatedAt: now,
+        });
+        await reconcileResearch(ctx, defender._id, now);
+        await observePlateauNeutralized(ctx, { plateauId: plateau._id, previousOwnerId: defender._id, now });
+        await completeRetaliation(ctx, { retaliationId: siege.retaliationId, defended: false, now });
+        subject = "Plateau Reclaimed";
+        resultText = `The Parshendi reclaimed ${plateau.name}. Its reclamation count is now ${reclamationCount}, raising neutral defense to ${nextDefense} Power. Casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
+      }
+
+      await ctx.db.patch(siege._id, {
+        status: "resolved",
+        resolvedAt: now,
+        defenderHeld: !parshendiWon,
+      });
+      await ctx.db.insert("messages", {
+        toPlayerId: defender._id,
+        kind: "system",
+        subject,
+        body: resultText,
+        createdAt: now,
+      });
+      await createNotification(ctx, {
+        playerId: defender._id,
+        category: "combat",
+        eventType: parshendiWon ? "parshendi_plateau_reclaimed" : "parshendi_retaliation_defended",
+        title: subject,
+        body: resultText,
+        destinationView: "plateaus",
+        entityId: String(siege._id),
+        dedupeKey: `retaliation:${siege.retaliationId}:resolved`,
+        createdAt: now,
+      });
+      await insertGameEvent(ctx, {
+        kind: "siege",
+        text: parshendiWon
+          ? `The Parshendi reclaimed ${plateau.name} from ${defender.name}.`
+          : `${defender.name} repelled a Parshendi retaliation at ${plateau.name}.`,
+        createdAt: now,
+      });
+      return { resolved: true, won: !parshendiWon, resultText };
+    }
+
     if (siege.targetType === "neutral") {
+      if (!attacker) return { resolved: false };
       won = siege.attackerPower >= plateau.neutralDefenseRemaining;
       const lossResult = applyLossRate(
         siege.attackerUnits,
@@ -781,6 +891,12 @@ export const resolveSiege = internalMutation({
         });
         await reconcileResearch(ctx, attacker._id, now);
         await observePlateauOwnership(ctx, { plateauId: plateau._id, newOwnerId: attacker._id, heldSince: now, now });
+        await applyHostility(ctx, {
+          playerId: attacker._id,
+          gain: plateauCaptureHostility({ type: identityPlateauType(plateau.type), large: plateau.large }),
+          playerInitiated: false,
+          now,
+        });
         resultText = `${attacker.name} claimed ${plateauTypeName(plateau.type)} against ${resistanceLabel(plateau.neutralDefenseRemaining).toLowerCase()} resistance. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
       } else {
         await ctx.db.patch(plateau._id, {
@@ -801,6 +917,7 @@ export const resolveSiege = internalMutation({
     }
 
     if (siege.targetType === "player") {
+      if (!attacker) return { resolved: false };
       const defender = siege.defenderId ? await ctx.db.get(siege.defenderId) : null;
       if (!defender) {
         await ctx.db.patch(attacker._id, {
@@ -927,6 +1044,7 @@ export const resolveSiege = internalMutation({
       }
     }
 
+    if (!attacker) return { resolved: false };
     await ctx.db.patch(siege._id, {
       status: "resolved",
       resolvedAt: now,

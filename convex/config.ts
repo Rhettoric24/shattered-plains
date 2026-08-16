@@ -13,6 +13,7 @@ import {
   RESEARCH_RULES,
   UNIT_RULES,
 } from "./rules";
+import { HOSTILITY_STATES, WORLD_PRESSURE_RULES } from "./worldPressureRules";
 
 export const getGameConfig = query({
   args: {},
@@ -43,6 +44,10 @@ export const getGameConfig = query({
       buildings: BUILDING_RULES,
       plateauRuns: PLATEAU_RUN_RULES,
       plateauRunSchedule: PLATEAU_RUN_SCHEDULE,
+      worldPressure: {
+        rules: WORLD_PRESSURE_RULES,
+        states: HOSTILITY_STATES,
+      },
     };
   },
 });

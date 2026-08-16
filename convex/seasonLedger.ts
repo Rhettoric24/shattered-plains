@@ -10,6 +10,7 @@ import {
   SEASON_SCORING_RULES,
   type SeasonCategory,
 } from "./seasonScoringRules";
+import { resetWorldPressureForSeason } from "./worldPressure";
 
 const EMPTY_TOTALS: Record<SeasonCategory, number> = {
   military: 0,
@@ -209,6 +210,24 @@ export async function observePlateauOwnership(ctx: MutationCtx, args: {
   if (reclaimed) await unlockAchievement(ctx, { seasonId: season._id, playerId: args.newOwnerId, key: "reclamation", now });
 }
 
+export async function observePlateauNeutralized(ctx: MutationCtx, args: {
+  plateauId: Id<"plateaus">;
+  previousOwnerId: Id<"players">;
+  now?: number;
+}) {
+  const now = args.now ?? Date.now();
+  const season = await activeSeason(ctx);
+  if (!season) return;
+  const hold = await ctx.db
+    .query("seasonPlateauHolds")
+    .withIndex("by_seasonId_and_plateauId", (q) =>
+      q.eq("seasonId", season._id).eq("plateauId", args.plateauId),
+    )
+    .unique();
+  if (hold) await ctx.db.delete(hold._id);
+  await updateTerritoryCount(ctx, season._id, args.previousOwnerId, now, false);
+}
+
 export const evaluatePlateauHold = internalMutation({
   args: { seasonId: v.id("seasons"), plateauId: v.id("plateaus"), playerId: v.id("players"), heldSince: v.number() },
   handler: async (ctx, args) => {
@@ -267,6 +286,31 @@ export const rolloverSeason = mutation({
     const pendingEspionage = await ctx.db.query("espionageMissions").withIndex("by_status_and_resolveAt", (q) => q.eq("status", "pending")).first();
     if (pendingRaid || pendingSiege || openRun || pendingEspionage) throw new Error("Resolve all raids, sieges, Plateau Runs, and espionage investigations before starting a new season.");
     const now = Date.now();
+    await resetWorldPressureForSeason(ctx, now);
+    const pressurePlateaus = await ctx.db.query("plateaus").take(500);
+    for (const plateau of pressurePlateaus) {
+      const baseNeutralDefense = plateau.baseNeutralDefense ?? plateau.neutralDefenseInitial;
+      if (plateau.status === "neutral" && (plateau.parshendiReclamationCount ?? 0) > 0) {
+        const progress = plateau.neutralDefenseInitial > 0
+          ? plateau.neutralDefenseRemaining / plateau.neutralDefenseInitial
+          : 1;
+        await ctx.db.patch(plateau._id, {
+          baseNeutralDefense,
+          parshendiReclamationCount: 0,
+          reclamationSeasonId: undefined,
+          neutralDefenseInitial: baseNeutralDefense,
+          neutralDefenseRemaining: Math.max(1, Math.round(baseNeutralDefense * progress)),
+          updatedAt: now,
+        });
+      } else if ((plateau.parshendiReclamationCount ?? 0) > 0 || plateau.reclamationSeasonId) {
+        await ctx.db.patch(plateau._id, {
+          baseNeutralDefense,
+          parshendiReclamationCount: 0,
+          reclamationSeasonId: undefined,
+          updatedAt: now,
+        });
+      }
+    }
     const current = await activeSeason(ctx);
     if (current) await ctx.db.patch(current._id, { status: "closed", endsAt: now, closedAt: now });
     const nextNumber = (current?.number ?? 0) + 1;

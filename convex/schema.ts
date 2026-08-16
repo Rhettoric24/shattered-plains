@@ -69,6 +69,7 @@ export default defineSchema({
       v.literal("open_acres"),
       v.literal("player"),
       v.literal("parshendi_spheres"),
+      v.literal("deep_plains"),
     ),
     targetPlayerId: v.optional(v.id("players")),
     units: unitCounts,
@@ -78,6 +79,8 @@ export default defineSchema({
     defensePower: v.optional(v.number()),
     rewardSpheres: v.optional(v.number()),
     spheresRecovered: v.optional(v.number()),
+    gemheartFound: v.optional(v.boolean()),
+    hostilityAtLaunch: v.optional(v.number()),
     scoringSeasonId: v.optional(v.id("seasons")),
     ardentiaConclave: v.optional(v.boolean()),
     conclaveId: v.optional(v.id("ardentConclaves")),
@@ -101,6 +104,9 @@ export default defineSchema({
     large: v.optional(v.boolean()),
     neutralDefenseInitial: v.number(),
     neutralDefenseRemaining: v.number(),
+    baseNeutralDefense: v.optional(v.number()),
+    parshendiReclamationCount: v.optional(v.number()),
+    reclamationSeasonId: v.optional(v.id("seasons")),
     heldSince: v.optional(v.number()),
     lastGemheartAt: v.optional(v.number()),
     activeSiegeId: v.optional(v.id("sieges")),
@@ -113,9 +119,9 @@ export default defineSchema({
 
   sieges: defineTable({
     plateauId: v.id("plateaus"),
-    attackerId: v.id("players"),
+    attackerId: v.optional(v.id("players")),
     defenderId: v.optional(v.id("players")),
-    targetType: v.union(v.literal("neutral"), v.literal("player")),
+    targetType: v.union(v.literal("neutral"), v.literal("player"), v.literal("parshendi_retaliation")),
     attackerUnits: unitCounts,
     attackerPower: v.number(),
     attackerSpeed: v.number(),
@@ -132,6 +138,7 @@ export default defineSchema({
     defenderHeld: v.optional(v.boolean()),
     scoringSeasonId: v.optional(v.id("seasons")),
     opponentChainPosition: v.optional(v.number()),
+    retaliationId: v.optional(v.id("parshendiRetaliations")),
     departAt: v.number(),
     resolveAt: v.number(),
     resolvedAt: v.optional(v.number()),
@@ -146,6 +153,37 @@ export default defineSchema({
     .index("by_attacker", ["attackerId"])
     .index("by_defender", ["defenderId"])
     .index("by_plateau", ["plateauId"]),
+
+  kingdomWorldPressure: defineTable({
+    playerId: v.id("players"),
+    hostility: v.number(),
+    lastPlayerAggressionAt: v.optional(v.number()),
+    decayIntervalsApplied: v.number(),
+    nextRetaliationAt: v.optional(v.number()),
+    retaliationScheduleToken: v.optional(v.string()),
+    lastRetaliationLaunchAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("by_playerId", ["playerId"]),
+
+  parshendiRetaliations: defineTable({
+    playerId: v.id("players"),
+    targetPlateauId: v.id("plateaus"),
+    phase: v.union(v.literal("forming"), v.literal("launched"), v.literal("resolved"), v.literal("cancelled")),
+    active: v.boolean(),
+    hostilityAtFormation: v.number(),
+    militaryCapacity: v.number(),
+    seasonDay: v.number(),
+    power: v.number(),
+    formationAt: v.number(),
+    launchAt: v.number(),
+    siegeId: v.optional(v.id("sieges")),
+    resolvedAt: v.optional(v.number()),
+    outcome: v.optional(v.union(v.literal("defended"), v.literal("reclaimed"), v.literal("cancelled"))),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_playerId_and_active", ["playerId", "active"])
+    .index("by_phase_and_launchAt", ["phase", "launchAt"]),
 
   messages: defineTable({
     fromPlayerId: v.optional(v.id("players")),

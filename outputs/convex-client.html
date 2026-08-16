@@ -118,12 +118,14 @@
             <article data-view-link="army" id="res-provisions-card"><span>Provisions</span><strong id="res-provisions">0 / 0</strong></article>
             <article data-view-link="army"><span>Units ready</span><strong id="res-units">0 / 0</strong></article>
             <article data-view-link="plateaus"><span>Plateaus</span><strong id="res-acres">0</strong></article>
+            <article data-view-link="plateaus" id="res-hostility-card"><span>Parshendi Hostility</span><strong id="res-hostility">0 · Quiet</strong></article>
           </section>
 
 
           <section class="view active" id="view-overview" data-title="Warcamp status" data-eyebrow="Overview">
             <section id="command-briefing" class="command-briefing hidden"><p class="eyebrow">Needs attention</p><div id="command-priorities" class="priority-list"></div></section>
             <section class="panel full-panel"><p class="eyebrow">Kingdom pulse</p><div id="kingdom-pulse" class="pulse-grid"></div></section>
+            <section class="panel full-panel hostility-panel"><div class="section-heading split-heading"><div><p class="eyebrow">World pressure</p><h2>Parshendi Hostility</h2></div><strong id="hostility-value">0 / 100 · Quiet</strong></div><div class="hostility-meter" role="progressbar" aria-label="Parshendi Hostility" aria-valuemin="0" aria-valuemax="100"><span id="hostility-meter-fill"></span></div><div id="hostility-summary" class="mission-summary"></div></section>
             <section class="panel full-panel"><div class="section-heading split-heading"><div><p class="eyebrow">Operations</p><h2>Armies in motion</h2></div></div><div id="overview-operations" class="operation-timeline"></div></section>
           </section>
 
@@ -161,9 +163,20 @@
                 <button type="submit">Initiate sphere raid</button>
               </form>
             </section>
+            <section id="deep-plains-panel" class="panel full-panel hidden">
+              <p class="eyebrow">High Hostility</p>
+              <h2>Deep Plains Raid</h2>
+              <form id="deep-plains-form" class="attack-planner" data-attack-planner="deepPlains">
+                <div class="mission-summary form-wide"><strong>Push deep into Parshendi territory</strong><span>Commit a major army for 6–8 hours. Success offers a large Sphere cache and a 10% chance of one Gemheart.</span></div>
+                <div class="form-wide"><label>Raid units</label><div id="deep-plains-units" class="unit-input-grid"></div></div>
+                <div id="deep-plains-preview" class="attack-outlook form-wide"></div>
+                <button type="submit">Launch Deep Plains Raid</button>
+              </form>
+            </section>
           </section>
 
           <section class="view" id="view-plateaus" data-title="Plateau control" data-eyebrow="Land">
+            <section id="retaliation-warning-panel" class="panel full-panel hidden"><p class="eyebrow">Parshendi activity</p><h2>World retaliation warning</h2><div id="retaliation-warning" class="mission-summary"></div></section>
             <section id="urgent-sieges-panel" class="panel full-panel hidden"><p class="eyebrow">Highest priority</p><h2>⚔ Active defensive sieges</h2><div id="urgent-sieges" class="list"></div></section>
             <section class="panel full-panel">
               <p class="eyebrow">Holdings</p>
@@ -296,6 +309,7 @@
               </div>
               <div id="territory-reports" class="intelligence-grid"></div>
             </section>
+            <section id="retaliation-intelligence-panel" class="panel full-panel hidden"><p class="eyebrow">Territory Intelligence</p><h2>Incoming Parshendi activity</h2><div id="retaliation-intelligence" class="dossier-card"></div></section>
           </section>
 
           <section class="view" id="view-inbox" data-title="Messages and alerts" data-eyebrow="Inbox">

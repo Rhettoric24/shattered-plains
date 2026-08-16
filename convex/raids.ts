@@ -19,6 +19,7 @@ import type { Id } from "./_generated/dataModel";
 import { subtractAvailableUnits, unitCountsValidator, validateMissionUnits } from "./armyRules";
 import {
   addUnits,
+  ARMY_RULES,
   applySurvivalLosses,
   baseCasualtyRate,
   casualtySummary,
@@ -34,24 +35,23 @@ import {
   WORLD_KEY,
   type UnitCounts,
 } from "./rules";
+import { applyHostility } from "./worldPressure";
+import {
+  hostilityScaledValue,
+  seededFraction,
+  seededInt,
+  WORLD_PRESSURE_RULES,
+} from "./worldPressureRules";
 
 function cleanUnits(units: UnitCounts) {
   return normalizeUnits(units);
-}
-
-function seededInt(seed: string, min: number, max: number) {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-  return min + (hash % (max - min + 1));
 }
 
 async function createRaid(
   ctx: MutationCtx,
   args: {
     attackerId: Id<"players">;
-    targetType: "open_acres" | "player" | "parshendi_spheres";
+    targetType: "open_acres" | "player" | "parshendi_spheres" | "deep_plains";
     targetPlayerId?: Id<"players">;
     units: UnitCounts;
     acres?: number;
@@ -85,12 +85,26 @@ async function createRaid(
   }
 
   const now = Date.now();
+  const neutralAggression = args.targetType === "parshendi_spheres" || args.targetType === "deep_plains";
+  const pressure = neutralAggression
+    ? await applyHostility(ctx, { playerId: attacker._id, playerInitiated: true, now })
+    : null;
+  if (args.targetType === "deep_plains" && (pressure?.hostility ?? 0) < WORLD_PRESSURE_RULES.deepPlains.unlockMinimumHostility) {
+    throw new Error("Deep Plains Raids require Vengeful or Relentless Hostility.");
+  }
   const scoringSeason = await ensureActiveSeason(ctx, now);
   const departAt = now;
   const plateauCounts = await plateauCountsForPlayer(ctx, attacker._id);
   const completed = await completedResearch(ctx, attacker._id);
   const conclaveCombat = Boolean(args.conclaveId);
-  const arriveAt = now + travelMsForUnits(units, plateauCounts, completed, conclaveCombat);
+  const seedBase = `${attacker._id}:${now}:${totalUnits(units)}:${args.targetType}`;
+  const arriveAt = args.targetType === "deep_plains"
+    ? now + seededInt(
+        `${seedBase}:duration`,
+        WORLD_PRESSURE_RULES.deepPlains.durationMinutes[0],
+        WORLD_PRESSURE_RULES.deepPlains.durationMinutes[1],
+      ) * 60 * 1000
+    : now + travelMsForUnits(units, plateauCounts, completed, conclaveCombat);
   const power = effectivePower(units, completed, conclaveCombat);
   const speed = effectiveSpeed(units, completed, conclaveCombat);
   const remainingUnits = subtractAvailableUnits(attacker.units, units);
@@ -99,22 +113,17 @@ async function createRaid(
       ? undefined
       : Math.max(1, Math.floor(args.acres ?? 1));
 
-  const seedBase = `${attacker._id}:${now}:${totalUnits(units)}:${args.targetType}`;
   const defensePower =
     args.targetType === "parshendi_spheres"
-      ? seededInt(
-          `${seedBase}:defense`,
-          COMBAT_RULES.parshendiSphereRaidMinDefense,
-          COMBAT_RULES.parshendiSphereRaidMaxDefense,
-        )
+      ? hostilityScaledValue(seededInt(`${seedBase}:defense`, COMBAT_RULES.parshendiSphereRaidMinDefense, COMBAT_RULES.parshendiSphereRaidMaxDefense), pressure?.hostility ?? 0, WORLD_PRESSURE_RULES.neutralRaid.difficultyHostilityFactor)
+      : args.targetType === "deep_plains"
+        ? hostilityScaledValue(seededInt(`${seedBase}:defense`, WORLD_PRESSURE_RULES.deepPlains.defensePower[0], WORLD_PRESSURE_RULES.deepPlains.defensePower[1]), pressure?.hostility ?? 0, WORLD_PRESSURE_RULES.deepPlains.difficultyHostilityFactor)
       : undefined;
   const rewardSpheres =
     args.targetType === "parshendi_spheres"
-      ? seededInt(
-          `${seedBase}:reward`,
-          COMBAT_RULES.parshendiSphereRaidMinReward,
-          COMBAT_RULES.parshendiSphereRaidMaxReward,
-        )
+      ? hostilityScaledValue(seededInt(`${seedBase}:reward`, COMBAT_RULES.parshendiSphereRaidMinReward, COMBAT_RULES.parshendiSphereRaidMaxReward), pressure?.hostility ?? 0, WORLD_PRESSURE_RULES.neutralRaid.rewardHostilityFactor)
+      : args.targetType === "deep_plains"
+        ? hostilityScaledValue(seededInt(`${seedBase}:reward`, WORLD_PRESSURE_RULES.deepPlains.sphereReward[0], WORLD_PRESSURE_RULES.deepPlains.sphereReward[1]), pressure?.hostility ?? 0, WORLD_PRESSURE_RULES.deepPlains.rewardHostilityFactor)
       : undefined;
 
   await ctx.db.patch(attacker._id, {
@@ -132,6 +141,7 @@ async function createRaid(
     ...(acres ? { acres } : {}),
     ...(defensePower ? { defensePower } : {}),
     ...(rewardSpheres ? { rewardSpheres } : {}),
+    ...(pressure ? { hostilityAtLaunch: pressure.hostility } : {}),
     departAt,
     arriveAt,
     status: "pending",
@@ -199,6 +209,22 @@ export const launchSphereRaid = mutation({
     return await createRaid(ctx, {
       attackerId: attacker._id,
       targetType: "parshendi_spheres",
+      units: args.units,
+      conclaveId: args.conclaveId,
+    });
+  },
+});
+
+export const launchDeepPlainsRaid = mutation({
+  args: {
+    units: unitCountsValidator,
+    conclaveId: v.optional(v.id("ardentConclaves")),
+  },
+  handler: async (ctx, args) => {
+    const attacker = await requireCurrentPlayer(ctx);
+    return await createRaid(ctx, {
+      attackerId: attacker._id,
+      targetType: "deep_plains",
       units: args.units,
       conclaveId: args.conclaveId,
     });
@@ -338,7 +364,7 @@ export const resolveRaid = internalMutation({
       }
     }
 
-    if (raid.targetType === "parshendi_spheres") {
+    if (raid.targetType === "parshendi_spheres" || raid.targetType === "deep_plains") {
       const defense =
         raid.defensePower ?? COMBAT_RULES.parshendiSphereRaidMaxDefense;
       const reward =
@@ -346,8 +372,8 @@ export const resolveRaid = internalMutation({
       won = raid.power >= defense;
       const lossResult = applySurvivalLosses(
         normalizeUnits(raid.units),
-        baseCasualtyRate(raid.power, defense),
-        `${raid._id}:spheres:${now}`,
+        Math.min(ARMY_RULES.maximumFinalCasualtyRate, baseCasualtyRate(raid.power, defense) + (raid.targetType === "deep_plains" ? WORLD_PRESSURE_RULES.deepPlains.casualtyRateBonus : 0)),
+        `${raid._id}:${raid.targetType}:${now}`,
         completed,
         Boolean(raid.conclaveId),
       );
@@ -355,16 +381,37 @@ export const resolveRaid = internalMutation({
       const plunder = unitPlunder(normalizeUnits(raid.units), completed, Boolean(raid.conclaveId));
       const recovered = won ? Math.min(reward, plunder) : 0;
       spheresRecovered = recovered;
+      const gemheartFound = raid.targetType === "deep_plains" && won &&
+        seededFraction(`${raid._id}:deep-plains:gemheart`) < WORLD_PRESSURE_RULES.deepPlains.gemheartChance;
       const leftBehind = won ? Math.max(0, reward - recovered) : 0;
 
       await ctx.db.patch(attacker._id, {
         spheres: attacker.spheres + recovered,
+        gemhearts: attacker.gemhearts + (gemheartFound ? 1 : 0),
         units: addUnits(attacker.units, survivors),
         lastActiveAt: now,
       });
       resultText = won
-        ? `${attacker.name} overcame ${resistanceLabel(defense).toLowerCase()} resistance and recovered ${recovered} spheres from a ${rewardLabel(reward).toLowerCase()} cache.${leftBehind > 0 ? " Some spheres were left behind because the army lacked Plunder." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`
-        : `${attacker.name} failed against ${resistanceLabel(defense).toLowerCase()} resistance during a sphere raid. Casualties: ${casualtySummary(lossResult.casualties)}.`;
+        ? `${attacker.name} overcame ${resistanceLabel(defense).toLowerCase()} resistance and recovered ${recovered} spheres from a ${rewardLabel(reward).toLowerCase()} cache.${leftBehind > 0 ? " Some spheres were left behind because the army lacked Plunder." : ""}${gemheartFound ? " The army returned with 1 Gemheart." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`
+        : `${attacker.name} failed against ${resistanceLabel(defense).toLowerCase()} resistance during ${raid.targetType === "deep_plains" ? "a Deep Plains Raid" : "a sphere raid"}. Casualties: ${casualtySummary(lossResult.casualties)}.`;
+      if (won) {
+        await applyHostility(ctx, {
+          playerId: attacker._id,
+          gain: raid.targetType === "deep_plains"
+            ? WORLD_PRESSURE_RULES.hostility.gains.deepPlainsVictory
+            : WORLD_PRESSURE_RULES.hostility.gains.neutralRaidVictory,
+          playerInitiated: false,
+          now,
+        });
+      }
+      if (gemheartFound) {
+        await createNotification(ctx, {
+          playerId: attacker._id, category: "missions", eventType: "deep_plains_gemheart",
+          title: "Gemheart Found", body: "Your Deep Plains force returned with a Gemheart.",
+          destinationView: "raids", entityId: String(raid._id), dedupeKey: `raid:${raid._id}:gemheart`, createdAt: now,
+        });
+      }
+      await ctx.db.patch(raid._id, { gemheartFound });
     }
 
     if (raid.targetType === "player") {
@@ -444,7 +491,7 @@ export const resolveRaid = internalMutation({
 
     const baseConclaveXp = won ? missionXpBudget(raid.defensePower ?? raid.power) : Math.ceil(missionXpBudget(raid.defensePower ?? raid.power) / 2);
     const awardedConclaveXp = raid.conclaveId ? await releaseConclave(ctx, raid.conclaveId, baseConclaveXp) : undefined;
-    if (raid.targetType === "parshendi_spheres" && won && spheresRecovered > 0 && raid.scoringSeasonId) {
+    if ((raid.targetType === "parshendi_spheres" || raid.targetType === "deep_plains") && won && spheresRecovered > 0 && raid.scoringSeasonId) {
       await awardSeasonPoints(ctx, {
         seasonId: raid.scoringSeasonId,
         playerId: attacker._id,

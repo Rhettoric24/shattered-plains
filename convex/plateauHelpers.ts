@@ -117,6 +117,8 @@ export async function createStarterPlateaus(
       large: false,
       neutralDefenseInitial: 0,
       neutralDefenseRemaining: 0,
+      baseNeutralDefense: 0,
+      parshendiReclamationCount: 0,
       heldSince: now,
       lastGemheartAt: now,
       createdAt: now,
@@ -186,6 +188,8 @@ export async function createNeutralPlateaus(
       large,
       neutralDefenseInitial: defense,
       neutralDefenseRemaining: defense,
+      baseNeutralDefense: defense,
+      parshendiReclamationCount: 0,
       createdAt: now,
       updatedAt: now,
     });
@@ -222,6 +226,8 @@ async function createSpecificNeutralPlateau(
     large,
     neutralDefenseInitial: defense,
     neutralDefenseRemaining: defense,
+    baseNeutralDefense: defense,
+    parshendiReclamationCount: 0,
     createdAt: now,
     updatedAt: now,
   });

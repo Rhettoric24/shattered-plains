@@ -57,6 +57,7 @@ const $ = (id) => document.getElementById(id);
  */
 const ATTACK_PLANNERS = {
   spheres: { formId: "sphere-form", unitsId: "sphere-raid-units", previewId: "sphere-raid-preview", timing: "speed", intelligence: "estimated" },
+  deepPlains: { formId: "deep-plains-form", unitsId: "deep-plains-units", previewId: "deep-plains-preview", timing: "deep", intelligence: "estimated" },
   neutralSiege: { formId: "neutral-siege-form", unitsId: "neutral-siege-units", previewId: "neutral-siege-preview", timing: "speed", intelligence: "qualitative" },
   playerSiege: { formId: "player-siege-form", unitsId: "player-siege-units", previewId: "player-siege-preview", timing: "fixed", intelligence: "known-owner" },
   plateau: { formId: "plateau-form", unitsId: "plateau-run-units", previewId: "plateau-run-preview", timing: "speed-score", intelligence: "qualitative-rivals" },
@@ -94,6 +95,8 @@ const refs = {
   startResearch: "research:start",
   startDoctrine: "research:startDoctrine",
   launchSphereRaid: "raids:launchSphereRaid",
+  launchDeepPlainsRaid: "raids:launchDeepPlainsRaid",
+  getWorldPressure: "worldPressure:getStatus",
   listVisibleRaids: "raids:listVisibleRaids",
   forceResolveRaid: "raids:forceResolveRaid",
   forceResolveAllRaids: "raids:forceResolveAllRaids",
@@ -258,7 +261,7 @@ async function load(options = {}) {
       return;
     }
 
-    const [raids, plateaus, plateauRun, inbox, intelligence, espionage, kingdomLedger, ardentia, research, notifications, pushConfiguration, seasonLedger] = await Promise.all([
+    const [raids, plateaus, plateauRun, inbox, intelligence, espionage, kingdomLedger, ardentia, research, notifications, pushConfiguration, seasonLedger, worldPressure] = await Promise.all([
       client.query(refs.listVisibleRaids, {}),
       client.query(refs.listPlateaus, {}),
       client.query(refs.getCurrentPlateauRun, {}),
@@ -285,6 +288,7 @@ async function load(options = {}) {
         console.warn("Season Ledger backend is unavailable.", error);
         return { loadError: true, season: null, total: 0, categoryTotals: {}, events: [], achievements: [], rules: null, opponentChains: [] };
       }),
+      client.query(refs.getWorldPressure, {}).catch(() => ({ hostility: 0, state: { key: "quiet", label: "Quiet", min: 0, max: 16 }, nextState: null, progressPercent: 0, nextDecayAt: null, nextRetaliationAt: null, retaliationEligible: false, warning: null })),
     ]);
 
     if (requestId !== latestLoadRequest) return;
@@ -312,6 +316,7 @@ async function load(options = {}) {
       notifications,
       pushConfiguration,
       seasonLedger,
+      worldPressure,
       events,
       clock,
       adminStatus,
@@ -428,6 +433,7 @@ function buildState(data) {
     ardentia: data.ardentia || { owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 },
     research: data.research,
     seasonLedger: data.seasonLedger,
+    worldPressure: data.worldPressure || { hostility: 0, state: { key: "quiet", label: "Quiet" }, progressPercent: 0, warning: null },
     notifications: data.notifications?.notifications || [],
     notificationUnreadCount: data.notifications?.unreadCount || 0,
     notificationPreferences: data.notifications?.preferences || { combat: true, missions: true, research: true, plateauRuns: true, messages: true },
@@ -452,6 +458,7 @@ function render() {
   $("res-spheres").textContent = number(me.spheres);
   $("res-gemhearts").textContent = number(me.gemhearts || 0);
   $("res-units").textContent = number(me.totalAvailableUnits) + " / " + number(me.totalUnits);
+  renderHostility();
   renderTopProvisions();
   renderBuildings();
   renderUnits();
@@ -462,6 +469,7 @@ function render() {
   renderInboxBadge();
   renderNotifications();
   renderRaidUnitInputs("sphere-raid-units");
+  renderRaidUnitInputs("deep-plains-units");
   renderRaidUnitInputs("neutral-siege-units");
   renderRaidUnitInputs("player-siege-units");
   renderRaidUnitInputs("plateau-run-units");
@@ -500,6 +508,16 @@ function buildWorldAlerts() {
   const incoming = state.raids.filter((raid) => raid.targetId === state.me.id);
   const outgoing = state.raids.filter((raid) => raid.attackerId === state.me.id);
   const mySieges = state.plateaus.sieges.filter((siege) => siege.attackerId === state.me.id || siege.defenderId === state.me.id);
+
+  if (state.worldPressure?.warning) {
+    alerts.push({
+      kind: "warning",
+      title: state.worldPressure.warning.phase === "launched" ? "Parshendi Retaliation" : "Parshendi Activity Increasing",
+      text: state.worldPressure.warning.message,
+      action: "Open Plateaus",
+      view: "plateaus",
+    });
+  }
 
   if (state.plateauRun) {
     const remaining = Math.max(0, Math.ceil((state.plateauRun.joinUntil - Date.now()) / 60000));
@@ -1077,7 +1095,7 @@ function validatedRaidUnits(containerId) {
 
 function attachPreviewListeners() {
   if (previewListenersReady) return;
-  ["sphere-raid-units", "neutral-siege-units", "player-siege-units", "plateau-run-units"].forEach((containerId) => {
+  ["sphere-raid-units", "deep-plains-units", "neutral-siege-units", "player-siege-units", "plateau-run-units"].forEach((containerId) => {
     if ($(containerId)) $(containerId).addEventListener("input", renderRaidPreviews);
   });
   ["neutral-plateau-target", "player-plateau-target"].forEach((id) => {
@@ -1108,15 +1126,17 @@ function attackPlannerCanSubmit(type, planner, units) {
   if (type === "neutralSiege" && !$("neutral-plateau-target").value) return false;
   if (type === "playerSiege" && !$("player-plateau-target").value) return false;
   if (type === "plateau" && !state.plateauRun) return false;
+  if (type === "deepPlains" && Number(state.worldPressure?.hostility || 0) < Number(state.config.worldPressure?.rules?.deepPlains?.unlockMinimumHostility || 68)) return false;
   return Boolean($(planner.formId));
 }
 
 function previewMarkup(units, type, planner) {
   const stats = raidStats(units, type);
   const isPlayerSiege = planner.timing === "fixed";
-  const travel = isPlayerSiege ? fixedSiegeTravelMinutes() : travelMinutes(stats.speed, true);
-  const target = type === "spheres" ? sphereTargetPreview() : type === "plateau" ? plateauTargetPreview(stats) : type === "neutralSiege" ? neutralSiegePreview(stats) : type === "playerSiege" ? playerSiegePreview(stats) : "Choose a target";
-  const timingTitle = isPlayerSiege ? "Player sieges are fixed at one real hour. Army Speed does not shorten them." : speedBreakdown(units, stats, travel);
+  const isDeepPlains = planner.timing === "deep";
+  const travel = isPlayerSiege ? fixedSiegeTravelMinutes() : isDeepPlains ? 420 : travelMinutes(stats.speed, true);
+  const target = type === "spheres" ? sphereTargetPreview() : type === "deepPlains" ? deepPlainsTargetPreview() : type === "plateau" ? plateauTargetPreview(stats) : type === "neutralSiege" ? neutralSiegePreview(stats) : type === "playerSiege" ? playerSiegePreview(stats) : "Choose a target";
+  const timingTitle = isPlayerSiege ? "Player sieges are fixed at one real hour. Army Speed does not shorten them." : isDeepPlains ? "Deep Plains Raids last a backend-randomized 6–8 hours. Speed and Bridged Plateaus do not shorten them." : speedBreakdown(units, stats, travel);
   const rewardLabel = type === "plateau" ? "Reward capacity" : "Max Plunder";
   const conclaveAttached = type === "neutralSiege"
     ? Boolean($("neutral-conclave-select")?.value)
@@ -1186,6 +1206,16 @@ function speedBreakdown(units, stats, travel) {
   return lines.join("\n");
 }
 
+function deepPlainsTargetPreview() {
+  const rules = state.config.worldPressure?.rules?.deepPlains || {};
+  const hostility = Number(state.worldPressure?.hostility || 0) / 100;
+  const difficultyFactor = 1 + hostility * Number(rules.difficultyHostilityFactor || 1.25);
+  const rewardFactor = 1 + hostility * Number(rules.rewardHostilityFactor || 0.4);
+  const defense = rules.defensePower || [220, 320];
+  const reward = rules.sphereReward || [3000, 5000];
+  return "Estimated Power " + number(Math.round(defense[0] * difficultyFactor)) + "–" + number(Math.round(defense[1] * difficultyFactor)) + ", Sphere pool " + number(Math.round(reward[0] * rewardFactor)) + "–" + number(Math.round(reward[1] * rewardFactor));
+}
+
 function playerSiegeIntelOutlook(conclaveAttached) {
   return {
     value: conclaveAttached ? "Conclave selected" : "No Conclave",
@@ -1216,8 +1246,10 @@ function survivabilityBreakdown(units, stats) {
 }
 
 function sphereTargetPreview() {
-  const averageDefense = (configValue("parshendiSphereRaidMinDefense", 1) + configValue("parshendiSphereRaidMaxDefense", 4)) / 2;
-  const averageReward = (configValue("parshendiSphereRaidMinReward", 250) + configValue("parshendiSphereRaidMaxReward", 650)) / 2;
+  const hostility = Number(state.worldPressure?.hostility || 0) / 100;
+  const rules = state.config.worldPressure?.rules?.neutralRaid || {};
+  const averageDefense = (configValue("parshendiSphereRaidMinDefense", 1) + configValue("parshendiSphereRaidMaxDefense", 4)) / 2 * (1 + hostility * Number(rules.difficultyHostilityFactor || 1));
+  const averageReward = (configValue("parshendiSphereRaidMinReward", 250) + configValue("parshendiSphereRaidMaxReward", 650)) / 2 * (1 + hostility * Number(rules.rewardHostilityFactor || 0.6));
   return "Estimated resistance: " + neutralDefenseLabel(averageDefense) + "\nEstimated reward: " + plateauRunLootLabel(averageReward);
 }
 
@@ -1233,7 +1265,8 @@ function plateauTargetPreview(stats) {
 function neutralSiegePreview(stats) {
   const target = state.plateaus.neutral.find((plateau) => plateau.id === $("neutral-plateau-target").value);
   if (!target) return "Choose a neutral plateau";
-  return "Parshendi resistance: " + formatIntelValue(target.resistance) + "\nYour Power: " + formatStat(stats.power);
+  const history = target.parshendiReclamationCount > 0 ? "\nParshendi Reclamations: " + number(target.parshendiReclamationCount) + " · Neutral Defense +" + number(target.parshendiReclamationCount * 10) + "%" : "";
+  return "Parshendi resistance: " + formatIntelValue(target.resistance) + history + "\nYour Power: " + formatStat(stats.power);
 }
 
 function playerSiegePreview(stats) {
@@ -1320,7 +1353,8 @@ function plateauCard(plateau) {
     ? '<small data-gemheart-at="' + plateau.gemheartProgress.nextGemheartAt + '" data-countdown-prefix="Next Gemheart: ">Next Gemheart: ' + formatCountdownAt(plateau.gemheartProgress.nextGemheartAt) + '</small>'
     : "";
   const origin = plateau.origin === "home" ? '<small>Home Plateau</small>' : "";
-  return '<article class="plateau-holding-card ' + (underSiege ? "warning" : "") + '" title="' + plateauTooltip(plateau) + '"><strong>' + escapeHtml(plateau.name) + '</strong><span>' + escapeHtml(plateau.typeName) + '</span>' + origin + '<small>' + escapeHtml(attributes) + '</small><small>' + escapeHtml(plateauBonusLabel(plateau)) + '</small>' + timer + status + '</article>';
+  const reclamation = plateau.parshendiReclamationCount > 0 ? '<small>Parshendi Reclamations: ' + number(plateau.parshendiReclamationCount) + ' · Neutral Defense +' + number(plateau.parshendiReclamationCount * 10) + '%</small>' : '';
+  return '<article class="plateau-holding-card ' + (underSiege ? "warning" : "") + '" title="' + plateauTooltip(plateau) + '"><strong>' + escapeHtml(plateau.name) + '</strong><span>' + escapeHtml(plateau.typeName) + '</span>' + origin + '<small>' + escapeHtml(attributes) + '</small><small>' + escapeHtml(plateauBonusLabel(plateau)) + '</small>' + reclamation + timer + status + '</article>';
 }
 
 function siegeCard(siege) {
@@ -1328,13 +1362,15 @@ function siegeCard(siege) {
   const remaining = Math.max(0, Math.ceil((siege.resolveAt - Date.now()) / 60000));
   const isAttacker = siege.attackerId === state.me.id;
   const isDefender = siege.defenderId === state.me.id;
-  const title = siege.targetType === "player"
-    ? escapeHtml(siege.attackerName) + " vs " + escapeHtml(siege.defenderName)
-    : escapeHtml(siege.attackerName) + " vs Parshendi";
+  const title = siege.targetType === "parshendi_retaliation"
+    ? "Parshendi retaliation against " + escapeHtml(siege.defenderName)
+    : siege.targetType === "player"
+      ? escapeHtml(siege.attackerName) + " vs " + escapeHtml(siege.defenderName)
+      : escapeHtml(siege.attackerName) + " vs Parshendi";
   const attackerText = isAttacker
     ? "Your attack power " + formatStat(siege.attackerPower)
     : "Attacker force " + formatIntelValue(siege.attackerIntel);
-  const committedText = siege.targetType === "player"
+  const committedText = siege.targetType === "player" || siege.targetType === "parshendi_retaliation"
     ? isDefender
       ? (siege.defenderCommittedAt ? "Your defenders are committed" : "No defenders committed yet")
       : "Defensive response unknown"
@@ -1343,10 +1379,10 @@ function siegeCard(siege) {
   const finalDefense = siegeFinalDefense(siege, plateau, siege.emergencyDefensePercent);
   const defenseText = isDefender
     ? "Committed defense " + formatStat(defensePower) + ", Emergency +" + number(siege.emergencyDefensePercent) + "%, Final " + formatStat(finalDefense)
-    : siege.targetType === "player"
+    : siege.targetType === "player" || siege.targetType === "parshendi_retaliation"
       ? "Defenses unknown"
       : "Parshendi hold " + neutralDefenseLabel(plateau?.neutralDefenseRemaining || 0);
-  const defenderPanel = isDefender && siege.targetType === "player" ? siegeDefenderPanel(siege, plateau) : "";
+  const defenderPanel = isDefender && (siege.targetType === "player" || siege.targetType === "parshendi_retaliation") ? siegeDefenderPanel(siege, plateau) : "";
   const conclaveText = isAttacker && siege.ardentiaConclave ? ' Ardentia Scout Conclave attached.' : '';
   return '<article class="list-item raid-item siege-card"><strong>' + title + '</strong><span>' + escapeHtml(plateau?.name || "Unknown plateau") + '</span><small>' + attackerText + '. ' + committedText + '. ' + defenseText + '.' + conclaveText + ' Resolves in ' + formatDuration(remaining) + '.</small>' + defenderPanel + '</article>';
 }
@@ -1417,7 +1453,7 @@ function raidListMarkup(raids, emptyText) {
     const remaining = Math.max(0, Math.ceil((raid.arrivalAt - Date.now()) / 60000));
     const direction = raid.attackerId === state.me.id ? "Outgoing" : raid.targetId === state.me.id ? "Incoming" : "Observed";
     const isMine = raid.attackerId === state.me.id;
-    const prize = raid.targetType === "parshendi_spheres"
+    const prize = raid.targetType === "parshendi_spheres" || raid.targetType === "deep_plains"
       ? plateauRunLootLabel(raid.rewardSpheres || 0) + " sphere loot"
       : "land pressure";
     const force = isMine
@@ -1690,6 +1726,39 @@ function renderCommandBriefing() {
 
 function pulseItem(label, value, title = "", expandable = false) {
   return '<article class="pulse-item' + (expandable ? ' expandable' : '') + '"' + (title ? ' title="' + escapeHtml(title) + '" tabindex="0"' : '') + '><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(value) + '</strong></article>';
+}
+
+function renderHostility() {
+  const pressure = state.worldPressure || { hostility: 0, state: { label: "Quiet" }, progressPercent: 0 };
+  const hostility = Number(pressure.hostility || 0);
+  const stateLabel = pressure.state?.label || "Quiet";
+  if ($("res-hostility")) $("res-hostility").textContent = number(hostility) + " · " + stateLabel;
+  $("res-hostility-card")?.classList.toggle("warning", hostility >= 34);
+  if ($("hostility-value")) $("hostility-value").textContent = number(hostility) + " / 100 · " + stateLabel;
+  const fill = $("hostility-meter-fill");
+  if (fill) fill.style.width = Math.max(0, Math.min(100, hostility)) + "%";
+  fill?.parentElement?.setAttribute("aria-valuenow", String(hostility));
+  const nextState = pressure.nextState?.label
+    ? number(Math.max(0, Number(pressure.nextState.min) - hostility)) + " points to " + pressure.nextState.label
+    : "Maximum Hostility reached";
+  const decay = pressure.nextDecayAt
+    ? " Peaceful decay in " + formatDuration(Math.max(0, Math.ceil((pressure.nextDecayAt - Date.now()) / 60000))) + "."
+    : "";
+  if ($("hostility-summary")) $("hostility-summary").innerHTML = '<strong>' + escapeHtml(nextState) + '</strong><span>Neutral conquest, raids, Plateau Run victories, and Deep Plains operations raise Hostility.' + escapeHtml(decay) + '</span>';
+
+  const warning = pressure.warning;
+  const warningPanel = $("retaliation-warning-panel");
+  warningPanel?.classList.toggle("hidden", !warning);
+  const intelPanel = $("retaliation-intelligence-panel");
+  intelPanel?.classList.toggle("hidden", !warning);
+  if (warning) {
+    const details = warning.targetName
+      ? ' Likely target: ' + warning.targetName + '. Estimated strength: ' + formatIntelValue(warning.estimatedStrength) + (warning.launchWindowStartAt ? '. Expected launch in ' + formatDuration(Math.max(0, Math.ceil((warning.launchWindowStartAt - Date.now()) / 60000))) + '–' + formatDuration(Math.max(0, Math.ceil((warning.launchWindowEndAt - Date.now()) / 60000))) : '') + '.'
+      : '';
+    if ($("retaliation-warning")) $("retaliation-warning").innerHTML = '<strong>' + escapeHtml(warning.phase === "launched" ? "Retaliation launched" : "Force gathering") + '</strong><span>' + escapeHtml(warning.message + details) + '</span>';
+    if ($("retaliation-intelligence")) $("retaliation-intelligence").innerHTML = '<strong>' + escapeHtml(warning.targetName || "Parshendi movements") + '</strong><p>' + escapeHtml(warning.message + details) + '</p><small>Knowledge supplied by existing Watchtower and Territory Intelligence coverage.</small>';
+  }
+  $("deep-plains-panel")?.classList.toggle("hidden", hostility < Number(state.config.worldPressure?.rules?.deepPlains?.unlockMinimumHostility || 68));
 }
 
 function countdownPulseItem(label, nextAt) {
@@ -2088,7 +2157,7 @@ function decorateRaids(raids, players, unitsConfig) {
     targetId: raid.targetPlayerId || null,
     targetType: raid.targetType,
     attackerName: playerMap[raid.attackerId]?.name || "Unknown",
-    targetName: raid.targetType === "open_acres" ? "Open acres" : raid.targetType === "parshendi_spheres" ? "Parshendi sphere stores" : playerMap[raid.targetPlayerId]?.name || "Unknown",
+    targetName: raid.targetType === "open_acres" ? "Open acres" : raid.targetType === "parshendi_spheres" ? "Parshendi sphere stores" : raid.targetType === "deep_plains" ? "Deep Plains" : playerMap[raid.targetPlayerId]?.name || "Unknown",
     units: raid.units,
     unitSummary: unitSummary(raid.units, unitsConfig),
     power: raid.power,
@@ -2126,6 +2195,8 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
     activeSiegeId: plateau.activeSiegeId || null,
     resistance: plateau.resistance || null,
     intelligenceLevel: Number(plateau.intelligenceLevel || 0),
+    parshendiReclamationCount: Number(plateau.parshendiReclamationCount || 0),
+    baseNeutralDefense: Number(plateau.baseNeutralDefense ?? plateau.neutralDefenseInitial ?? 0),
   });
   const mine = (plateaus?.mine || []).map((plateau) => decorate(plateau, true));
   const neutral = (plateaus?.neutral || []).map((plateau, index) => {
@@ -2530,7 +2601,11 @@ $("player-siege-form").addEventListener("submit", (event) => {
     await client.mutation(refs.launchPlayerSiege, { plateauId: $("player-plateau-target").value, units: validatedRaidUnits("player-siege-units"), ...($("player-conclave-select")?.value ? { conclaveId: $("player-conclave-select").value } : {}) });
   });
 });
-["sphere-form", "neutral-siege-form", "player-siege-form"].forEach((formId) => {
+$("deep-plains-form")?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  action(() => client.mutation(refs.launchDeepPlainsRaid, { units: validatedRaidUnits("deep-plains-units") }));
+});
+["sphere-form", "deep-plains-form", "neutral-siege-form", "player-siege-form"].forEach((formId) => {
   $(formId)?.addEventListener("keydown", (event) => {
     if (isMobileLayout() && event.key === "Enter" && !event.target.closest("button")) event.preventDefault();
   });
