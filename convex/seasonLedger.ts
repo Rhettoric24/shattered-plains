@@ -241,14 +241,18 @@ export const evaluatePlateauHold = internalMutation({
   },
 });
 
-async function initializeSeasonBaseline(ctx: MutationCtx, season: Doc<"seasons">, now: number) {
+export async function initializeSeasonBaseline(ctx: MutationCtx, season: Doc<"seasons">, now: number) {
   const players = await ctx.db.query("players").take(200);
   for (const player of players) await updateTerritoryCount(ctx, season._id, player._id, now, false);
   const plateaus = await ctx.db.query("plateaus").withIndex("by_status", (q) => q.eq("status", "owned")).take(500);
   for (const plateau of plateaus) if (plateau.ownerPlayerId) {
-    await ctx.db.insert("seasonPlateauClaims", { seasonId: season._id, plateauId: plateau._id, playerId: plateau.ownerPlayerId, updatedAt: now });
-    const holdId = await ctx.db.insert("seasonPlateauHolds", { seasonId: season._id, plateauId: plateau._id, playerId: plateau.ownerPlayerId, heldSince: now, territoryIntervalsAwarded: 0, researchIntervalsAwarded: 0, custodianAwarded: false, updatedAt: now });
-    await scheduleHold(ctx, (await ctx.db.get(holdId))!, plateau.type, now);
+    const claim = await ctx.db.query("seasonPlateauClaims").withIndex("by_seasonId_and_plateauId_and_playerId", (q) => q.eq("seasonId", season._id).eq("plateauId", plateau._id).eq("playerId", plateau.ownerPlayerId!)).unique();
+    if (!claim) await ctx.db.insert("seasonPlateauClaims", { seasonId: season._id, plateauId: plateau._id, playerId: plateau.ownerPlayerId, updatedAt: now });
+    const hold = await ctx.db.query("seasonPlateauHolds").withIndex("by_seasonId_and_plateauId", (q) => q.eq("seasonId", season._id).eq("plateauId", plateau._id)).unique();
+    if (!hold) {
+      const holdId = await ctx.db.insert("seasonPlateauHolds", { seasonId: season._id, plateauId: plateau._id, playerId: plateau.ownerPlayerId, heldSince: now, territoryIntervalsAwarded: 0, researchIntervalsAwarded: 0, custodianAwarded: false, updatedAt: now });
+      await scheduleHold(ctx, (await ctx.db.get(holdId))!, plateau.type, now);
+    }
   }
 }
 

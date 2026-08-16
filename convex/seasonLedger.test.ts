@@ -3,7 +3,7 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
-import { awardSeasonPoints, createFreshSeason, observePlateauOwnership, recordOpponentAttack, unlockAchievement } from "./seasonLedger";
+import { awardSeasonPoints, createFreshSeason, initializeSeasonBaseline, observePlateauOwnership, recordOpponentAttack, unlockAchievement } from "./seasonLedger";
 import { chainMultiplier, SEASON_SCORING_RULES } from "./seasonScoringRules";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -112,5 +112,27 @@ describe("season scoring", () => {
     expect(events.map((event) => [event.category, event.points])).toEqual(expect.arrayContaining([["territory", 2], ["research", 3]]));
     expect(events.filter((event) => event.sourceType === "plateau_hold")).toHaveLength(1);
     expect(events.filter((event) => event.sourceType === "ancient_hold")).toHaveLength(1);
+  });
+
+  test("existing-world season baseline initialization is idempotent", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const playerId = await addPlayer(t, "Existing Kingdom");
+    await t.run(async (ctx) => await ctx.db.insert("plateaus", {
+      name: "Existing Plateau", type: "sphere", status: "owned", ownerPlayerId: playerId,
+      highground: false, neutralDefenseInitial: 0, neutralDefenseRemaining: 0,
+      heldSince: now - 1000, createdAt: now - 1000, updatedAt: now - 1000,
+    }));
+    const seasonId = await t.run(async (ctx) => await createFreshSeason(ctx, 1, now));
+    await t.run(async (ctx) => initializeSeasonBaseline(ctx, (await ctx.db.get(seasonId))!, now));
+    await t.run(async (ctx) => initializeSeasonBaseline(ctx, (await ctx.db.get(seasonId))!, now + 1000));
+    const rows = await t.run(async (ctx) => ({
+      holds: await ctx.db.query("seasonPlateauHolds").collect(),
+      claims: await ctx.db.query("seasonPlateauClaims").collect(),
+      territory: await ctx.db.query("seasonTerritoryStates").collect(),
+    }));
+    expect(rows.holds).toHaveLength(1);
+    expect(rows.claims).toHaveLength(1);
+    expect(rows.territory).toHaveLength(1);
   });
 });

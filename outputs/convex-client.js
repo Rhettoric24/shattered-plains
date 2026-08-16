@@ -243,7 +243,10 @@ async function load(options = {}) {
       client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })),
       client.query(refs.listNotifications, {}).catch(() => ({ notifications: [], unreadCount: 0, preferences: { combat: true, missions: true, research: true, plateauRuns: true, messages: true }, devices: [], vapidPublicKey: null })),
       client.query(refs.getPushConfiguration, {}).catch(() => ({ vapidPublicKey: null, configured: false })),
-      client.query(refs.getSeasonLedger, {}).catch(() => ({ season: null, total: 0, categoryTotals: { military: 0, research: 0, economy: 0, territory: 0 }, events: [], achievements: [], rules: null, opponentChains: [] })),
+      client.query(refs.getSeasonLedger, {}).catch((error) => {
+        console.warn("Season Ledger backend is unavailable.", error);
+        return { loadError: true, season: null, total: 0, categoryTotals: {}, events: [], achievements: [], rules: null, opponentChains: [] };
+      }),
     ]);
 
     if (requestId !== latestLoadRequest) return;
@@ -671,6 +674,15 @@ function renderUnits() {
 
 function renderSeasonLedger() {
   const ledger = state.seasonLedger || {};
+  if (ledger.loadError) {
+    if ($("ledger-season-name")) $("ledger-season-name").textContent = "Ledger unavailable";
+    if ($("ledger-total")) $("ledger-total").textContent = "—";
+    if ($("ledger-categories")) $("ledger-categories").innerHTML = '<div class="empty">The Season Ledger could not reach its Convex backend. Refresh after the backend deployment is complete.</div>';
+    if ($("ledger-achievements")) $("ledger-achievements").innerHTML = '<div class="empty">Badge data is temporarily unavailable.</div>';
+    if ($("ledger-events")) $("ledger-events").innerHTML = '<div class="empty">Scoring history is temporarily unavailable.</div>';
+    if ($("ledger-rules")) $("ledger-rules").innerHTML = '<p class="warning-text">Scoring rules could not be loaded. The Ledger will not substitute zeroes for missing backend values.</p>';
+    return;
+  }
   const totals = ledger.categoryTotals || {};
   const rules = ledger.rules || {};
   const categories = rules.categories || {
