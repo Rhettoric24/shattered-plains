@@ -46,12 +46,14 @@ export const sendMessage = mutation({
       kind: "player",
       subject,
       body,
+      eventType: "player_message",
+      destinationView: "spanreed",
       createdAt: now,
     });
 
     await createNotification(ctx, {
       playerId: to._id, category: "messages", eventType: "player_message",
-      title: `Message from ${from.name}`, body: subject, destinationView: "inbox",
+      title: `Message from ${from.name}`, body: subject, destinationView: "spanreed",
       entityId: String(messageId), dedupeKey: `message:${messageId}`, createdAt: now,
     });
 

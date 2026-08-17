@@ -23,7 +23,10 @@ export async function createNotification(ctx: MutationCtx, args: {
   title: string;
   body: string;
   destinationView: string;
+  destinationTab?: string;
   entityId?: string;
+  kingdomId?: Id<"players">;
+  intelligenceCategory?: "military" | "economy" | "research" | "territory";
   dedupeKey: string;
   createdAt?: number;
 }) {
@@ -46,7 +49,10 @@ export async function createNotification(ctx: MutationCtx, args: {
   const notificationId = await ctx.db.insert("notifications", {
     playerId: args.playerId, category: args.category, eventType: args.eventType,
     title: args.title, body: args.body, destinationView: args.destinationView,
+    ...(args.destinationTab ? { destinationTab: args.destinationTab } : {}),
     ...(args.entityId ? { entityId: args.entityId } : {}),
+    ...(args.kingdomId ? { kingdomId: args.kingdomId } : {}),
+    ...(args.intelligenceCategory ? { intelligenceCategory: args.intelligenceCategory } : {}),
     dedupeKey: args.dedupeKey, createdAt: now,
   });
   await ctx.db.patch(state._id, { unreadCount: state.unreadCount + 1, updatedAt: now });

@@ -158,6 +158,7 @@ async function createRaid(
       kind: "system",
       subject: "Incoming Raid",
       body: `${attacker.name} has launched a raid toward your warcamp.`,
+      eventType: "incoming_raid", destinationView: "plains", destinationTab: "raids", entityType: "raid", entityId: String(raidId),
       createdAt: now,
     });
   }
@@ -166,7 +167,7 @@ async function createRaid(
     await createNotification(ctx, {
       playerId: args.targetPlayerId, category: "combat", eventType: "incoming_raid",
       title: "Incoming Raid", body: `${attacker.name} has launched a raid toward your warcamp.`,
-      destinationView: "raids", entityId: String(raidId), dedupeKey: `raid:${raidId}:incoming`, createdAt: now,
+      destinationView: "plains", destinationTab: "raids", entityId: String(raidId), dedupeKey: `raid:${raidId}:incoming`, createdAt: now,
     });
   }
 
@@ -408,7 +409,7 @@ export const resolveRaid = internalMutation({
         await createNotification(ctx, {
           playerId: attacker._id, category: "missions", eventType: "deep_plains_gemheart",
           title: "Gemheart Found", body: "Your Deep Plains force returned with a Gemheart.",
-          destinationView: "raids", entityId: String(raid._id), dedupeKey: `raid:${raid._id}:gemheart`, createdAt: now,
+          destinationView: "plains", destinationTab: "raids", entityId: String(raid._id), dedupeKey: `raid:${raid._id}:gemheart`, createdAt: now,
         });
       }
       await ctx.db.patch(raid._id, { gemheartFound });
@@ -475,13 +476,14 @@ export const resolveRaid = internalMutation({
           kind: "system",
           subject: won ? "Raid Lost" : "Defense Held",
           body: `${won ? `${attacker.name} seized ${acres} acres from your warcamp.` : `Your warcamp held against ${attacker.name}.`} Your casualties: ${casualtySummary(defenderLossResult.casualties)}. ${casualtyIntelSummary(attackerLossResult.casualties, defenderIntelLevel)} Intelligence reflects what your warcamp could confirm.`,
+          eventType: "raid_resolved_defender", destinationView: "plains", destinationTab: "raids", entityType: "raid", entityId: String(raid._id),
           createdAt: now,
         });
         await createNotification(ctx, {
           playerId: defender._id, category: "combat", eventType: "raid_resolved_defender",
           title: won ? "Raid Lost" : "Defense Held",
           body: won ? `${attacker.name} seized ${acres} acres.` : `Your warcamp held against ${attacker.name}.`,
-          destinationView: "raids", entityId: String(raid._id), dedupeKey: `raid:${raid._id}:resolved:defender`, createdAt: now,
+          destinationView: "plains", destinationTab: "raids", entityId: String(raid._id), dedupeKey: `raid:${raid._id}:resolved:defender`, createdAt: now,
         });
         resultText = won
           ? `${attacker.name} seized ${acres} acres from ${defender.name}. Your casualties: ${casualtySummary(attackerLossResult.casualties)}. ${casualtyIntelSummary(defenderLossResult.casualties, attackerReportLevel)} A new assessment is available in Intelligence.`
@@ -516,12 +518,13 @@ export const resolveRaid = internalMutation({
       kind: "system",
       subject: won ? "Raid Won" : "Raid Resolved",
       body: resultText,
+      eventType: "raid_resolved_attacker", destinationView: "plains", destinationTab: "raids", entityType: "raid", entityId: String(raid._id),
       createdAt: now,
     });
     await createNotification(ctx, {
       playerId: attacker._id, category: raid.targetType === "player" ? "combat" : "missions",
       eventType: raid.targetType === "player" ? "raid_resolved_attacker" : "mission_resolved",
-      title: won ? "Raid Won" : "Raid Resolved", body: resultText, destinationView: "raids",
+      title: won ? "Raid Won" : "Raid Resolved", body: resultText, destinationView: "plains", destinationTab: "raids",
       entityId: String(raid._id), dedupeKey: `raid:${raid._id}:resolved:attacker`, createdAt: now,
     });
     await insertGameEvent(ctx, {

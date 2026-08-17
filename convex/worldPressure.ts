@@ -60,6 +60,7 @@ async function notifyStateChange(
     kind: "system",
     subject: `Hostility: ${next.label}`,
     body,
+    eventType: "hostility_state_changed", destinationView: "home",
     createdAt: now,
   });
   await createNotification(ctx, {
@@ -68,7 +69,7 @@ async function notifyStateChange(
     eventType: "hostility_state_changed",
     title: `Parshendi Hostility: ${next.label}`,
     body,
-    destinationView: "plateaus",
+    destinationView: "home",
     dedupeKey: `hostility:${playerId}:${next.key}:${now}`,
     createdAt: now,
   });
@@ -444,14 +445,14 @@ export const beginRetaliationFormation = internalMutation({
       : intelLevel === 1
         ? "A substantial Parshendi warband appears to be gathering near your holdings."
         : "Parshendi activity appears to be increasing near your holdings.";
-    await ctx.db.insert("messages", { toPlayerId: player._id, kind: "system", subject: "Parshendi Activity", body, createdAt: now });
+    await ctx.db.insert("messages", { toPlayerId: player._id, kind: "system", subject: "Parshendi Activity", body, eventType: "parshendi_retaliation_forming", destinationView: "intelligence", destinationTab: "territory", createdAt: now });
     await createNotification(ctx, {
       playerId: player._id,
       category: "combat",
       eventType: "parshendi_retaliation_forming",
       title: "Parshendi Activity Increasing",
       body,
-      destinationView: "plateaus",
+      destinationView: "intelligence", destinationTab: "territory",
       entityId: String(retaliationId),
       dedupeKey: `retaliation:${retaliationId}:forming`,
       createdAt: now,
@@ -518,14 +519,14 @@ export const launchRetaliation = internalMutation({
     const row = await pressureRow(ctx, player._id);
     if (row) await ctx.db.patch(row._id, { lastRetaliationLaunchAt: now, updatedAt: now });
     const body = `A ${retaliation.power}-Power Parshendi force has launched an attack against ${target.name}. Commit defenders before it arrives.`;
-    await ctx.db.insert("messages", { toPlayerId: player._id, kind: "system", subject: "Parshendi Retaliation", body, createdAt: now });
+    await ctx.db.insert("messages", { toPlayerId: player._id, kind: "system", subject: "Parshendi Retaliation", body, eventType: "parshendi_retaliation_launched", destinationView: "plains", destinationTab: "sieges", entityType: "siege", entityId: String(siegeId), createdAt: now });
     await createNotification(ctx, {
       playerId: player._id,
       category: "combat",
       eventType: "parshendi_retaliation_launched",
       title: "Parshendi Retaliation Launched",
       body,
-      destinationView: "plateaus",
+      destinationView: "plains", destinationTab: "sieges",
       entityId: String(siegeId),
       dedupeKey: `retaliation:${retaliation._id}:launched`,
       createdAt: now,

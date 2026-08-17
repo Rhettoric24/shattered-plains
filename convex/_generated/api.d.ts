@@ -43,6 +43,7 @@ import type * as researchHelpers from "../researchHelpers.js";
 import type * as rules from "../rules.js";
 import type * as seasonLedger from "../seasonLedger.js";
 import type * as seasonScoringRules from "../seasonScoringRules.js";
+import type * as settings from "../settings.js";
 import type * as spren from "../spren.js";
 import type * as worldPressure from "../worldPressure.js";
 import type * as worldPressureRules from "../worldPressureRules.js";
@@ -89,6 +90,7 @@ declare const fullApi: ApiFromModules<{
   rules: typeof rules;
   seasonLedger: typeof seasonLedger;
   seasonScoringRules: typeof seasonScoringRules;
+  settings: typeof settings;
   spren: typeof spren;
   worldPressure: typeof worldPressure;
   worldPressureRules: typeof worldPressureRules;

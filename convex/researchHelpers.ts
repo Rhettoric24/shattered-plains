@@ -72,9 +72,15 @@ export async function reconcileResearch(ctx: MutationCtx, playerId: Id<"players"
       basePoints: SEASON_SCORING_RULES.research.levelPoints[Math.min(level, SEASON_SCORING_RULES.research.levelPoints.length) - 1] ?? 0,
       description: `${rule!.name} level ${level} completed`, entityType: "research", entityId: String(state._id), now,
     });
+    const completionBody = completingDoctrine ? "A new Economic Doctrine is now in force." : `${completedName} level ${level} is complete.`;
+    await ctx.db.insert("messages", {
+      toPlayerId: playerId, kind: "system", subject: "Research Complete", body: completionBody,
+      eventType: "research_completed", destinationView: "research", destinationTab: "current",
+      entityType: "research", entityId: String(state._id), createdAt: now,
+    });
     await createNotification(ctx, {
       playerId, category: "research", eventType: "research_completed", title: "Research Complete",
-      body: completingDoctrine ? `A new Economic Doctrine is now in force.` : `${completedName} level ${level} is complete.`, destinationView: "research",
+      body: completionBody, destinationView: "research", destinationTab: "current",
       entityId: String(state._id), dedupeKey: `research:${state._id}:${key ?? completingDoctrine}:${level}:completed`, createdAt: now,
     });
     return await ctx.db.get(state._id);
@@ -88,7 +94,7 @@ export async function reconcileResearch(ctx: MutationCtx, playerId: Id<"players"
       playerId, category: "research", eventType: status === "paused" ? "research_paused" : "research_resumed",
       title: status === "paused" ? "Research Paused" : "Research Resumed",
       body: status === "paused" ? `${rule?.name ?? "Doctrine research"} paused because a territory requirement is no longer met.` : `${rule?.name ?? "Doctrine research"} has resumed.`,
-      destinationView: "research", entityId: String(state._id),
+      destinationView: "research", destinationTab: "current", entityId: String(state._id),
       dedupeKey: `research:${state._id}:${key}:${state.activeLevel}:${status}:${now}`, createdAt: now,
     });
   }

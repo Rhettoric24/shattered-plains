@@ -441,12 +441,13 @@ export const resolvePlateauRun = internalMutation({
           kind: "system",
           subject: "Plateau Run Failed",
           body: `The combined force failed against ${missionRiskLabel(run.difficulty).toLowerCase()} opposition. Casualties: ${casualtySummary(lossResult.casualties)}.`,
+          eventType: "plateau_run_resolved", destinationView: "plains", destinationTab: "plateau-runs", entityType: "plateau_run", entityId: String(run._id),
           createdAt: now,
         });
         await createNotification(ctx, {
           playerId: player._id, category: "plateau_runs", eventType: "plateau_run_resolved",
           title: "Plateau Run Failed", body: "The combined force was defeated. Open the report for casualty details.",
-          destinationView: "plateau", entityId: String(run._id),
+          destinationView: "plains", destinationTab: "plateau-runs", entityId: String(run._id),
           dedupeKey: `plateau-run:${run._id}:resolved:${player._id}`, createdAt: now,
         });
       }
@@ -518,6 +519,7 @@ export const resolvePlateauRun = internalMutation({
         body: isWinner
           ? `Your warcamp claimed ${run.gemheartReward} Gemheart from the Plateau Run. Casualties: ${casualtySummary(lossResult.casualties)}.`
           : `Your warcamp recovered ${sphereShare} spheres from the Plateau Run.${leftBehind > 0 ? " Some spheres were left behind because the army lacked Plunder." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`,
+        eventType: "plateau_run_resolved", destinationView: "plains", destinationTab: "plateau-runs", entityType: "plateau_run", entityId: String(run._id),
         createdAt: now,
       });
       if (run.scoringSeasonId) {
@@ -535,7 +537,7 @@ export const resolvePlateauRun = internalMutation({
         playerId: player._id, category: "plateau_runs", eventType: "plateau_run_resolved",
         title: isWinner ? "Gemheart Claimed" : "Plateau Run Reward",
         body: isWinner ? `Your warcamp claimed ${run.gemheartReward} Gemheart.` : `Your warcamp recovered ${sphereShare} spheres.`,
-        destinationView: "plateau", entityId: String(run._id),
+        destinationView: "plains", destinationTab: "plateau-runs", entityId: String(run._id),
         dedupeKey: `plateau-run:${run._id}:resolved:${player._id}`, createdAt: now,
       });
     }

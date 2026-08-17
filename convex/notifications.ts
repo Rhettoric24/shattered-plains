@@ -191,10 +191,15 @@ export const notifyPlateauRunOpenBatch = internalMutation({
   handler: async (ctx, args) => {
     const page = await ctx.db.query("players").paginate(args.paginationOpts);
     for (const player of page.page) {
-      await createNotification(ctx, {
+      const notification = await createNotification(ctx, {
         playerId: player._id, category: "plateau_runs", eventType: "plateau_run_open",
-        title: "Plateau Run Open", body: args.body, destinationView: "plateau",
+        title: "Plateau Run Open", body: args.body, destinationView: "plains", destinationTab: "plateau-runs",
         entityId: String(args.plateauRunId), dedupeKey: `plateau-run:${args.plateauRunId}:open`, createdAt: args.createdAt,
+      });
+      if (notification.created) await ctx.db.insert("messages", {
+        toPlayerId: player._id, kind: "system", subject: "Plateau Run Open", body: args.body,
+        eventType: "plateau_run_open", destinationView: "plains", destinationTab: "plateau-runs",
+        entityType: "plateau_run", entityId: String(args.plateauRunId), createdAt: args.createdAt,
       });
     }
     if (!page.isDone) await ctx.scheduler.runAfter(0, internal.notifications.notifyPlateauRunOpenBatch, {

@@ -106,6 +106,12 @@ export async function unlockAchievement(ctx: MutationCtx, args: {
   });
   if (!award.awarded) return false;
   await ctx.db.insert("seasonAchievements", { seasonId: args.seasonId, playerId: args.playerId, key: args.key, category: rule.category, points: rule.points, earnedAt: now });
+  await ctx.db.insert("messages", {
+    toPlayerId: args.playerId, kind: "system", subject: `Season distinction: ${rule.name}`,
+    body: `${rule.flavor} ${rule.requirement} (+${rule.points} ${rule.category} score.)`,
+    eventType: "season_achievement", destinationView: "intelligence", destinationTab: "ledger",
+    entityType: "season_achievement", entityId: args.key, createdAt: now,
+  });
   return true;
 }
 
@@ -205,7 +211,13 @@ export async function observePlateauOwnership(ctx: MutationCtx, args: {
   const holdId = await ctx.db.insert("seasonPlateauHolds", { seasonId: season._id, plateauId: args.plateauId, playerId: args.newOwnerId, heldSince: Math.max(args.heldSince, season.startsAt), territoryIntervalsAwarded: 0, researchIntervalsAwarded: 0, custodianAwarded: false, updatedAt: now });
   const hold = (await ctx.db.get(holdId))!;
   const plateau = await ctx.db.get(args.plateauId);
-  if (plateau) await scheduleHold(ctx, hold, plateau.type, now);
+  if (plateau) {
+    await scheduleHold(ctx, hold, plateau.type, now);
+    if (plateau.type === "ancient" || plateau.type === "ancient_ruins") {
+      const newOwner = await ctx.db.get(args.newOwnerId);
+      if (newOwner && !newOwner.researchTeasedAt) await ctx.db.patch(newOwner._id, { researchTeasedAt: now });
+    }
+  }
   await updateTerritoryCount(ctx, season._id, args.newOwnerId, now, true);
   if (reclaimed) await unlockAchievement(ctx, { seasonId: season._id, playerId: args.newOwnerId, key: "reclamation", now });
 }

@@ -21,7 +21,10 @@ export const deliverReports = internalMutation({
       await ctx.db.patch(row._id, { lastSprenReportWindow: window, updatedAt: now });
       if (Math.random() < RESEARCH_RULES.spren.reportChance) {
         const [subject, body] = FLAVOR_REPORTS[Math.floor(Math.random() * FLAVOR_REPORTS.length)];
-        await ctx.db.insert("messages", { toPlayerId: row.playerId, kind: "system", subject, body, createdAt: now });
+        await ctx.db.insert("messages", {
+          toPlayerId: row.playerId, kind: "system", subject, body,
+          eventType: "spren_observation", destinationView: "intelligence", destinationTab: "territory", createdAt: now,
+        });
         delivered += 1;
       }
       const player = await ctx.db.get(row.playerId);

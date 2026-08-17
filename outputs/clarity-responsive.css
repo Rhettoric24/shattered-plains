@@ -26,3 +26,8 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
+
+@media (max-width: 680px) {
+  #unit-roster .quantity-builder.compact-stepper { display: grid; grid-template-columns: repeat(2,minmax(40px,1fr)) minmax(62px,1.4fr) repeat(2,minmax(40px,1fr)); }
+  #unit-roster .quantity-builder.compact-stepper [data-recruit-max] { grid-column: 1 / -1; }
+}

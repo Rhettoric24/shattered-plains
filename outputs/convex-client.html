@@ -52,42 +52,36 @@
 
       <section id="game-screen" class="dashboard hidden">
         <aside class="sidebar">
-          <div class="brand-block">
-            <p class="eyebrow">Command</p>
-            <h1>Shattered Plains</h1>
-            <span id="game-date">Not signed in</span>
-          </div>
-          <button id="mobile-menu-toggle" class="secondary mobile-menu-toggle" type="button" aria-expanded="false" aria-controls="dashboard-nav">Menu</button>
-          <nav id="dashboard-nav" class="side-nav" aria-label="Dashboard sections">
-            <button class="nav-button active" type="button" data-view="overview">Overview</button>
-            <button class="nav-button" type="button" data-view="ledger">Season Ledger</button>
-            <button class="nav-button" type="button" data-view="buildings">Buildings</button>
-            <button class="nav-button" type="button" data-view="army">Army</button>
-            <button class="nav-button" type="button" data-view="research">Research</button>
-            <button class="nav-button" type="button" data-view="raids">Raids</button>
-            <button class="nav-button" type="button" data-view="plateaus">Plateaus <span class="nav-state-dot hidden" id="siege-nav-state" aria-label="Siege needs attention"></span></button>
-            <button class="nav-button" type="button" data-view="plateau">Plateau Runs <span class="nav-state-dot hidden" id="run-nav-state" aria-label="Plateau Run open"></span></button>
-            <button class="nav-button" type="button" data-view="intelligence">Intelligence</button>
-            <button class="nav-button" type="button" data-view="inbox">Inbox <span id="inbox-badge" class="nav-badge hidden">0</span></button>
+          <button id="home-brand" class="brand-block brand-home" type="button" data-route-view="home" aria-label="Home — current state of your kingdom">
+            <span class="brand-home-icon" aria-hidden="true">⌂</span>
+            <span><strong>Shattered Plains</strong><small id="game-date">Not signed in</small></span>
+          </button>
+          <nav id="dashboard-nav" class="side-nav primary-nav" aria-label="Game spaces">
+            <button class="nav-button active" type="button" data-route-view="home"><span aria-hidden="true">⌂</span>Home</button>
+            <button class="nav-button" type="button" data-route-view="warcamp" data-route-tab="buildings"><span aria-hidden="true">⚒</span>Warcamp</button>
+            <button class="nav-button" type="button" data-route-view="plains" data-route-tab="raids"><span aria-hidden="true">⚔</span>Plains <span class="nav-state-dot hidden" id="siege-nav-state" aria-label="Siege needs attention"></span><span class="nav-state-dot hidden" id="run-nav-state" aria-label="Plateau Run open"></span></button>
+            <button class="nav-button" type="button" data-route-view="intelligence" data-route-tab="ledger"><span aria-hidden="true">◈</span>Intel</button>
+            <button class="nav-button" id="research-primary-nav" type="button" data-route-view="research" data-route-tab="current"><span aria-hidden="true">✦</span><span data-research-nav-label>Research</span></button>
             <button class="nav-button hidden" type="button" data-view="testing" data-admin-only="true">Testing</button>
             <button class="nav-button hidden" type="button" data-view="chronicle" data-admin-only="true">Chronicle</button>
           </nav>
-          <button id="logout" class="secondary sidebar-logout" type="button">Sign out</button>
         </aside>
 
         <section class="main-panel">
           <header class="dashboard-header">
-            <div>
+            <div class="header-context">
               <p class="eyebrow" id="view-eyebrow">Overview</p>
               <h2 id="view-title">Warcamp status</h2>
             </div>
             <div class="header-actions">
-              <div class="notification-shell">
-                <button id="notification-bell" class="notification-bell secondary" type="button" aria-expanded="false" aria-controls="notification-panel" aria-label="Notifications">🔔<span id="notification-badge" class="nav-badge hidden">0</span></button>
+              <div class="header-hostility" id="header-hostility" aria-label="Parshendi Hostility"><span>Hostility</span><strong>0 · Quiet</strong></div>
+              <button id="spanreed-button" class="header-icon-button secondary" type="button" data-route-view="spanreed" aria-label="Open Spanreed Hub"><span aria-hidden="true">✒</span><span id="inbox-badge" class="nav-badge hidden">0</span></button>
+              <div class="notification-shell transient-alert-shell">
+                <button id="notification-bell" class="notification-bell secondary" type="button" aria-expanded="false" aria-controls="notification-panel" aria-label="Recent alerts and notification settings">⚡<span id="notification-badge" class="nav-badge hidden">0</span></button>
                 <div id="notification-backdrop" class="notification-backdrop hidden" aria-hidden="true"></div>
                 <section id="notification-panel" class="notification-panel hidden" role="dialog" aria-modal="true" aria-labelledby="notification-title">
                   <div class="notification-panel-top">
-                  <div class="notification-heading"><div><p class="eyebrow">Dispatches</p><h3 id="notification-title">Notifications</h3></div><div class="notification-heading-actions"><button id="mark-notifications-read" class="secondary compact-button" type="button">Mark all read</button><button id="close-notifications" class="notification-close secondary" type="button" aria-label="Close notifications">✕</button></div></div>
+                  <div class="notification-heading"><div><p class="eyebrow">Transient attention</p><h3 id="notification-title">Recent alerts</h3></div><div class="notification-heading-actions"><button id="mark-notifications-read" class="secondary compact-button" type="button">Clear alerts</button><button id="close-notifications" class="notification-close secondary" type="button" aria-label="Close alerts">✕</button></div></div>
                   <details class="notification-settings"><summary>Notification settings</summary>
                     <div class="notification-preferences">
                       <label><input type="checkbox" data-notification-preference="combat"> Combat</label>
@@ -101,32 +95,39 @@
                     <p id="notification-support" class="hint"></p>
                   </details>
                   </div>
-                  <div id="notification-list" class="notification-list"></div>
+                  <div id="notification-list" class="notification-list"></div><p class="hint">Persistent reports and history live in the Spanreed Hub.</p>
                 </section>
               </div>
-              <div class="player-chip">
-              <span>Signed in</span>
-              <strong id="player-name">Player</strong>
-              <small id="admin-status">Standard account</small>
-              </div>
+              <button id="account-toggle" class="player-chip" type="button" aria-expanded="false" aria-controls="account-panel"><span>Signed in</span><strong id="player-name">Player</strong><small id="admin-status">Standard account</small></button>
+              <section id="account-panel" class="account-panel-menu hidden" role="dialog" aria-label="Account and game settings">
+                <label class="preference-toggle"><input id="mission-confirmations" type="checkbox" checked> Confirm consequential missions</label>
+                <p class="hint">Enter or Return never launches a mission, regardless of this setting.</p>
+                <button id="logout" class="secondary" type="button">Sign out</button>
+              </section>
             </div>
           </header>
 
           <section class="resource-strip" aria-label="Current resources">
-            <article data-view-link="buildings"><span>Spheres</span><strong id="res-spheres">0</strong></article>
-            <article data-view-link="buildings"><span>Gemhearts</span><strong id="res-gemhearts">0</strong></article>
-            <article data-view-link="army" id="res-provisions-card"><span>Provisions</span><strong id="res-provisions">0 / 0</strong></article>
-            <article data-view-link="army"><span>Units ready</span><strong id="res-units">0 / 0</strong></article>
-            <article data-view-link="plateaus"><span>Plateaus</span><strong id="res-acres">0</strong></article>
-            <article data-view-link="plateaus" id="res-hostility-card"><span>Parshendi Hostility</span><strong id="res-hostility">0 · Quiet</strong></article>
+            <article data-route-view="warcamp" data-route-tab="buildings"><span>Spheres</span><strong id="res-spheres">0</strong></article>
+            <article data-route-view="warcamp" data-route-tab="buildings"><span>Gemhearts</span><strong id="res-gemhearts">0</strong></article>
+            <article data-route-view="warcamp" data-route-tab="recruitment" id="res-provisions-card"><span>Provisions</span><strong id="res-provisions">0 / 0</strong></article>
+            <article data-route-view="warcamp" data-route-tab="recruitment"><span>Units ready</span><strong id="res-units">0 / 0</strong></article>
+            <article data-route-view="home" data-focus="owned-plateaus"><span>Plateaus</span><strong id="res-acres">0</strong></article>
+            <article data-route-view="home" data-focus="hostility" id="res-hostility-card"><span>Hostility</span><strong id="res-hostility">0 · Quiet</strong></article>
           </section>
 
+          <nav id="space-subnav" class="space-subnav hidden" aria-label="Current game space"></nav>
 
-          <section class="view active" id="view-overview" data-title="Warcamp status" data-eyebrow="Overview">
+
+          <section class="view active home-view" id="view-overview" data-title="Your kingdom now" data-eyebrow="Home">
             <section id="command-briefing" class="command-briefing hidden"><p class="eyebrow">Needs attention</p><div id="command-priorities" class="priority-list"></div></section>
-            <section class="panel full-panel"><p class="eyebrow">Kingdom pulse</p><div id="kingdom-pulse" class="pulse-grid"></div></section>
-            <section class="panel full-panel hostility-panel"><div class="section-heading split-heading"><div><p class="eyebrow">World pressure</p><h2>Parshendi Hostility</h2></div><strong id="hostility-value">0 / 100 · Quiet</strong></div><div class="hostility-meter" role="progressbar" aria-label="Parshendi Hostility" aria-valuemin="0" aria-valuemax="100"><span id="hostility-meter-fill"></span></div><div id="hostility-summary" class="mission-summary"></div></section>
-            <section class="panel full-panel"><div class="section-heading split-heading"><div><p class="eyebrow">Operations</p><h2>Armies in motion</h2></div></div><div id="overview-operations" class="operation-timeline"></div></section>
+            <div class="home-grid">
+              <section class="panel full-panel home-module home-progress"><p class="eyebrow">In progress</p><h2>Active work</h2><div id="overview-operations" class="operation-timeline"></div></section>
+              <section class="panel full-panel home-module"><p class="eyebrow">Kingdom summary</p><h2>At a glance</h2><div id="kingdom-pulse" class="pulse-grid"></div></section>
+              <section class="panel full-panel home-module home-plateaus" id="home-owned-plateaus"><div class="section-heading split-heading"><div><p class="eyebrow">Owned plateaus</p><h2>Your holdings</h2></div><button id="toggle-holdings" type="button" class="secondary compact-button" aria-expanded="false">Show details</button></div><div id="plateau-bonus-summary" class="pulse-grid"></div><div id="owned-plateaus" class="plateau-groups"></div></section>
+              <section class="panel full-panel home-module"><div class="section-heading split-heading"><div><p class="eyebrow">Season</p><h2>Your performance</h2></div><button type="button" class="secondary compact-button" data-route-view="intelligence" data-route-tab="ledger" data-focus="my-season">Open Ledger</button></div><div id="home-season-summary" class="pulse-grid"></div></section>
+              <section class="panel full-panel hostility-panel home-module" id="home-hostility"><div class="section-heading split-heading"><div><p class="eyebrow">World pressure</p><h2>Parshendi Hostility</h2></div><strong id="hostility-value">0 / 100 · Quiet</strong></div><div class="hostility-meter" role="progressbar" aria-label="Parshendi Hostility" aria-valuemin="0" aria-valuemax="100"><span id="hostility-meter-fill"></span></div><div id="hostility-summary" class="mission-summary"></div></section>
+            </div>
           </section>
 
           <section class="view" id="view-buildings" data-title="Upgrade warcamp" data-eyebrow="Buildings">
@@ -159,8 +160,8 @@
                   <div id="sphere-raid-units" class="unit-input-grid"></div>
                 </div>
                 <div id="sphere-raid-preview" class="attack-outlook form-wide"></div>
-                <label class="form-wide">Scout Conclave<select id="sphere-conclave"></select></label>
-                <button type="submit">Initiate sphere raid</button>
+                <label class="form-wide conclave-deployment">Scout Conclave<select id="sphere-conclave"></select><small data-conclave-tradeoff></small></label>
+                <button id="launch-sphere-raid" data-mission-launch type="button">Initiate sphere raid</button>
               </form>
             </section>
             <section id="deep-plains-panel" class="panel full-panel hidden">
@@ -170,7 +171,8 @@
                 <div class="mission-summary form-wide"><strong>Push deep into Parshendi territory</strong><span>Commit a major army for 6–8 hours. Success offers a large Sphere cache and a 10% chance of one Gemheart.</span></div>
                 <div class="form-wide"><label>Raid units</label><div id="deep-plains-units" class="unit-input-grid"></div></div>
                 <div id="deep-plains-preview" class="attack-outlook form-wide"></div>
-                <button type="submit">Launch Deep Plains Raid</button>
+                <label class="form-wide conclave-deployment">Scout Conclave<select id="deep-plains-conclave"></select><small data-conclave-tradeoff></small></label>
+                <button id="launch-deep-plains-raid" data-mission-launch type="button">Launch Deep Plains Raid</button>
               </form>
             </section>
           </section>
@@ -178,13 +180,6 @@
           <section class="view" id="view-plateaus" data-title="Plateau control" data-eyebrow="Land">
             <section id="retaliation-warning-panel" class="panel full-panel hidden"><p class="eyebrow">Parshendi activity</p><h2>World retaliation warning</h2><div id="retaliation-warning" class="mission-summary"></div></section>
             <section id="urgent-sieges-panel" class="panel full-panel hidden"><p class="eyebrow">Highest priority</p><h2>⚔ Active defensive sieges</h2><div id="urgent-sieges" class="list"></div></section>
-            <section class="panel full-panel">
-              <p class="eyebrow">Holdings</p>
-              <h2>Kingdom-wide plateau effects</h2>
-              <div id="plateau-bonus-summary" class="pulse-grid"></div>
-              <button id="toggle-holdings" type="button" class="secondary disclosure-button" aria-expanded="false">Show all plateaus</button>
-              <div id="owned-plateaus" class="plateau-groups hidden"></div>
-            </section>
             <section class="panel full-panel">
               <p class="eyebrow">Expeditions</p>
               <div class="mode-switcher expedition-switcher"><button type="button" class="mode-button active" data-expedition-mode="neutral">Explore Neutral</button><button type="button" class="mode-button" data-expedition-mode="rival">Siege Rival</button></div>
@@ -196,8 +191,8 @@
                   <div id="neutral-siege-units" class="unit-input-grid"></div>
                 </div>
                 <div id="neutral-siege-preview" class="attack-outlook form-wide"></div>
-                <label class="form-wide">Scout Conclave<select id="neutral-conclave-select"></select></label>
-                <button type="submit">Initiate expedition</button>
+                <label class="form-wide conclave-deployment">Scout Conclave<select id="neutral-conclave-select"></select><small data-conclave-tradeoff></small></label>
+                <button id="launch-neutral-siege" data-mission-launch type="button">Initiate expedition</button>
               </form>
               <form id="player-siege-form" class="attack-planner expedition-panel" data-expedition-panel="rival" data-attack-planner="rival">
                 <div class="mission-summary form-wide"><strong>Challenge a rival holding</strong><span>Player sieges always take one real hour. Speed does not shorten the siege window.</span></div>
@@ -207,8 +202,8 @@
                   <div id="player-siege-units" class="unit-input-grid"></div>
                 </div>
                 <div id="player-siege-preview" class="attack-outlook form-wide"></div>
-                <label class="form-wide">Scout Conclave<select id="player-conclave-select"></select></label>
-                <button type="submit">Initiate siege</button>
+                <label class="form-wide conclave-deployment">Scout Conclave<select id="player-conclave-select"></select><small data-conclave-tradeoff></small></label>
+                <button id="launch-player-siege" data-mission-launch type="button">Initiate siege</button>
               </form>
             </section>
             <section class="panel full-panel">
@@ -233,8 +228,8 @@
                   <div id="plateau-run-units" class="unit-input-grid"></div>
                 </div>
                 <div id="plateau-run-preview" class="attack-outlook form-wide"></div>
-                <label class="form-wide">Scout Conclave<select id="plateau-conclave"></select></label>
-                <div class="inline-actions form-wide"><button id="plateau-run-submit">Commit to plateau run</button><button id="cancel-plateau-commitment" type="button" class="secondary hidden">Cancel commitment</button></div>
+                <label class="form-wide conclave-deployment">Scout Conclave<select id="plateau-conclave"></select><small data-conclave-tradeoff></small></label>
+                <div class="inline-actions form-wide"><button id="plateau-run-submit" data-mission-launch type="button">Commit to plateau run</button><button id="cancel-plateau-commitment" type="button" class="secondary hidden">Cancel commitment</button></div>
               </form>
             </section>
             <section id="plateau-run-roster-panel" class="panel full-panel">
@@ -244,27 +239,19 @@
             </section>
           </section>
 
-          <section class="view" id="view-ledger" data-title="Season Ledger" data-eyebrow="Season progress">
-            <section class="panel full-panel season-ledger-hero"><p class="eyebrow" id="ledger-season-name">Current season</p><h2>Your seasonal score</h2><strong id="ledger-total" class="ledger-total">0</strong><p class="hint">Your ledger is exact. Investigate rivals from the Intelligence tab to reveal their seasonal strength.</p></section>
-            <section class="panel full-panel"><div class="section-heading"><div><p class="eyebrow">Standing</p><h2>Score by category</h2></div></div><div id="ledger-categories" class="ledger-category-grid"></div></section>
-            <section class="panel full-panel"><div class="section-heading"><div><p class="eyebrow">Distinctions</p><h2>Seasonal badges</h2></div></div><div id="ledger-achievements" class="ledger-badge-grid"></div></section>
-            <section class="panel full-panel"><div class="section-heading"><div><p class="eyebrow">Audit trail</p><h2>Recent scoring events</h2></div></div><div id="ledger-events" class="ledger-event-list"></div></section>
-            <section class="panel full-panel"><details class="ledger-rules"><summary>How seasonal scoring works</summary><div id="ledger-rules"></div></details></section>
-          </section>
-
-          <section class="view" id="view-research" data-title="Ardent scholarship" data-eyebrow="Research">
-            <section class="panel full-panel">
-              <p class="eyebrow">The Ardentia</p>
-              <h2>Research libraries</h2>
-              <div id="research-content"></div>
-            </section>
-          </section>
-
-          <section class="view" id="view-intelligence" data-title="Kingdom intelligence" data-eyebrow="Intelligence">
+          <section class="view" id="view-ledger" data-title="Kingdom and Season Ledger" data-eyebrow="Intelligence · Ledger">
             <section class="panel full-panel kingdom-intelligence-panel">
               <div class="section-heading"><p class="eyebrow">Season Intelligence</p><h2>Kingdom Intelligence</h2><p class="hint">Build knowledge of rival seasonal strength through targeted investigations.</p></div>
               <div id="kingdom-intelligence-table" class="kingdom-intelligence-scroll"></div>
             </section>
+            <section id="my-season" class="panel full-panel season-ledger-hero"><p class="eyebrow" id="ledger-season-name">Current season</p><h2>Your seasonal score</h2><strong id="ledger-total" class="ledger-total">0</strong><p class="hint">Your exact scores include the same qualitative labels used when assessing other kingdoms.</p></section>
+            <section class="panel full-panel"><div class="section-heading"><div><p class="eyebrow">Standing</p><h2>Score by category</h2></div></div><div id="ledger-categories" class="ledger-category-grid"></div></section>
+            <section class="panel full-panel"><details open><summary>Seasonal distinctions</summary><div id="ledger-achievements" class="ledger-badge-grid compact-completed-grid"></div></details></section>
+            <section class="panel full-panel"><details><summary>Recent scoring events</summary><div id="ledger-events" class="ledger-event-list"></div></details></section>
+            <section class="panel full-panel"><details class="ledger-rules"><summary>How seasonal scoring works</summary><div id="ledger-rules"></div></details></section>
+          </section>
+
+          <section class="view" id="view-intelligence-operations" data-title="Espionage operations" data-eyebrow="Intelligence · Operations">
             <section class="panel full-panel">
               <div class="section-heading"><p class="eyebrow">Covert operations</p><h2>Espionage Network</h2></div>
               <div id="espionage-network-status" class="pulse-grid"></div>
@@ -287,12 +274,15 @@
                   <div id="espionage-mission-operatives" class="operative-input-grid form-wide"></div>
                   <label>Intel boost<input id="espionage-intel-spend" type="number" min="0" value="0" inputmode="numeric"></label>
                   <div id="espionage-mission-preview" class="mission-summary"></div>
-                  <button type="submit">Launch 2-hour investigation</button>
+                  <button id="launch-espionage-mission" data-mission-launch type="button">Launch 2-hour investigation</button>
                 </form>
               </div>
               <div class="section-heading espionage-mission-heading"><p class="eyebrow">Operations</p><h3>Active and recent investigations</h3></div>
               <div id="espionage-missions" class="list"></div>
             </section>
+          </section>
+
+          <section class="view" id="view-intelligence-territory" data-title="Territory intelligence" data-eyebrow="Intelligence · Territory">
             <section class="panel full-panel">
               <div class="section-heading">
                 <p class="eyebrow">Observation network</p>
@@ -312,16 +302,33 @@
             <section id="retaliation-intelligence-panel" class="panel full-panel hidden"><p class="eyebrow">Territory Intelligence</p><h2>Incoming Parshendi activity</h2><div id="retaliation-intelligence" class="dossier-card"></div></section>
           </section>
 
-          <section class="view" id="view-inbox" data-title="Messages and alerts" data-eyebrow="Inbox">
+          <section class="view" id="view-research-current" data-title="Current research" data-eyebrow="Research · Current">
+            <section class="panel full-panel"><p class="eyebrow">In progress</p><h2>Current scholarship</h2><div id="research-current"></div></section>
+            <section class="panel full-panel"><p class="eyebrow">Active effects</p><h2>Active Kingdom Bonuses</h2><div id="research-bonuses" class="compact-bonus-list"></div></section>
+          </section>
+
+          <section class="view" id="view-research-libraries" data-title="Research libraries" data-eyebrow="Research · Libraries">
+            <section class="panel full-panel"><p class="eyebrow">Libraries</p><h2>Choose the next study</h2><div id="research-libraries"></div></section>
+          </section>
+
+          <section class="view" id="view-research-ardents" data-title="The Ardent Conclave" data-eyebrow="Research · Ardents">
+            <section class="panel full-panel"><p class="eyebrow">The Ardentia</p><h2>Conclaves</h2><div id="research-ardents"></div></section>
+          </section>
+
+          <section class="view" id="view-research-teaser" data-title="An unnamed question" data-eyebrow="???">
+            <section class="panel full-panel mystery-panel"><p class="eyebrow">Ancient observations</p><h2>???</h2><p>Your surveyors have found patterns on the Ancient Plateaus that military maps cannot explain.</p><p class="hint">An institution devoted to scholarship may be able to make sense of them.</p><button type="button" data-route-view="warcamp" data-route-tab="buildings" data-focus="ardentMonastery">Review Warcamp investments</button></section>
+          </section>
+
+          <section class="view" id="view-inbox" data-title="Spanreed Hub" data-eyebrow="Reports and messages">
             <section class="panel full-panel">
               <div class="section-heading split-heading">
                 <div>
-                  <p class="eyebrow">Notifications</p>
-                  <h2>Inbox</h2>
+                  <p class="eyebrow">Canonical history</p>
+                  <h2>Spanreed Hub</h2>
                 </div>
                 <div class="inline-actions"><button id="toggle-compose" type="button" class="secondary" aria-expanded="false">Compose Spanreed</button><button id="mark-inbox-read" type="button" class="secondary">Mark all read</button></div>
               </div>
-              <div class="inbox-controls"><div class="filter-chips" role="group" aria-label="Inbox filter"><button type="button" class="filter-chip active" data-inbox-filter="all">All</button><button type="button" class="filter-chip" data-inbox-filter="reports">Reports</button><button type="button" class="filter-chip" data-inbox-filter="players">Player Messages</button></div><label class="preference-toggle"><input id="auto-read-inbox" type="checkbox"> Mark messages read when Inbox opens</label></div>
+              <div class="inbox-controls"><div class="filter-chips" role="group" aria-label="Spanreed filter"><button type="button" class="filter-chip active" data-inbox-filter="all">All</button><button type="button" class="filter-chip" data-inbox-filter="reports">Reports</button><button type="button" class="filter-chip" data-inbox-filter="players">Player Messages</button></div><label class="preference-toggle"><input id="auto-read-inbox" type="checkbox"> Mark messages read when Hub opens</label></div>
               <div id="inbox-list" class="list"></div>
             </section>
             <section id="compose-panel" class="panel full-panel hidden">
@@ -368,10 +375,15 @@
         </section>
       </section>
     </main>
-    <div id="tap-tooltip" class="tap-tooltip hidden" role="status"></div>
+    <div id="tap-tooltip" class="tap-tooltip hidden" role="dialog" aria-live="polite"><button id="close-tap-tooltip" type="button" class="tooltip-close" aria-label="Close explanation">✕</button><div id="tap-tooltip-content"></div></div>
     <dialog id="kingdom-intel-dialog" class="kingdom-intel-dialog" aria-labelledby="kingdom-intel-dialog-title">
       <div class="dialog-heading"><div><p class="eyebrow">Kingdom Intelligence</p><h2 id="kingdom-intel-dialog-title">Intelligence detail</h2></div><button id="close-kingdom-intel-dialog" class="secondary" type="button" aria-label="Close">✕</button></div>
       <div id="kingdom-intel-dialog-content"></div>
+    </dialog>
+    <dialog id="mission-confirmation" class="mission-confirmation" aria-labelledby="mission-confirmation-title">
+      <div class="dialog-heading"><div><p class="eyebrow">Consequential action</p><h2 id="mission-confirmation-title">Confirm mission</h2></div><button id="close-mission-confirmation" class="secondary" type="button" aria-label="Cancel">✕</button></div>
+      <div id="mission-confirmation-content" class="mission-summary"></div>
+      <div class="inline-actions"><button id="cancel-mission-confirmation" class="secondary" type="button">Cancel</button><button id="accept-mission-confirmation" type="button">Confirm and commit</button></div>
     </dialog>
     <div id="notification-toasts" class="notification-toasts" aria-live="polite"></div>
     <script type="module" src="convex-client.js"></script>

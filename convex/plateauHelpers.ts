@@ -299,6 +299,10 @@ export async function grantGemheartPlateauIncome(
       kind: "system",
       subject: "Gemheart Plateau Yield",
       body: `Your Gemheart Plateau holdings yielded ${gemhearts} Gemheart${gemhearts === 1 ? "" : "s"}. The 12-hour timer has restarted for the paying plateau${gemhearts === 1 ? "" : "s"}.`,
+      eventType: "gemheart_yield",
+      destinationView: "home",
+      entityType: "owned_plateaus",
+      entityId: "owned-plateaus",
       createdAt: now,
     });
     await ctx.db.insert("gameEvents", {

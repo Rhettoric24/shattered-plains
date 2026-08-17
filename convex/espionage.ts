@@ -363,14 +363,14 @@ export const resolveInvestigation = internalMutation({
         : outcome === "success"
           ? `The ${categoryName} investigation succeeded and also uncovered incidental ${SEASON_CATEGORIES[incidentalCategory!].name} intelligence.`
           : `The ${categoryName} investigation overwhelmed the target's defenses and produced a Bonus Discovery.`;
-    await ctx.db.insert("messages", { toPlayerId: attacker._id, kind: "system", subject: `${categoryName} Investigation: ${outcome[0].toUpperCase()}${outcome.slice(1)}`, body: `${resultText} Intel gained: ${reward}; stored against ${target.name}: ${intel.amount}/${intel.cap}.`, createdAt: now });
-    await createNotification(ctx, { playerId: attacker._id, category: "missions", eventType: "espionage_resolved", title: "Investigation Complete", body: resultText, destinationView: "intelligence", entityId: String(mission._id), dedupeKey: `espionage:${mission._id}:attacker`, createdAt: now });
+    await ctx.db.insert("messages", { toPlayerId: attacker._id, kind: "system", subject: `${categoryName} Investigation: ${outcome[0].toUpperCase()}${outcome.slice(1)}`, body: `${resultText} Intel gained: ${reward}; stored against ${target.name}: ${intel.amount}/${intel.cap}.`, eventType: "espionage_resolved", destinationView: "intelligence", destinationTab: "ledger", entityType: "espionage_mission", entityId: String(mission._id), kingdomId: target._id, intelligenceCategory: mission.category, createdAt: now });
+    await createNotification(ctx, { playerId: attacker._id, category: "missions", eventType: "espionage_resolved", title: "Investigation Complete", body: resultText, destinationView: "intelligence", destinationTab: "ledger", entityId: String(mission._id), kingdomId: target._id, intelligenceCategory: mission.category, dedupeKey: `espionage:${mission._id}:attacker`, createdAt: now });
     if (outcome === "failure" || outcome === "partial") {
       const clear = outcome === "failure";
       const subject = clear ? "Espionage Activity Detected" : "Suspicious Activity Detected";
       const body = clear ? "Your defending operatives detected and disrupted an espionage investigation against your kingdom. The source could not be identified." : "Your operatives noticed suspicious activity around the kingdom, but could not identify its source or purpose.";
-      await ctx.db.insert("messages", { toPlayerId: target._id, kind: "system", subject, body, createdAt: now });
-      await createNotification(ctx, { playerId: target._id, category: "missions", eventType: clear ? "espionage_detected" : "espionage_suspected", title: subject, body, destinationView: "intelligence", entityId: String(mission._id), dedupeKey: `espionage:${mission._id}:defender`, createdAt: now });
+      await ctx.db.insert("messages", { toPlayerId: target._id, kind: "system", subject, body, eventType: clear ? "espionage_detected" : "espionage_suspected", destinationView: "intelligence", destinationTab: "operations", entityType: "espionage_mission", entityId: String(mission._id), createdAt: now });
+      await createNotification(ctx, { playerId: target._id, category: "missions", eventType: clear ? "espionage_detected" : "espionage_suspected", title: subject, body, destinationView: "intelligence", destinationTab: "operations", entityId: String(mission._id), dedupeKey: `espionage:${mission._id}:defender`, createdAt: now });
     }
     return { resolved: true, outcome, reward, incidentalCategory: incidentalCategory ?? null, bonusDiscoveryId: bonusDiscoveryId ?? null };
   },

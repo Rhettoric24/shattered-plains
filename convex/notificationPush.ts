@@ -28,7 +28,9 @@ export const deliver = internalAction({
         await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({
           id: String(data.notification._id), title: data.notification.title, body: data.notification.body,
           category: data.notification.category, destinationView: data.notification.destinationView,
-          entityId: data.notification.entityId, silent: !subscription.soundEnabled,
+          destinationTab: data.notification.destinationTab, entityId: data.notification.entityId,
+          kingdomId: data.notification.kingdomId, intelligenceCategory: data.notification.intelligenceCategory,
+          silent: !subscription.soundEnabled,
         }), { TTL: 24 * 60 * 60, urgency: data.notification.category === "combat" ? "high" : "normal" });
         delivered += 1;
       } catch (error) {

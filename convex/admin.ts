@@ -182,6 +182,8 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
       subject: "World reset",
       body:
         "The playtest world was reset. Your login and warcamp name were kept, and your kingdom has a fresh balanced Home Plateau package.",
+      eventType: "world_reset",
+      destinationView: "home",
       createdAt: now,
     });
   }

@@ -74,6 +74,9 @@ describe("notifications", () => {
     const rows = await t.run(async (ctx) => await ctx.db.query("notifications").collect());
     expect(rows).toHaveLength(playerIds.length);
     expect(new Set(rows.map((row) => row.playerId)).size).toBe(playerIds.length);
+    const messages = await t.run(async (ctx) => await ctx.db.query("messages").collect());
+    expect(messages).toHaveLength(playerIds.length);
+    expect(new Set(messages.map((row) => row.toPlayerId)).size).toBe(playerIds.length);
     vi.useRealTimers();
   });
 

@@ -55,6 +55,7 @@ export default defineSchema({
     operatives: v.optional(operativeCounts),
     defendingOperatives: v.optional(operativeCounts),
     lastEconomyAt: v.optional(v.number()),
+    researchTeasedAt: v.optional(v.number()),
     lastActiveAt: v.number(),
     createdAt: v.number(),
   })
@@ -191,6 +192,18 @@ export default defineSchema({
     kind: v.union(v.literal("player"), v.literal("system")),
     subject: v.string(),
     body: v.string(),
+    eventType: v.optional(v.string()),
+    destinationView: v.optional(v.string()),
+    destinationTab: v.optional(v.string()),
+    entityType: v.optional(v.string()),
+    entityId: v.optional(v.string()),
+    kingdomId: v.optional(v.id("players")),
+    intelligenceCategory: v.optional(v.union(
+      v.literal("military"),
+      v.literal("economy"),
+      v.literal("research"),
+      v.literal("territory"),
+    )),
     readAt: v.optional(v.number()),
     createdAt: v.number(),
   })
@@ -210,7 +223,15 @@ export default defineSchema({
     title: v.string(),
     body: v.string(),
     destinationView: v.string(),
+    destinationTab: v.optional(v.string()),
     entityId: v.optional(v.string()),
+    kingdomId: v.optional(v.id("players")),
+    intelligenceCategory: v.optional(v.union(
+      v.literal("military"),
+      v.literal("economy"),
+      v.literal("research"),
+      v.literal("territory"),
+    )),
     dedupeKey: v.string(),
     readAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -227,6 +248,12 @@ export default defineSchema({
     research: v.boolean(),
     plateauRuns: v.boolean(),
     messages: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_playerId", ["playerId"]),
+
+  playerSettings: defineTable({
+    playerId: v.id("players"),
+    confirmConsequentialMissions: v.boolean(),
     updatedAt: v.number(),
   }).index("by_playerId", ["playerId"]),
 
