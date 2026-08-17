@@ -53,15 +53,15 @@
       <section id="game-screen" class="dashboard hidden">
         <aside class="sidebar">
           <button id="home-brand" class="brand-block brand-home" type="button" data-route-view="home" aria-label="Home — current state of your kingdom">
-            <span class="brand-home-icon" aria-hidden="true">⌂</span>
+            <img class="brand-home-icon" src="app-icon-512.png" alt="" aria-hidden="true" />
             <span><strong>Shattered Plains</strong><small id="game-date">Not signed in</small></span>
           </button>
           <nav id="dashboard-nav" class="side-nav primary-nav" aria-label="Game spaces">
-            <button class="nav-button active" type="button" data-route-view="home"><span aria-hidden="true">⌂</span>Home</button>
-            <button class="nav-button" type="button" data-route-view="warcamp" data-route-tab="buildings"><span aria-hidden="true">⚒</span>Warcamp</button>
-            <button class="nav-button" type="button" data-route-view="plains" data-route-tab="raids"><span aria-hidden="true">⚔</span>Plains <span class="nav-state-dot hidden" id="siege-nav-state" aria-label="Siege needs attention"></span><span class="nav-state-dot hidden" id="run-nav-state" aria-label="Plateau Run open"></span></button>
-            <button class="nav-button" type="button" data-route-view="intelligence" data-route-tab="ledger"><span aria-hidden="true">◈</span>Intel</button>
-            <button class="nav-button" id="research-primary-nav" type="button" data-route-view="research" data-route-tab="current"><span aria-hidden="true">✦</span><span data-research-nav-label>Research</span></button>
+            <button class="nav-button active" type="button" data-route-view="home">Home</button>
+            <button class="nav-button" type="button" data-route-view="warcamp" data-route-tab="buildings">Warcamp</button>
+            <button class="nav-button" type="button" data-route-view="plains" data-route-tab="raids">Plains <span class="nav-state-dot hidden" id="siege-nav-state" aria-label="Siege needs attention"></span><span class="nav-state-dot hidden" id="run-nav-state" aria-label="Plateau Run open"></span></button>
+            <button class="nav-button" type="button" data-route-view="intelligence" data-route-tab="ledger">Intel</button>
+            <button class="nav-button" id="research-primary-nav" type="button" data-route-view="research" data-route-tab="current"><span data-research-nav-label>Research</span></button>
             <button class="nav-button hidden" type="button" data-view="testing" data-admin-only="true">Testing</button>
             <button class="nav-button hidden" type="button" data-view="chronicle" data-admin-only="true">Chronicle</button>
           </nav>
@@ -74,7 +74,6 @@
               <h2 id="view-title">Warcamp status</h2>
             </div>
             <div class="header-actions">
-              <div class="header-hostility" id="header-hostility" aria-label="Parshendi Hostility"><span>Hostility</span><strong>0 · Quiet</strong></div>
               <button id="spanreed-button" class="header-icon-button secondary" type="button" data-route-view="spanreed" aria-label="Open Spanreed Hub"><span aria-hidden="true">✒</span><span id="inbox-badge" class="nav-badge hidden">0</span></button>
               <div class="notification-shell transient-alert-shell">
                 <button id="notification-bell" class="notification-bell secondary" type="button" aria-expanded="false" aria-controls="notification-panel" aria-label="Recent alerts and notification settings">⚡<span id="notification-badge" class="nav-badge hidden">0</span></button>

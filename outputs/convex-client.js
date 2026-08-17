@@ -2003,8 +2003,6 @@ function renderHostility() {
   const hostility = Number(pressure.hostility || 0);
   const stateLabel = pressure.state?.label || "Quiet";
   if ($("res-hostility")) $("res-hostility").textContent = number(hostility) + " · " + stateLabel;
-  const headerHostility = $("header-hostility")?.querySelector("strong");
-  if (headerHostility) headerHostility.textContent = number(hostility) + " · " + stateLabel;
   $("res-hostility-card")?.classList.toggle("warning", hostility >= 34);
   if ($("hostility-value")) $("hostility-value").textContent = number(hostility) + " / 100 · " + stateLabel;
   const fill = $("hostility-meter-fill");

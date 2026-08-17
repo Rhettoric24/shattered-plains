@@ -12,6 +12,7 @@
   .setup-copy h2, .setup-copy p { overflow-wrap: anywhere; }
   .account-forms .mode-button { padding-inline: 6px; white-space: normal; font-size: 0.82rem; }
   .pulse-grid, .outlook-grid, .unit-stat-grid, .effect-comparison, .recruit-preview, .attack-planner { grid-template-columns: 1fr; }
+  #kingdom-pulse { grid-template-columns: 1fr; }
   #plateau-bonus-summary, .target-selector { grid-template-columns: 1fr; }
   .section-heading, .inbox-controls, .message-item summary { align-items: stretch; display: grid; }
   .mode-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
