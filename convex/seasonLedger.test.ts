@@ -114,6 +114,32 @@ describe("season scoring", () => {
     expect(events.filter((event) => event.sourceType === "ancient_hold")).toHaveLength(1);
   });
 
+  test("every Ancient hold completes its Custodian checkpoint after the kingdom achievement exists", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const heldSince = now - SEASON_SCORING_RULES.ancientCustodianMs - 1000;
+    const playerId = await addPlayer(t, "Many Ancient Keeps");
+    const seasonId = await t.run(async (ctx) => await createFreshSeason(ctx, 1, heldSince));
+    const plateauIds = await t.run(async (ctx) => await Promise.all(["First Ancient", "Second Ancient"].map((name) =>
+      ctx.db.insert("plateaus", {
+        name, type: "ancient", status: "owned", ownerPlayerId: playerId,
+        highground: false, neutralDefenseInitial: 10, neutralDefenseRemaining: 0,
+        heldSince, createdAt: heldSince, updatedAt: heldSince,
+      }),
+    )));
+    for (const plateauId of plateauIds) {
+      await t.run((ctx) => observePlateauOwnership(ctx, { plateauId, newOwnerId: playerId, heldSince, now: heldSince }));
+      await t.mutation(internal.seasonLedger.evaluatePlateauHold, { seasonId, plateauId, playerId, heldSince });
+    }
+    const result = await t.run(async (ctx) => ({
+      achievements: await ctx.db.query("seasonAchievements").collect(),
+      holds: await ctx.db.query("seasonPlateauHolds").collect(),
+    }));
+    expect(result.achievements.filter((achievement) => achievement.key === "ancientCustodian")).toHaveLength(1);
+    expect(result.holds).toHaveLength(2);
+    expect(result.holds.every((hold) => hold.custodianAwarded)).toBe(true);
+  });
+
   test("existing-world season baseline initialization is idempotent", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();

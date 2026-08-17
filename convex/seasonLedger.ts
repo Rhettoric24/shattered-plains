@@ -263,7 +263,11 @@ export const evaluatePlateauHold = internalMutation({
     });
     let custodianAwarded = hold.custodianAwarded;
     if (ancient && !custodianAwarded && elapsed >= SEASON_SCORING_RULES.ancientCustodianMs) {
-      custodianAwarded = await unlockAchievement(ctx, { seasonId: season._id, playerId: args.playerId, key: "ancientCustodian", now }) || custodianAwarded;
+      await unlockAchievement(ctx, { seasonId: season._id, playerId: args.playerId, key: "ancientCustodian", now });
+      // This flag records that this hold's 24-hour checkpoint was evaluated.
+      // The achievement itself is kingdom-wide, so a duplicate result must not
+      // leave this plateau rescheduling an already-past deadline every second.
+      custodianAwarded = true;
     }
     await ctx.db.patch(hold._id, { territoryIntervalsAwarded: territoryCompleted, researchIntervalsAwarded: researchCompleted, custodianAwarded, updatedAt: now });
     const updated = (await ctx.db.get(hold._id))!;
