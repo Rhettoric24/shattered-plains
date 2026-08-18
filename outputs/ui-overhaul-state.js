@@ -11,8 +11,18 @@ export function orderedActiveUnits(units = {}) {
     });
 }
 
+export function normalizeRosterUnits(units = {}, unitKeys = UNIT_ORDER) {
+  return Object.fromEntries(unitKeys.map((key) => [key, Math.max(0, Math.floor(Number(units?.[key]) || 0))]));
+}
+
 export function shouldBlockMissionKey(key) {
   return key === "Enter" || key === "Return";
+}
+
+export function shouldResetRouteScroll(previous, next, options = {}) {
+  const changed = previous?.view !== next?.view || previous?.tab !== next?.tab;
+  const targeted = Boolean(next?.focus || next?.message || next?.kingdom || next?.category);
+  return changed && !targeted && options.preserveScroll !== true;
 }
 
 export function researchDisclosureState({ monasteryLevel = 0, teased = false } = {}) {

@@ -52,12 +52,7 @@
 
       <section id="game-screen" class="dashboard hidden">
         <aside class="sidebar">
-          <button id="home-brand" class="brand-block brand-home" type="button" data-route-view="home" aria-label="Home — current state of your kingdom">
-            <img class="brand-home-icon" src="app-icon-512.png" alt="" aria-hidden="true" />
-            <span><strong>Shattered Plains</strong><small id="game-date">Not signed in</small></span>
-          </button>
           <nav id="dashboard-nav" class="side-nav primary-nav" aria-label="Game spaces">
-            <button class="nav-button active" type="button" data-route-view="home">Home</button>
             <button class="nav-button" type="button" data-route-view="warcamp" data-route-tab="buildings">Warcamp</button>
             <button class="nav-button" type="button" data-route-view="plains" data-route-tab="raids">Plains <span class="nav-state-dot hidden" id="siege-nav-state" aria-label="Siege needs attention"></span><span class="nav-state-dot hidden" id="run-nav-state" aria-label="Plateau Run open"></span></button>
             <button class="nav-button" type="button" data-route-view="intelligence" data-route-tab="ledger">Intel</button>
@@ -69,6 +64,11 @@
 
         <section class="main-panel">
           <header class="dashboard-header">
+            <button id="home-brand" class="brand-block brand-home" type="button" data-route-view="home" aria-label="Home — current state of your kingdom">
+              <img class="brand-home-icon" src="app-icon-512.png" alt="" aria-hidden="true" />
+              <span><strong>Shattered Plains</strong><small id="game-date">Not signed in</small></span>
+              <span class="brand-home-affordance" aria-hidden="true">⌂</span>
+            </button>
             <div class="header-context">
               <p class="eyebrow" id="view-eyebrow">Overview</p>
               <h2 id="view-title">Warcamp status</h2>
@@ -76,7 +76,7 @@
             <div class="header-actions">
               <button id="spanreed-button" class="header-icon-button secondary" type="button" data-route-view="spanreed" aria-label="Open Spanreed Hub"><span aria-hidden="true">✒</span><span id="inbox-badge" class="nav-badge hidden">0</span></button>
               <div class="notification-shell transient-alert-shell">
-                <button id="notification-bell" class="notification-bell secondary" type="button" aria-expanded="false" aria-controls="notification-panel" aria-label="Recent alerts and notification settings">⚡<span id="notification-badge" class="nav-badge hidden">0</span></button>
+                <button id="notification-bell" class="notification-bell secondary" type="button" aria-expanded="false" aria-controls="notification-panel" aria-label="Recent alerts and notification settings">🔔<span id="notification-badge" class="nav-badge hidden">0</span></button>
                 <div id="notification-backdrop" class="notification-backdrop hidden" aria-hidden="true"></div>
                 <section id="notification-panel" class="notification-panel hidden" role="dialog" aria-modal="true" aria-labelledby="notification-title">
                   <div class="notification-panel-top">
@@ -97,7 +97,7 @@
                   <div id="notification-list" class="notification-list"></div><p class="hint">Persistent reports and history live in the Spanreed Hub.</p>
                 </section>
               </div>
-              <button id="account-toggle" class="player-chip" type="button" aria-expanded="false" aria-controls="account-panel"><span>Signed in</span><strong id="player-name">Player</strong><small id="admin-status">Standard account</small></button>
+              <button id="account-toggle" class="player-chip" type="button" aria-expanded="false" aria-controls="account-panel"><span class="settings-icon" aria-hidden="true">⚙</span><span class="settings-label">Settings</span><strong id="player-name" class="sr-only">Player</strong><small id="admin-status" class="sr-only">Standard account</small></button>
               <section id="account-panel" class="account-panel-menu hidden" role="dialog" aria-label="Account and game settings">
                 <label class="preference-toggle"><input id="mission-confirmations" type="checkbox" checked> Confirm consequential missions</label>
                 <p class="hint">Enter or Return never launches a mission, regardless of this setting.</p>
@@ -122,9 +122,9 @@
             <section id="command-briefing" class="command-briefing hidden"><p class="eyebrow">Needs attention</p><div id="command-priorities" class="priority-list"></div></section>
             <div class="home-grid">
               <section class="panel full-panel home-module home-progress"><p class="eyebrow">In progress</p><h2>Active work</h2><div id="overview-operations" class="operation-timeline"></div></section>
-              <section class="panel full-panel home-module"><p class="eyebrow">Kingdom summary</p><h2>At a glance</h2><div id="kingdom-pulse" class="pulse-grid"></div></section>
+              <section class="panel full-panel home-module"><p class="eyebrow">Kingdom</p><h2>Current strength</h2><div id="kingdom-summary" class="compact-row-list"></div></section>
               <section class="panel full-panel home-module home-plateaus" id="home-owned-plateaus"><div class="section-heading split-heading"><div><p class="eyebrow">Owned plateaus</p><h2>Your holdings</h2></div><button id="toggle-holdings" type="button" class="secondary compact-button" aria-expanded="false">Show details</button></div><div id="plateau-bonus-summary" class="pulse-grid"></div><div id="owned-plateaus" class="plateau-groups"></div></section>
-              <section class="panel full-panel home-module"><div class="section-heading split-heading"><div><p class="eyebrow">Season</p><h2>Your performance</h2></div><button type="button" class="secondary compact-button" data-route-view="intelligence" data-route-tab="ledger" data-focus="my-season">Open Ledger</button></div><div id="home-season-summary" class="pulse-grid"></div></section>
+              <section id="home-season" class="panel full-panel home-module"><div class="section-heading"><div><p class="eyebrow" id="ledger-season-name">Season</p><h2>Your performance</h2></div><strong id="ledger-total" class="ledger-total">0</strong></div><div id="ledger-categories" class="ledger-category-grid"></div><details><summary>Earned distinctions</summary><div id="ledger-achievements" class="ledger-badge-grid compact-completed-grid"></div></details><details><summary>Recent scoring events</summary><div id="ledger-events" class="ledger-event-list"></div></details><details class="ledger-rules"><summary>How seasonal scoring works</summary><div id="ledger-rules"></div></details></section>
               <section class="panel full-panel hostility-panel home-module" id="home-hostility"><div class="section-heading split-heading"><div><p class="eyebrow">World pressure</p><h2>Parshendi Hostility</h2></div><strong id="hostility-value">0 / 100 · Quiet</strong></div><div class="hostility-meter" role="progressbar" aria-label="Parshendi Hostility" aria-valuemin="0" aria-valuemax="100"><span id="hostility-meter-fill"></span></div><div id="hostility-summary" class="mission-summary"></div></section>
             </div>
           </section>
@@ -167,7 +167,7 @@
               <p class="eyebrow">High Hostility</p>
               <h2>Deep Plains Raid</h2>
               <form id="deep-plains-form" class="attack-planner" data-attack-planner="deepPlains">
-                <div class="mission-summary form-wide"><strong>Push deep into Parshendi territory</strong><span>Commit a major army for 6–8 hours. Success offers a large Sphere cache and a 10% chance of one Gemheart.</span></div>
+                <div class="mission-summary form-wide"><strong>Push deep into Parshendi territory</strong><span>The base commitment is 6–8 hours; army Speed, Research, and Bridged Plateaus adjust it normally. Success offers a large Sphere cache and a 10% chance of one Gemheart.</span></div>
                 <div class="form-wide"><label>Raid units</label><div id="deep-plains-units" class="unit-input-grid"></div></div>
                 <div id="deep-plains-preview" class="attack-outlook form-wide"></div>
                 <label class="form-wide conclave-deployment">Scout Conclave<select id="deep-plains-conclave"></select><small data-conclave-tradeoff></small></label>
@@ -243,11 +243,6 @@
               <div class="section-heading"><p class="eyebrow">Season Intelligence</p><h2>Kingdom Intelligence</h2><p class="hint">Build knowledge of rival seasonal strength through targeted investigations.</p></div>
               <div id="kingdom-intelligence-table" class="kingdom-intelligence-scroll"></div>
             </section>
-            <section id="my-season" class="panel full-panel season-ledger-hero"><p class="eyebrow" id="ledger-season-name">Current season</p><h2>Your seasonal score</h2><strong id="ledger-total" class="ledger-total">0</strong><p class="hint">Your exact scores include the same qualitative labels used when assessing other kingdoms.</p></section>
-            <section class="panel full-panel"><div class="section-heading"><div><p class="eyebrow">Standing</p><h2>Score by category</h2></div></div><div id="ledger-categories" class="ledger-category-grid"></div></section>
-            <section class="panel full-panel"><details open><summary>Seasonal distinctions</summary><div id="ledger-achievements" class="ledger-badge-grid compact-completed-grid"></div></details></section>
-            <section class="panel full-panel"><details><summary>Recent scoring events</summary><div id="ledger-events" class="ledger-event-list"></div></details></section>
-            <section class="panel full-panel"><details class="ledger-rules"><summary>How seasonal scoring works</summary><div id="ledger-rules"></div></details></section>
           </section>
 
           <section class="view" id="view-intelligence-operations" data-title="Espionage operations" data-eyebrow="Intelligence · Operations">

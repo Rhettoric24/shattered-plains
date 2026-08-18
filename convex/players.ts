@@ -9,8 +9,6 @@ import {
   createStarterPlateaus,
   neutralPlateaus,
   ownedPlateaus,
-  plateauAttributeCountsForPlayer,
-  plateauCountsForPlayer,
 } from "./plateauHelpers";
 import { ownedOperativesIncludingAway, ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import {
@@ -18,6 +16,7 @@ import {
   calculateBuildingStats,
   bridgedTravelReduction,
   emptyBuildings,
+  emptyPlateauCounts,
   emptyUnits,
   sphereIncomeBonus,
   pendingEconomy,
@@ -203,25 +202,16 @@ export const getPlayerByName = query({
 });
 
 async function buildDashboard(ctx: QueryCtx, player: any) {
-  const world = await getMainWorld(ctx);
-  const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
-  const plateauAttributes = await plateauAttributeCountsForPlayer(ctx, player._id);
   const owned = await ownedPlateaus(ctx, player._id);
-  const neutral = await neutralPlateaus(ctx);
-  const incomingRaids = await ctx.db
-    .query("raids")
-    .withIndex("by_target_player", (q) => q.eq("targetPlayerId", player._id))
-    .filter((q) => q.eq(q.field("status"), "pending"))
-    .collect();
-  const outgoingRaids = await ctx.db
-    .query("raids")
-    .withIndex("by_attacker", (q) => q.eq("attackerId", player._id))
-    .filter((q) => q.eq(q.field("status"), "pending"))
-    .collect();
-  const unreadMessages = await ctx.db
-    .query("messages")
-    .withIndex("by_to_player", (q) => q.eq("toPlayerId", player._id))
-    .collect();
+  const plateauCounts = emptyPlateauCounts();
+  let largePlateauCount = 0;
+  let highgroundPlateauCount = 0;
+  for (const plateau of owned) {
+    plateauCounts[plateau.type === "training" ? "bridged" : plateau.type === "ancient_ruins" ? "ancient" : plateau.type] += 1;
+    if (plateau.large) largePlateauCount += 1;
+    if (plateau.highground) highgroundPlateauCount += 1;
+  }
+  const plateauAttributes = { large: largePlateauCount, highground: highgroundPlateauCount };
 
   const completed = await completedResearch(ctx, player._id);
   const pending = pendingEconomy({ ...player, plateauCounts, completedResearch: completed }, Date.now());
@@ -232,11 +222,8 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
     player,
     effectiveSpheres: player.spheres + pending.income,
     pendingIncome: pending.income,
-    world,
     plateauCounts,
     ownedPlateauCount: owned.length,
-    neutralPlateauCount: neutral.filter((plateau) => !plateau.activeSiegeId)
-      .length,
     armyStats: calculateArmyStats(player.units, completed),
     completedResearch: completed,
     provisions: provisionsStatus(
@@ -260,10 +247,6 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
       plateauCounts,
       completed,
     ),
-    incomingRaidCount: incomingRaids.length,
-    outgoingRaidCount: outgoingRaids.length,
-    unreadMessageCount: unreadMessages.filter((message) => !message.readAt)
-      .length,
   };
 }
 

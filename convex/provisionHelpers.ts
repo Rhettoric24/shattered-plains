@@ -28,27 +28,24 @@ export async function ownedUnitsIncludingAway(
 
   const pendingRaids = await ctx.db
     .query("raids")
-    .withIndex("by_attacker", (q) => q.eq("attackerId", playerId))
-    .filter((q) => q.eq(q.field("status"), "pending"))
-    .collect();
+    .withIndex("by_attacker_and_status", (q) => q.eq("attackerId", playerId).eq("status", "pending"))
+    .take(100);
   for (const raid of pendingRaids) {
     units = addUnits(units, raid.units);
   }
 
   const attackingSieges = await ctx.db
     .query("sieges")
-    .withIndex("by_attacker", (q) => q.eq("attackerId", playerId))
-    .filter((q) => q.eq(q.field("status"), "pending"))
-    .collect();
+    .withIndex("by_attacker_and_status", (q) => q.eq("attackerId", playerId).eq("status", "pending"))
+    .take(100);
   for (const siege of attackingSieges) {
     units = addUnits(units, siege.attackerUnits);
   }
 
   const defendingSieges = await ctx.db
     .query("sieges")
-    .withIndex("by_defender", (q) => q.eq("defenderId", playerId))
-    .filter((q) => q.eq(q.field("status"), "pending"))
-    .collect();
+    .withIndex("by_defender_and_status", (q) => q.eq("defenderId", playerId).eq("status", "pending"))
+    .take(100);
   for (const siege of defendingSieges) {
     units = addUnits(units, siege.defenderUnits ?? {});
   }

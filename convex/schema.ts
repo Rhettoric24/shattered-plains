@@ -92,6 +92,7 @@ export default defineSchema({
     status: v.union(v.literal("pending"), v.literal("resolved")),
   })
     .index("by_attacker", ["attackerId"])
+    .index("by_attacker_and_status", ["attackerId", "status"])
     .index("by_target_player", ["targetPlayerId"])
     .index("by_status_arrival", ["status", "arriveAt"]),
 
@@ -152,7 +153,9 @@ export default defineSchema({
   })
     .index("by_status_resolve", ["status", "resolveAt"])
     .index("by_attacker", ["attackerId"])
+    .index("by_attacker_and_status", ["attackerId", "status"])
     .index("by_defender", ["defenderId"])
+    .index("by_defender_and_status", ["defenderId", "status"])
     .index("by_plateau", ["plateauId"]),
 
   kingdomWorldPressure: defineTable({
@@ -513,6 +516,7 @@ export default defineSchema({
     territoryIntervalsAwarded: v.number(),
     researchIntervalsAwarded: v.number(),
     custodianAwarded: v.boolean(),
+    nextEvaluationAt: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_seasonId_and_plateauId", ["seasonId", "plateauId"]),
 });

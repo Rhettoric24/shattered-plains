@@ -73,7 +73,7 @@ describe("World Pressure integration", () => {
     expect(result.pressure?.hostility).toBe(10);
   });
 
-  test("Deep Plains launch is gated at Vengeful and snapshots a six-to-eight-hour mission", async () => {
+  test("Deep Plains launch is gated at Vengeful and applies normal Speed to its six-to-eight-hour base", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
     const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "deep@example.com" }));
@@ -91,8 +91,8 @@ describe("World Pressure integration", () => {
       units: { ...emptyUnits(), spearman: 100, chull: 10 },
     });
     const raid = await t.run(async (ctx) => await ctx.db.get(result.raidId));
-    expect(result.travelMinutes).toBeGreaterThanOrEqual(360);
-    expect(result.travelMinutes).toBeLessThanOrEqual(480);
+    expect(result.travelMinutes).toBeGreaterThanOrEqual(396);
+    expect(result.travelMinutes).toBeLessThanOrEqual(528);
     expect(raid?.targetType).toBe("deep_plains");
     expect(raid?.hostilityAtLaunch).toBe(68);
     expect(raid?.defensePower).toBeGreaterThanOrEqual(Math.round(220 * 1.85));

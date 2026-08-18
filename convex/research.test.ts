@@ -10,6 +10,7 @@ import {
   doctrineCostMultiplier,
   emergencyDefenseCost,
   incomeBreakdown,
+  missionMsForBase,
   researchEffect,
   travelMsForUnits,
   unitPlunder,
@@ -46,6 +47,13 @@ describe("permanent mechanic effects", () => {
 
   test("Bridge Engineering shortens ordinary travel", () => {
     expect(travelMsForUnits(units, undefined, { bridgeEngineering: 3 })).toBeLessThan(travelMsForUnits(units));
+  });
+
+  test("Bridge Engineering and plateau travel bonuses shorten custom mission clocks", () => {
+    const baseMs = 7 * 60 * 60 * 1000;
+    const baseline = missionMsForBase(baseMs, units);
+    const improved = missionMsForBase(baseMs, units, { sphere: 0, bridged: 2, gemheart: 0, ancient: 0 }, { bridgeEngineering: 3 });
+    expect(improved).toBeLessThan(baseline);
   });
 
   test("Painrials use per-Spearman Survival and Power", () => {

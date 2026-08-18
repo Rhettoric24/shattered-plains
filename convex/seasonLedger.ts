@@ -109,8 +109,8 @@ export async function unlockAchievement(ctx: MutationCtx, args: {
   await ctx.db.insert("messages", {
     toPlayerId: args.playerId, kind: "system", subject: `Season distinction: ${rule.name}`,
     body: `${rule.flavor} ${rule.requirement} (+${rule.points} ${rule.category} score.)`,
-    eventType: "season_achievement", destinationView: "intelligence", destinationTab: "ledger",
-    entityType: "season_achievement", entityId: args.key, createdAt: now,
+    eventType: "season_achievement", destinationView: "home",
+    entityType: "season_achievement", entityId: "home-season", createdAt: now,
   });
   return true;
 }
@@ -172,8 +172,11 @@ async function scheduleHold(ctx: MutationCtx, hold: Doc<"seasonPlateauHolds">, p
   const due = [hold.heldSince + (hold.territoryIntervalsAwarded + 1) * SEASON_SCORING_RULES.territory.holdIntervalMs];
   if (plateauType === "ancient" || plateauType === "ancient_ruins") due.push(hold.heldSince + (hold.researchIntervalsAwarded + 1) * SEASON_SCORING_RULES.research.ancientHoldIntervalMs);
   if (!hold.custodianAwarded && (plateauType === "ancient" || plateauType === "ancient_ruins")) due.push(hold.heldSince + SEASON_SCORING_RULES.ancientCustodianMs);
-  await ctx.scheduler.runAt(Math.max(now + 1000, Math.min(...due)), internal.seasonLedger.evaluatePlateauHold, {
-    seasonId: hold.seasonId, plateauId: hold.plateauId, playerId: hold.playerId, heldSince: hold.heldSince,
+  const scheduledFor = Math.max(now + 1000, Math.min(...due));
+  if (hold.nextEvaluationAt === scheduledFor) return;
+  await ctx.db.patch(hold._id, { nextEvaluationAt: scheduledFor });
+  await ctx.scheduler.runAt(scheduledFor, internal.seasonLedger.evaluatePlateauHold, {
+    seasonId: hold.seasonId, plateauId: hold.plateauId, playerId: hold.playerId, heldSince: hold.heldSince, scheduledFor,
   });
 }
 
@@ -241,13 +244,16 @@ export async function observePlateauNeutralized(ctx: MutationCtx, args: {
 }
 
 export const evaluatePlateauHold = internalMutation({
-  args: { seasonId: v.id("seasons"), plateauId: v.id("plateaus"), playerId: v.id("players"), heldSince: v.number() },
+  args: { seasonId: v.id("seasons"), plateauId: v.id("plateaus"), playerId: v.id("players"), heldSince: v.number(), scheduledFor: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const now = Date.now();
     const season = await ctx.db.get(args.seasonId);
     const plateau = await ctx.db.get(args.plateauId);
     const hold = await ctx.db.query("seasonPlateauHolds").withIndex("by_seasonId_and_plateauId", (q) => q.eq("seasonId", args.seasonId).eq("plateauId", args.plateauId)).unique();
     if (!season || season.status !== "active" || !plateau || plateau.ownerPlayerId !== args.playerId || !hold || hold.playerId !== args.playerId || hold.heldSince !== args.heldSince) return { awarded: false };
+    // A prior execution advances this token before scheduling the next due time.
+    // Duplicate or superseded scheduler jobs therefore become read-only no-ops.
+    if (args.scheduledFor !== undefined && hold.nextEvaluationAt !== args.scheduledFor) return { awarded: false };
     const elapsed = now - hold.heldSince;
     const territoryCompleted = Math.floor(elapsed / SEASON_SCORING_RULES.territory.holdIntervalMs);
     const valuableBonus = (SEASON_SCORING_RULES.territory.valuableTypeBonus as Record<string, number>)[plateau.type] ?? 0;
@@ -269,8 +275,14 @@ export const evaluatePlateauHold = internalMutation({
       // leave this plateau rescheduling an already-past deadline every second.
       custodianAwarded = true;
     }
-    await ctx.db.patch(hold._id, { territoryIntervalsAwarded: territoryCompleted, researchIntervalsAwarded: researchCompleted, custodianAwarded, updatedAt: now });
-    const updated = (await ctx.db.get(hold._id))!;
+    const changed = territoryCompleted !== hold.territoryIntervalsAwarded || researchCompleted !== hold.researchIntervalsAwarded || custodianAwarded !== hold.custodianAwarded;
+    if (!changed) {
+      await scheduleHold(ctx, hold, plateau.type, now);
+      return { awarded: false };
+    }
+    const update = { territoryIntervalsAwarded: territoryCompleted, researchIntervalsAwarded: researchCompleted, custodianAwarded, updatedAt: now };
+    await ctx.db.patch(hold._id, update);
+    const updated = { ...hold, ...update };
     await scheduleHold(ctx, updated, plateau.type, now);
     return { awarded: true };
   },

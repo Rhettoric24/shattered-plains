@@ -26,6 +26,7 @@ import {
   COMBAT_RULES,
   effectivePower,
   effectiveSpeed,
+  missionMsForBase,
   normalizeUnits,
   resistanceLabel,
   rewardLabel,
@@ -99,11 +100,11 @@ async function createRaid(
   const conclaveCombat = Boolean(args.conclaveId);
   const seedBase = `${attacker._id}:${now}:${totalUnits(units)}:${args.targetType}`;
   const arriveAt = args.targetType === "deep_plains"
-    ? now + seededInt(
+    ? now + missionMsForBase(seededInt(
         `${seedBase}:duration`,
         WORLD_PRESSURE_RULES.deepPlains.durationMinutes[0],
         WORLD_PRESSURE_RULES.deepPlains.durationMinutes[1],
-      ) * 60 * 1000
+      ) * 60 * 1000, units, plateauCounts, completed, conclaveCombat)
     : now + travelMsForUnits(units, plateauCounts, completed, conclaveCombat);
   const power = effectivePower(units, completed, conclaveCombat);
   const speed = effectiveSpeed(units, completed, conclaveCombat);

@@ -25,6 +25,7 @@ import { activeSeason, observePlateauNeutralized, observePlateauOwnership, recor
 import { subtractAvailableUnits, unitCountsValidator, validateMissionUnits } from "./armyRules";
 import {
   effectiveIntelLevel,
+  intelligenceFreshness,
   presentIntelNumber,
   watchtowerCounterIntelligence,
   watchtowerTerritoryLevel,
@@ -199,18 +200,31 @@ export const listPlateaus = query({
   args: {},
   handler: async (ctx) => {
     const viewer = await requireCurrentPlayer(ctx);
-    const mine = await ownedPlateaus(ctx, viewer._id);
     const neutral = await neutralPlateaus(ctx);
     const allOwned = await ctx.db
       .query("plateaus")
       .withIndex("by_status", (q) => q.eq("status", "owned"))
       .take(200);
-    const players = await ctx.db.query("players").take(200);
+    const mine = allOwned.filter((plateau) => plateau.ownerPlayerId === viewer._id);
+    const activeSieges = await ctx.db
+      .query("sieges")
+      .withIndex("by_status_resolve", (q) => q.eq("status", "pending"))
+      .take(200);
+    const referencedPlayerIds = new Set<string>([String(viewer._id)]);
+    for (const plateau of allOwned) if (plateau.ownerPlayerId) referencedPlayerIds.add(String(plateau.ownerPlayerId));
+    for (const siege of activeSieges) {
+      if (siege.attackerId) referencedPlayerIds.add(String(siege.attackerId));
+      if (siege.defenderId) referencedPlayerIds.add(String(siege.defenderId));
+    }
+    const players = (await Promise.all([...referencedPlayerIds].map((id) => ctx.db.get(id as Id<"players">)))).filter((player) => player !== null);
     const playerNames = Object.fromEntries(
       players.map((player) => [player._id, player.name]),
     );
     const playersById = new Map(players.map((player) => [String(player._id), player]));
-    const researchRows = await ctx.db.query("playerResearch").take(200);
+    const researchRows = (await Promise.all([...referencedPlayerIds].map((id) => ctx.db
+      .query("playerResearch")
+      .withIndex("by_playerId", (q) => q.eq("playerId", id as Id<"players">))
+      .unique()))).filter((row) => row !== null);
     const researchByPlayer = new Map(researchRows.map((row) => [String(row.playerId), { ...row.completedLevels, ...(row.economicDoctrine === "gemheartBaron" ? { __doctrineGemheartBaron: 1 } : {}) }]));
     const gemheartIntervalForPlayer = (playerId: Id<"players"> | undefined) => {
       const completed = playerId ? researchByPlayer.get(String(playerId)) : undefined;
@@ -218,10 +232,6 @@ export const listPlateaus = query({
       const baseHours = gemHours > 0 ? gemHours : PLATEAU_RULES.gemheartIntervalMs / 3600000;
       return (baseHours - (completed?.__doctrineGemheartBaron ? 1 : 0)) * 60 * 60 * 1000;
     };
-    const activeSieges = await ctx.db
-      .query("sieges")
-      .withIndex("by_status_resolve", (q) => q.eq("status", "pending"))
-      .take(200);
     const territoryReports = await ctx.db
       .query("intelligenceReports")
       .withIndex("by_viewerPlayerId_and_targetType", (q) =>
@@ -258,10 +268,47 @@ export const listPlateaus = query({
       if (!siege.attackerId) return false;
       return Math.max(kingdomLevel(siege.attackerId), kingdomLevel(siege.defenderId)) >= 4;
     });
+    const plateauById = new Map([...neutral, ...allOwned].map((plateau) => [String(plateau._id), plateau]));
+    const dossierTerritories = territoryReports.map((report) => {
+      const plateau = report.plateauId ? plateauById.get(String(report.plateauId)) : undefined;
+      const level = Math.max(passiveTerritoryLevel, effectiveIntelLevel(report.level, report.observedAt, now));
+      return {
+        plateauId: plateau?._id ?? report.plateauId ?? null,
+        targetName: plateau?.name ?? "Unknown plateau",
+        source: report.source,
+        observedAt: report.observedAt,
+        effectiveLevel: level,
+        freshness: intelligenceFreshness(report.observedAt, now),
+        resistance: presentIntelNumber(report.resistance, level),
+        plateauType: level >= 1 ? report.plateauType ?? null : null,
+        highground: level >= 1 ? report.highground ?? false : false,
+        large: level >= 1 ? report.large ?? false : false,
+        bonusFactText: report.bonusObservedAt && effectiveIntelLevel(1, report.bonusObservedAt, now) >= 1 ? report.bonusFactText ?? null : null,
+      };
+    });
+    if (watchtowerLevel > 0) {
+      const known = new Set(territoryReports.map((report) => String(report.plateauId)));
+      for (const plateau of neutral) if (!known.has(String(plateau._id))) dossierTerritories.push({
+        plateauId: plateau._id,
+        targetName: plateau.name,
+        source: "watchtower",
+        observedAt: now,
+        effectiveLevel: passiveTerritoryLevel,
+        freshness: "fresh",
+        resistance: presentIntelNumber(plateau.neutralDefenseRemaining, passiveTerritoryLevel),
+        plateauType: plateau.type,
+        highground: plateau.highground,
+        large: plateau.large ?? false,
+        bonusFactText: null,
+      });
+    }
 
     return {
       types: plateauTypes(),
-      counts: await plateauCountsForPlayer(ctx, viewer._id),
+      counts: mine.reduce((counts, plateau) => {
+        counts[identityPlateauType(plateau.type)] += 1;
+        return counts;
+      }, { sphere: 0, bridged: 0, gemheart: 0, ancient: 0 }),
       mine: mine.map((plateau) => decoratePlateauForOwner(plateau, now, gemheartIntervalForPlayer(viewer._id))),
       neutral: neutral.filter((plateau) => !plateau.activeSiegeId).map((plateau) => {
         const report = reportsByPlateau.get(String(plateau._id));
@@ -365,6 +412,14 @@ export const listPlateaus = query({
       watchtower: {
         level: watchtowerLevel,
         territoryLevel: passiveTerritoryLevel,
+      },
+      intelligence: {
+        territories: dossierTerritories,
+        watchtower: {
+          level: watchtowerLevel,
+          territoryLevel: passiveTerritoryLevel,
+          counterIntelligence: watchtowerCounterIntelligence(watchtowerLevel),
+        },
       },
     };
   },
@@ -576,6 +631,9 @@ export const commitSiegeDefenders = mutation({
     if (totalUnits(units) < 1) throw new Error("Commit at least one unit.");
     validateMissionUnits(defender.buildings, units);
     const remainingUnits = subtractAvailableUnits(defender.units, units);
+    const completed = await completedResearch(ctx, defender._id);
+    const defenderPower = effectivePower(units, completed);
+    const defenderSpeed = effectiveSpeed(units, completed);
     const now = Date.now();
 
     await ctx.db.patch(defender._id, {
@@ -584,15 +642,15 @@ export const commitSiegeDefenders = mutation({
     });
     await ctx.db.patch(siege._id, {
       defenderUnits: units,
-      defenderPower: effectivePower(units),
-      defenderSpeed: unitSpeed(units),
+      defenderPower,
+      defenderSpeed,
       defenderCommittedAt: now,
     });
 
     return {
       committed: true,
-      defenderPower: effectivePower(units),
-      defenderSpeed: unitSpeed(units),
+      defenderPower,
+      defenderSpeed,
     };
   },
 });

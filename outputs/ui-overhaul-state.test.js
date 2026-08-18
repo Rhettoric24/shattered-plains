@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey } from "./ui-overhaul-state.js";
+import { normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
 
 describe("UI overhaul state helpers", () => {
   test("the first authoritative roster render includes Chulls in stable order", () => {
@@ -13,10 +13,21 @@ describe("UI overhaul state helpers", () => {
     expect(orderedActiveUnits(units).map(([key]) => key)).toEqual(["bridgeman", "spearman", "chull", "shardbearer"]);
   });
 
+  test("the first player-state normalization does not depend on an existing global roster", () => {
+    expect(normalizeRosterUnits({ bridgeman: 4, chull: 7 }, ["bridgeman", "spearman", "chull"]))
+      .toEqual({ bridgeman: 4, spearman: 0, chull: 7 });
+  });
+
   test("mission composers block keyboard commit keys", () => {
     expect(shouldBlockMissionKey("Enter")).toBe(true);
     expect(shouldBlockMissionKey("Return")).toBe(true);
     expect(shouldBlockMissionKey(" ")).toBe(false);
+  });
+
+  test("tab changes reset scroll while targeted deep links retain focus behavior", () => {
+    expect(shouldResetRouteScroll({ view: "warcamp", tab: "buildings" }, { view: "plains", tab: "raids" })).toBe(true);
+    expect(shouldResetRouteScroll({ view: "plains", tab: "raids" }, { view: "plains", tab: "plateau-runs", focus: "run-1" })).toBe(false);
+    expect(shouldResetRouteScroll({ view: "plains", tab: "raids" }, { view: "plains", tab: "raids" })).toBe(false);
   });
 
   test("Research progresses from hidden to teased to revealed", () => {

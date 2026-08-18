@@ -107,11 +107,14 @@ describe("season scoring", () => {
     }));
     await t.run((ctx) => observePlateauOwnership(ctx, { plateauId, newOwnerId: playerId, heldSince, now: heldSince }));
     await t.mutation(internal.seasonLedger.evaluatePlateauHold, { seasonId, plateauId, playerId, heldSince });
+    const scheduledAfterFirst = await t.run(async (ctx) => (await ctx.db.query("seasonPlateauHolds").collect())[0]?.nextEvaluationAt);
     await t.mutation(internal.seasonLedger.evaluatePlateauHold, { seasonId, plateauId, playerId, heldSince });
+    const scheduledAfterDuplicate = await t.run(async (ctx) => (await ctx.db.query("seasonPlateauHolds").collect())[0]?.nextEvaluationAt);
     const events = await t.run(async (ctx) => await ctx.db.query("seasonScoreEvents").collect());
     expect(events.map((event) => [event.category, event.points])).toEqual(expect.arrayContaining([["territory", 2], ["research", 3]]));
     expect(events.filter((event) => event.sourceType === "plateau_hold")).toHaveLength(1);
     expect(events.filter((event) => event.sourceType === "ancient_hold")).toHaveLength(1);
+    expect(scheduledAfterDuplicate).toBe(scheduledAfterFirst);
   });
 
   test("every Ancient hold completes its Custodian checkpoint after the kingdom achievement exists", async () => {

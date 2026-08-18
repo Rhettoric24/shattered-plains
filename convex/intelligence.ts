@@ -28,13 +28,6 @@ export const listDossiers = query({
     const now = Date.now();
     const watchtowerLevel = Math.min(3, viewer.buildings.watchtower ?? 0);
     const passiveTerritoryLevel = watchtowerTerritoryLevel(watchtowerLevel);
-    const kingdomReports = await ctx.db
-      .query("intelligenceReports")
-      .withIndex("by_viewerPlayerId_and_targetType", (q) =>
-        q.eq("viewerPlayerId", viewer._id).eq("targetType", "kingdom"),
-      )
-      .order("desc")
-      .take(100);
     const territoryReports = await ctx.db
       .query("intelligenceReports")
       .withIndex("by_viewerPlayerId_and_targetType", (q) =>
@@ -43,23 +36,6 @@ export const listDossiers = query({
       .order("desc")
       .take(100);
 
-    const kingdoms = await Promise.all(kingdomReports.map(async (report) => {
-      const target = report.targetPlayerId ? await ctx.db.get(report.targetPlayerId) : null;
-        const counterIntelligence = watchtowerCounterIntelligence(target?.buildings.watchtower ?? 0);
-        const level = Math.max(
-          0,
-          effectiveIntelLevel(report.level, report.observedAt, now) - counterIntelligence,
-        );
-      return {
-          targetPlayerId: report.targetPlayerId ?? null,
-          targetName: target?.name ?? "Unknown warcamp",
-        source: report.source,
-        observedAt: report.observedAt,
-        effectiveLevel: level,
-          freshness: intelligenceFreshness(report.observedAt, now),
-          militaryPower: presentIntelNumber(report.militaryPower, level),
-      };
-    }));
     const territories = await Promise.all(territoryReports.map(async (report) => {
       const plateau = report.plateauId ? await ctx.db.get(report.plateauId) : null;
         const level = Math.max(
@@ -105,7 +81,9 @@ export const listDossiers = query({
     }
 
     return {
-      kingdoms,
+      // Kingdom dossiers were superseded by kingdomIntelligence/getKingdomLedger.
+      // Keep the response key for old clients; Territory remains this query's live consumer.
+      kingdoms: [],
       territories,
       decayStepMs: INTELLIGENCE_DECAY_STEP_MS,
       generatedAt: now,

@@ -679,6 +679,19 @@ export function travelMsForUnits(
   conclaveCombat = false,
 ) {
   const baseMs = TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
+  return missionMsForBase(baseMs, units, plateauCounts, completed, conclaveCombat);
+}
+
+/** Applies the ordinary mission Speed and Bridged Plateau rules to a custom
+ * base duration. This keeps special missions' base clocks intact while making
+ * their travel modifiers consistent with raids and expeditions. */
+export function missionMsForBase(
+  baseMs: number,
+  units: Partial<UnitCounts>,
+  plateauCounts: PlateauCounts = emptyPlateauCounts(),
+  completed?: Record<string, number>,
+  conclaveCombat = false,
+) {
   const speed = effectiveSpeed(units, completed, conclaveCombat);
   const constant = TIME_RULES.statDiminishingConstant;
   const travelMultiplier =
