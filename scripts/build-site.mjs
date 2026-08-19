@@ -110,6 +110,9 @@ const sourceHtml = await fs.readFile(
 const configScript = `<script>window.SHATTERED_PLAINS_CONFIG = ${JSON.stringify({ convexUrl })};</script>`;
 const buildId = Date.now().toString(36);
 const html = sourceHtml.replace(
+  /href="([^"]+\.css)"/g,
+  `href="$1?v=${buildId}"`,
+).replace(
   '<script type="module" src="convex-client.js"></script>',
   `${configScript}\n    <script type="module" src="convex-client.js?v=${buildId}"></script>`,
 );

@@ -38,12 +38,14 @@ describe("post-overhaul shell", () => {
 
   test("keeps the mobile brand and controls in one header row", () => {
     expect(css).toContain(".sidebar { min-height: 0; height: 0; }");
-    expect(css).toContain(".brand-home { width: calc(100vw - 132px); }");
+    expect(css).toContain("z-index: 71;");
+    expect(css).toContain("width: calc(100vw - 168px);");
     expect(css).toContain(".player-chip .settings-icon { display: inline-block; }");
   });
 
   test("keeps operative recruitment controls from stretching the Recruit button", () => {
     expect(css).toContain(".operative-recruit > button");
+    expect(css).toContain("width: min(132px,100%)");
     expect(css).toContain("height: 42px");
   });
 
