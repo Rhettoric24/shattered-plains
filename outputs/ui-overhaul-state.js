@@ -29,3 +29,10 @@ export function researchDisclosureState({ monasteryLevel = 0, teased = false } =
   if (Number(monasteryLevel) > 0) return "revealed";
   return teased ? "teased" : "hidden";
 }
+
+export function intelligenceDisclosureState({ networkLevel = 0, watchtowerLevel = 0 } = {}) {
+  return {
+    network: Number(networkLevel) >= 1,
+    watchtower: Number(watchtowerLevel) >= 1,
+  };
+}

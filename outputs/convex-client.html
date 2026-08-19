@@ -52,10 +52,15 @@
 
       <section id="game-screen" class="dashboard hidden">
         <aside class="sidebar">
+          <button id="home-brand" class="brand-block brand-home" type="button" data-route-view="home" aria-label="Home — current state of your kingdom">
+            <img class="brand-home-icon" src="app-icon-512.png" alt="" aria-hidden="true" />
+            <span class="brand-home-copy"><strong>Shattered Plains</strong><small id="game-date">Not signed in</small></span>
+            <span class="brand-home-affordance" aria-hidden="true">⌂</span>
+          </button>
           <nav id="dashboard-nav" class="side-nav primary-nav" aria-label="Game spaces">
             <button class="nav-button" type="button" data-route-view="warcamp" data-route-tab="buildings">Warcamp</button>
             <button class="nav-button" type="button" data-route-view="plains" data-route-tab="raids">Plains <span class="nav-state-dot hidden" id="siege-nav-state" aria-label="Siege needs attention"></span><span class="nav-state-dot hidden" id="run-nav-state" aria-label="Plateau Run open"></span></button>
-            <button class="nav-button" type="button" data-route-view="intelligence" data-route-tab="ledger">Intel</button>
+            <button class="nav-button" id="intelligence-primary-nav" type="button" data-route-view="intelligence" data-route-tab="ledger"><span data-intelligence-nav-label>Intel</span></button>
             <button class="nav-button" id="research-primary-nav" type="button" data-route-view="research" data-route-tab="current"><span data-research-nav-label>Research</span></button>
             <button class="nav-button hidden" type="button" data-view="testing" data-admin-only="true">Testing</button>
             <button class="nav-button hidden" type="button" data-view="chronicle" data-admin-only="true">Chronicle</button>
@@ -64,11 +69,6 @@
 
         <section class="main-panel">
           <header class="dashboard-header">
-            <button id="home-brand" class="brand-block brand-home" type="button" data-route-view="home" aria-label="Home — current state of your kingdom">
-              <img class="brand-home-icon" src="app-icon-512.png" alt="" aria-hidden="true" />
-              <span><strong>Shattered Plains</strong><small id="game-date">Not signed in</small></span>
-              <span class="brand-home-affordance" aria-hidden="true">⌂</span>
-            </button>
             <div class="header-context">
               <p class="eyebrow" id="view-eyebrow">Overview</p>
               <h2 id="view-title">Warcamp status</h2>
@@ -97,7 +97,7 @@
                   <div id="notification-list" class="notification-list"></div><p class="hint">Persistent reports and history live in the Spanreed Hub.</p>
                 </section>
               </div>
-              <button id="account-toggle" class="player-chip" type="button" aria-expanded="false" aria-controls="account-panel"><span class="settings-icon" aria-hidden="true">⚙</span><span class="settings-label">Settings</span><strong id="player-name" class="sr-only">Player</strong><small id="admin-status" class="sr-only">Standard account</small></button>
+              <button id="account-toggle" class="player-chip" type="button" aria-expanded="false" aria-controls="account-panel"><span class="settings-icon" aria-hidden="true">⚙</span><span class="settings-label">Settings</span><strong id="player-name" class="player-name-label">Player</strong><small id="admin-status" class="sr-only">Standard account</small></button>
               <section id="account-panel" class="account-panel-menu hidden" role="dialog" aria-label="Account and game settings">
                 <label class="preference-toggle"><input id="mission-confirmations" type="checkbox" checked> Confirm consequential missions</label>
                 <p class="hint">Enter or Return never launches a mission, regardless of this setting.</p>
@@ -122,7 +122,7 @@
             <section id="command-briefing" class="command-briefing hidden"><p class="eyebrow">Needs attention</p><div id="command-priorities" class="priority-list"></div></section>
             <div class="home-grid">
               <section class="panel full-panel home-module home-progress"><p class="eyebrow">In progress</p><h2>Active work</h2><div id="overview-operations" class="operation-timeline"></div></section>
-              <section class="panel full-panel home-module"><p class="eyebrow">Kingdom</p><h2>Current strength</h2><div id="kingdom-summary" class="compact-row-list"></div></section>
+              <section class="panel full-panel home-module home-kingdom"><p class="eyebrow">Kingdom</p><h2>Current strength</h2><div id="kingdom-summary" class="compact-row-list"></div></section>
               <section class="panel full-panel home-module home-plateaus" id="home-owned-plateaus"><div class="section-heading split-heading"><div><p class="eyebrow">Owned plateaus</p><h2>Your holdings</h2></div><button id="toggle-holdings" type="button" class="secondary compact-button" aria-expanded="false">Show details</button></div><div id="plateau-bonus-summary" class="pulse-grid"></div><div id="owned-plateaus" class="plateau-groups"></div></section>
               <section id="home-season" class="panel full-panel home-module"><div class="section-heading"><div><p class="eyebrow" id="ledger-season-name">Season</p><h2>Your performance</h2></div><strong id="ledger-total" class="ledger-total">0</strong></div><div id="ledger-categories" class="ledger-category-grid"></div><details><summary>Earned distinctions</summary><div id="ledger-achievements" class="ledger-badge-grid compact-completed-grid"></div></details><details><summary>Recent scoring events</summary><div id="ledger-events" class="ledger-event-list"></div></details><details class="ledger-rules"><summary>How seasonal scoring works</summary><div id="ledger-rules"></div></details></section>
               <section class="panel full-panel hostility-panel home-module" id="home-hostility"><div class="section-heading split-heading"><div><p class="eyebrow">World pressure</p><h2>Parshendi Hostility</h2></div><strong id="hostility-value">0 / 100 · Quiet</strong></div><div class="hostility-meter" role="progressbar" aria-label="Parshendi Hostility" aria-valuemin="0" aria-valuemax="100"><span id="hostility-meter-fill"></span></div><div id="hostility-summary" class="mission-summary"></div></section>

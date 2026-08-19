@@ -1,6 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { syncEspionageControlLock } from "./espionage-ui-state.js";
-import { normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
+import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
 
 const CONVEX_URL =
   window.SHATTERED_PLAINS_CONFIG?.convexUrl ||
@@ -104,6 +104,13 @@ let deferredInstallPrompt = null;
 let quantityIncrement = [1, 10, 50, 100].includes(Number(localStorage.getItem("sp-quantity-increment"))) ? Number(localStorage.getItem("sp-quantity-increment")) : 10;
 
 const $ = (id) => document.getElementById(id);
+
+function intelligenceUnlocks() {
+  return intelligenceDisclosureState({
+    networkLevel: state?.espionage?.networkLevel || state?.me?.buildings?.espionageNetwork || 0,
+    watchtowerLevel: state?.me?.buildings?.watchtower || state?.intelligence?.watchtower?.level || 0,
+  });
+}
 
 /**
  * Shared attack-planner contract. Every mission uses the same unit controls,
@@ -328,10 +335,10 @@ async function load(options = {}) {
         console.warn("Espionage backend is not available yet.", error);
         return { networkLevel: 0, available: {}, defending: {}, onMission: {}, counterIntelligence: 0, targets: [], missions: [], rules: { operatives: ESPIONAGE_UI_DEFAULTS.operatives, network: ESPIONAGE_UI_DEFAULTS.network } };
       }),
-      client.query(refs.getKingdomLedger, {}).catch((error) => {
+      Number(dashboard.player.buildings?.espionageNetwork || 0) >= 1 ? client.query(refs.getKingdomLedger, {}).catch((error) => {
         console.warn("Kingdom Intelligence backend is unavailable.", error);
         return { loadError: true, errorMessage: friendlyError(error), season: null, rows: [], generatedAt: Date.now() };
-      }),
+      }) : Promise.resolve({ locked: true, season: null, rows: [], generatedAt: Date.now() }),
       client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })),
       client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })),
       client.query(refs.listNotifications, {}).catch(() => ({ notifications: [], unreadCount: 0, preferences: { combat: true, missions: true, research: true, plateauRuns: true, messages: true }, devices: [], vapidPublicKey: null })),
@@ -674,6 +681,17 @@ function renderNavStates() {
   researchNav?.classList.toggle("hidden", disclosure === "hidden");
   const researchLabel = researchNav?.querySelector("[data-research-nav-label]");
   if (researchLabel) researchLabel.textContent = disclosure === "revealed" ? "Research" : "???";
+  const intelNav = $("intelligence-primary-nav");
+  const intelLabel = intelNav?.querySelector("[data-intelligence-nav-label]");
+  const intel = intelligenceUnlocks();
+  const intelligenceRevealed = intel.network || intel.watchtower;
+  if (intelNav) {
+    intelNav.disabled = !intelligenceRevealed;
+    intelNav.dataset.routeTab = intel.network ? "ledger" : "territory";
+    intelNav.title = intelligenceRevealed ? "Intelligence" : "Establish an intelligence network to reveal this space.";
+    intelNav.setAttribute("aria-label", intelligenceRevealed ? "Intelligence" : "Unknown game space");
+  }
+  if (intelLabel) intelLabel.textContent = intelligenceRevealed ? "Intel" : "???";
 }
 
 function captureSelections() {
@@ -714,6 +732,15 @@ function normalizeRoute(routeOrLegacy) {
     const disclosure = researchDisclosureState({ monasteryLevel: monastery, teased });
     if (disclosure !== "revealed") return disclosure === "teased" ? { ...route, tab: "teaser" } : { view: "home", tab: null };
   }
+  if (route.view === "intelligence" && state) {
+    const intel = intelligenceUnlocks();
+    if ((route.tab === "ledger" || route.tab === "operations") && !intel.network) {
+      return intel.watchtower ? { view: "intelligence", tab: "territory" } : { view: "home", tab: null };
+    }
+    if (route.tab === "territory" && !intel.watchtower) {
+      return intel.network ? { view: "intelligence", tab: "ledger" } : { view: "home", tab: null };
+    }
+  }
   const sectionKey = route.tab ? route.view + ":" + route.tab : route.view;
   if (!ROUTE_SECTIONS[sectionKey]) return { view: "home", tab: null };
   return route;
@@ -726,11 +753,16 @@ function routeSection(route) {
 function renderSpaceSubnav(route) {
   const nav = $("space-subnav");
   const tabs = SPACE_TABS[route.view] || [];
-  const visibleTabs = route.view === "intelligence" && Number(state?.espionage?.networkLevel || 0) < 1
+  const intel = intelligenceUnlocks();
+  const visibleTabs = route.view === "intelligence" && !intel.network
     ? tabs.filter((tab) => tab.key !== "operations")
     : tabs;
   nav.classList.toggle("hidden", visibleTabs.length < 1 || route.tab === "teaser");
-  nav.innerHTML = visibleTabs.map((tab) => '<button type="button" class="subnav-button ' + (route.tab === tab.key ? 'active' : '') + '" data-route-view="' + route.view + '" data-route-tab="' + tab.key + '">' + escapeHtml(tab.label) + (route.view === "plains" && tab.key === "plateau-runs" && state?.plateauRun ? '<span class="nav-state-dot" aria-label="Plateau Run active"></span>' : '') + '</button>').join("");
+  nav.innerHTML = visibleTabs.map((tab) => {
+    const locked = route.view === "intelligence" && ((tab.key === "ledger" || tab.key === "operations") ? !intel.network : tab.key === "territory" ? !intel.watchtower : false);
+    const requirement = tab.key === "territory" ? "Watchtower" : "Ghostblood Network";
+    return '<button type="button" class="subnav-button ' + (route.tab === tab.key ? 'active' : '') + (locked ? ' disclosure-locked' : '') + '"' + (locked ? ' disabled aria-label="Unknown intelligence function. Requires ' + requirement + '." title="Requires ' + requirement + '"' : ' data-route-view="' + route.view + '" data-route-tab="' + tab.key + '"') + '>' + escapeHtml(locked ? "???" : tab.label) + (route.view === "plains" && tab.key === "plateau-runs" && state?.plateauRun ? '<span class="nav-state-dot" aria-label="Plateau Run active"></span>' : '') + '</button>';
+  }).join("");
 }
 
 function applyRouteFocus(route) {
@@ -1127,10 +1159,14 @@ function renderResearch() {
   const libraries = ["economic", "military", "ancient"].map((key) => {
     const library = rules.libraries[key];
     const cards = projectCards.filter((entry) => entry.library === key);
-    const done = cards.filter((entry) => entry.html.includes('>Complete<')).length;
+    const currentCards = cards.filter((entry) => !entry.completed);
+    const completedCards = cards.filter((entry) => entry.completed);
+    const done = completedCards.length;
     const open = researchLibraryOpen(key);
     const doctrineSection = key === 'economic' ? '<div class="doctrine-section"><div class="section-heading"><div><strong>Economic Doctrine</strong><p>One doctrine may guide the kingdom at a time. A replacement takes effect only when its Research completes; repeated changes cost more time and Spheres.</p></div><span>' + doctrineChanges + ' prior change' + (doctrineChanges === 1 ? '' : 's') + '</span></div><div class="building-grid">' + doctrines + '</div></div>' : key === 'ancient' && research.futurePathUnlocked ? '<div class="rule-callout"><strong>A veiled path has opened.</strong><br>The ardents have found a question the Monastery is not yet prepared to name.</div>' : '';
-    return '<section class="research-library ' + (open ? 'open' : 'collapsed') + '" data-research-library="' + key + '"><button type="button" class="research-library-toggle" aria-expanded="' + String(open) + '"><span><strong>' + escapeHtml(library.name) + '</strong><small>' + escapeHtml(library.description) + '</small></span><b>' + done + ' / ' + cards.length + ' complete · ' + (open ? 'Collapse' : 'Expand') + '</b></button><div class="research-library-body">' + doctrineSection + '<div class="building-grid">' + cards.map((entry) => entry.html).join('') + '</div></div></section>';
+    const currentSection = currentCards.length ? '<div class="building-grid research-current-choices">' + currentCards.map((entry) => entry.html).join('') + '</div>' : '';
+    const completedSection = completedCards.length ? '<section class="completed-research-section"><div class="completed-research-heading"><strong>Mastered studies</strong><small>Active effects remain in force. Expand a row for details.</small></div><div class="completed-research-grid">' + completedCards.map((entry) => entry.html).join('') + '</div></section>' : '';
+    return '<section class="research-library ' + (open ? 'open' : 'collapsed') + '" data-research-library="' + key + '"><button type="button" class="research-library-toggle" aria-expanded="' + String(open) + '"><span><strong>' + escapeHtml(library.name) + '</strong><small>' + escapeHtml(library.description) + '</small></span><b>' + done + ' / ' + cards.length + ' complete · ' + (open ? 'Collapse' : 'Expand') + '</b></button><div class="research-library-body">' + doctrineSection + currentSection + completedSection + '</div></section>';
   }).join('');
   currentContainer.innerHTML = '<div class="building-grid">' + activeHtml + '</div><div class="research-current-stats">' + pulseItem("Research speed", "+" + number(research.speed?.total || 0) + "%") + pulseItem("Monastery", "+" + number(research.speed?.monastery || 0) + "%") + pulseItem("Ready Conclaves", "+" + number(research.speed?.conclave || 0) + "%") + pulseItem("Ancient insight", "+" + number(research.speed?.ancient || 0) + "%") + '</div>';
   const bonusRows = projectCards.filter((entry) => entry.level > 0 && entry.effect).map((entry) => '<div class="compact-status-row"><span><strong>' + escapeHtml(entry.name) + ' ' + number(entry.level) + '</strong><small>' + escapeHtml(entry.effect) + '</small></span><span class="status-badge ready">Active</span></div>');

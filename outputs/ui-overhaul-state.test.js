@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
+import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
 
 describe("UI overhaul state helpers", () => {
   test("the first authoritative roster render includes Chulls in stable order", () => {
@@ -34,5 +34,11 @@ describe("UI overhaul state helpers", () => {
     expect(researchDisclosureState()).toBe("hidden");
     expect(researchDisclosureState({ teased: true })).toBe("teased");
     expect(researchDisclosureState({ monasteryLevel: 1, teased: true })).toBe("revealed");
+  });
+
+  test("Intelligence spaces unlock from their own buildings", () => {
+    expect(intelligenceDisclosureState()).toEqual({ network: false, watchtower: false });
+    expect(intelligenceDisclosureState({ networkLevel: 1 })).toEqual({ network: true, watchtower: false });
+    expect(intelligenceDisclosureState({ watchtowerLevel: 1 })).toEqual({ network: false, watchtower: true });
   });
 });

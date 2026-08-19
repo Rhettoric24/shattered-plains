@@ -90,8 +90,8 @@ describe("espionage backend", () => {
     expect(status.available).toEqual(emptyOps);
 
     const ledger = await asLegacyPlayer.query(api.espionage.getKingdomLedger, {});
-    expect(ledger.season).toBeTruthy();
-    expect(ledger.rows.find((row) => row.playerId === playerId)?.own).toBe(true);
+    expect(ledger.locked).toBe(true);
+    expect(ledger.rows).toEqual([]);
   });
 
   test("recruitment consumes Spheres and shared Provision", async () => {

@@ -189,6 +189,9 @@ export const getKingdomLedger = query({
   handler: async (ctx) => {
     const viewer = await requireCurrentPlayer(ctx);
     const now = Date.now();
+    if (networkLevel(viewer) < 1) {
+      return { locked: true, season: null, generatedAt: now, decayStepMs: ESPIONAGE_RULES.decayStepMs, rows: [] };
+    }
     const season = await ctx.db.query("seasons").withIndex("by_status", (q) => q.eq("status", "active")).unique();
     const players = await ctx.db.query("players").take(200);
     const reports = await ctx.db.query("kingdomIntelligence")
