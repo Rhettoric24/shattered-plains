@@ -1,4 +1,8 @@
+/// <reference types="vite/client" />
+import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
+import { api, internal } from "./_generated/api";
+import schema from "./schema";
 import {
   ARDENTIA_RULES,
   RESEARCH_RULES,
@@ -17,6 +21,7 @@ import {
 } from "./rules";
 
 const units = { bridgeman: 0, spearman: 100, chull: 10, scout: 0, heavy: 0, shardbearer: 0 };
+const modules = import.meta.glob("./**/*.ts");
 
 describe("research configuration", () => {
   test("uses the agreed costs, durations, and monastery territory gate", () => {
@@ -32,6 +37,48 @@ describe("research configuration", () => {
   test("returns total project effects", () => {
     expect(researchEffect({ bridgeEngineering: 3 }, "bridgeEngineering")).toBe(30);
     expect(researchEffect({ gemCutting: 2 }, "gemCutting")).toBe(11);
+  });
+});
+
+describe("research switching", () => {
+  test("preserves paid progress and resumes without charging twice", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "scholar@example.com" }));
+    const playerId = await t.run(async (ctx) => await ctx.db.insert("players", {
+      authUserId: String(userId), name: "Scholar", normalizedName: "scholar", acres: 20,
+      spheres: 100_000, gemhearts: 0,
+      units: { bridgeman: 0, spearman: 0, chull: 0, scout: 0, heavy: 0, shardbearer: 0 },
+      buildings: { market: 0, watchtower: 0, ardentMonastery: 1, barracks: 0, soulcastBunker: 0, espionageNetwork: 0 },
+      lastActiveAt: Date.now(), createdAt: Date.now(),
+    }));
+    const player = t.withIdentity({ subject: String(userId) });
+
+    const firstStart = await player.mutation(api.research.start, { project: "bridgeEngineering" });
+    await t.run(async (ctx) => {
+      const state = await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", playerId)).unique();
+      await ctx.db.patch(state!._id, { lastAdvancedAt: Date.now() - 10 * 60 * 1000 });
+    });
+    await player.mutation(api.research.start, { project: "packHarnessDesign" });
+
+    let status = await player.query(api.research.getStatus, {});
+    const savedBridge = status.savedProgress["project:bridgeEngineering:1"];
+    expect(status.active).toMatchObject({ kind: "project", project: "packHarnessDesign", level: 1 });
+    expect(savedBridge.accumulatedBaseMs).toBeGreaterThan(10 * 60 * 1000);
+    expect(savedBridge.durationBaseMs).toBe(RESEARCH_RULES.projects.bridgeEngineering.durationsMs[0]);
+    await t.mutation(internal.research.completeActive, { playerId, expectedCompletionAt: firstStart.projectedCompletionAt });
+    expect((await player.query(api.research.getStatus, {})).active).toMatchObject({ project: "packHarnessDesign" });
+    const afterTwoStarts = await t.run(async (ctx) => (await ctx.db.get(playerId))!.spheres);
+    expect(afterTwoStarts).toBeCloseTo(90_000, 1);
+
+    const resumed = await player.mutation(api.research.start, { project: "bridgeEngineering" });
+    expect(resumed.resumed).toBe(true);
+    status = await player.query(api.research.getStatus, {});
+    expect(status.active).toMatchObject({ kind: "project", project: "bridgeEngineering", level: 1 });
+    expect(status.active?.accumulatedBaseMs).toBeGreaterThanOrEqual(savedBridge.accumulatedBaseMs);
+    expect(status.savedProgress["project:packHarnessDesign:1"]).toBeTruthy();
+    const afterResume = await t.run(async (ctx) => (await ctx.db.get(playerId))!.spheres);
+    expect(afterResume - afterTwoStarts).toBeGreaterThanOrEqual(0);
+    expect(afterResume - afterTwoStarts).toBeLessThan(1);
   });
 });
 

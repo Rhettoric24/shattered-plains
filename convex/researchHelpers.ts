@@ -43,7 +43,7 @@ export async function recordSuccessfulDefensiveSiege(ctx: MutationCtx, playerId:
   }
 }
 
-export async function reconcileResearch(ctx: MutationCtx, playerId: Id<"players">, now = Date.now()) {
+export async function reconcileResearch(ctx: MutationCtx, playerId: Id<"players">, now = Date.now(), options: { schedule?: boolean } = {}) {
   const state = await researchForPlayer(ctx, playerId);
   if ((!state?.activeProject && !state?.activeDoctrine) || !state.status) return state;
   const player = await ctx.db.get(playerId);
@@ -57,15 +57,15 @@ export async function reconcileResearch(ctx: MutationCtx, playerId: Id<"players"
   const requiresGemheartPlateau = Boolean((rule as unknown as { requiresGemheartPlateau?: readonly boolean[] } | undefined)?.requiresGemheartPlateau?.[level - 1]);
   let accumulated = state.accumulatedBaseMs ?? 0;
   if (state.status === "active" && state.lastAdvancedAt) accumulated += (now - state.lastAdvancedAt) * (1 + speed.total / 100);
-  const duration = state.activeDoctrine
+  const duration = state.activeDurationBaseMs ?? (state.activeDoctrine
     ? RESEARCH_RULES.doctrine.baseDurationMs + (state.economicDoctrine ? (state.doctrineChangeCount ?? 0) + 1 : 0) * RESEARCH_RULES.doctrine.switchDurationIncreaseMs
-    : rule!.durationsMs[level - 1];
+    : rule!.durationsMs[level - 1]);
   if (accumulated >= duration) {
     const completingDoctrine = state.activeDoctrine as EconomicDoctrineKey | undefined;
     const completedLevels = key ? { ...state.completedLevels, [key]: level } : state.completedLevels;
     const doctrineChanged = Boolean(completingDoctrine && state.economicDoctrine && state.economicDoctrine !== completingDoctrine);
     const unlockFuture = (key === "sprenStudies" || key === "religiousStudies") && level >= 4;
-    await ctx.db.patch(state._id, { completedLevels, economicDoctrine: completingDoctrine ?? state.economicDoctrine, doctrineChangeCount: (state.doctrineChangeCount ?? 0) + (doctrineChanged ? 1 : 0), futurePathUnlocked: state.futurePathUnlocked || unlockFuture || undefined, activeProject: undefined, activeDoctrine: undefined, activeLevel: undefined, status: undefined, accumulatedBaseMs: undefined, lastAdvancedAt: undefined, projectedCompletionAt: undefined, updatedAt: now });
+    await ctx.db.patch(state._id, { completedLevels, economicDoctrine: completingDoctrine ?? state.economicDoctrine, doctrineChangeCount: (state.doctrineChangeCount ?? 0) + (doctrineChanged ? 1 : 0), futurePathUnlocked: state.futurePathUnlocked || unlockFuture || undefined, activeProject: undefined, activeDoctrine: undefined, activeLevel: undefined, status: undefined, accumulatedBaseMs: undefined, activeDurationBaseMs: undefined, lastAdvancedAt: undefined, projectedCompletionAt: undefined, updatedAt: now });
     const completedName = completingDoctrine ? completingDoctrine : rule!.name;
     if (key) await awardSeasonPoints(ctx, {
       playerId, category: "research", sourceType: "research_completion", sourceKey: `research:${state._id}:${key}:${level}`,
@@ -98,6 +98,6 @@ export async function reconcileResearch(ctx: MutationCtx, playerId: Id<"players"
       dedupeKey: `research:${state._id}:${key}:${state.activeLevel}:${status}:${now}`, createdAt: now,
     });
   }
-  if (status === "active" && projectedCompletionAt) await ctx.scheduler.runAt(projectedCompletionAt, internal.research.completeActive, { playerId });
+  if (options.schedule !== false && status === "active" && projectedCompletionAt) await ctx.scheduler.runAt(projectedCompletionAt, internal.research.completeActive, { playerId, expectedCompletionAt: projectedCompletionAt });
   return await ctx.db.get(state._id);
 }

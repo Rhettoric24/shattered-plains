@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 
 const html = readFileSync(new URL("./convex-client.html", import.meta.url), "utf8");
 const css = readFileSync(new URL("./clarity-components.css", import.meta.url), "utf8");
+const client = readFileSync(new URL("./convex-client.js", import.meta.url), "utf8");
 
 describe("post-overhaul shell", () => {
   test("places the branded Home control above primary navigation", () => {
@@ -33,5 +34,21 @@ describe("post-overhaul shell", () => {
     expect(html).toContain("home-module home-kingdom");
     expect(css).toContain(".home-kingdom");
     expect(css).toContain("#home-season");
+  });
+
+  test("keeps the mobile brand and controls in one header row", () => {
+    expect(css).toContain(".sidebar { min-height: 0; height: 0; }");
+    expect(css).toContain(".brand-home { width: calc(100vw - 132px); }");
+    expect(css).toContain(".player-chip .settings-icon { display: inline-block; }");
+  });
+
+  test("keeps operative recruitment controls from stretching the Recruit button", () => {
+    expect(css).toContain(".operative-recruit > button");
+    expect(css).toContain("height: 42px");
+  });
+
+  test("recovers Territory Intelligence when plateau payloads are out of sync", () => {
+    expect(client).toContain("returnedWatchtowerLevel !== dashboardWatchtowerLevel");
+    expect(client).toContain("client.query(refs.listDossiers");
   });
 });

@@ -298,7 +298,10 @@ button, input, select, textarea, summary, [role="button"] { touch-action: manipu
 .quantity-adjust-row input { min-width: 0; text-align: center; }
 .quantity-adjust-row button { min-height: 40px; padding: 0 7px; }
 .quantity-sign { font-size: 1.25rem; }
-.operative-recruit { display: grid; gap: 8px; }
+.operative-recruit { display: grid; grid-template-columns: minmax(280px,1fr) auto; gap: 8px; align-items: end; }
+.operative-recruit > button { width: auto; min-width: 104px; min-height: 42px; height: 42px; align-self: end; padding-inline: 14px; }
+.saved-research-card { border-color: rgba(255,216,138,.46); box-shadow: 0 0 20px rgba(255,216,138,.08); }
+.research-switch-note { margin-top: 4px; }
 .siege-defense-grid { grid-template-columns: 1fr; }
 
 @media (max-width: 980px) and (min-width: 721px) {
@@ -307,11 +310,14 @@ button, input, select, textarea, summary, [role="button"] { touch-action: manipu
 
 @media (max-width: 720px) {
   body { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
+  .sidebar { min-height: 0; height: 0; }
+  .brand-home { width: calc(100vw - 132px); }
   .dashboard-header { display: flex; height: 54px; min-height: 54px; padding: 5px 7px; border-width: 0 0 1px; border-radius: 0; }
   .dashboard-header .brand-home { position: static; z-index: auto; width: auto; min-width: 0; max-width: calc(100vw - 138px); height: 42px; padding: 3px 4px; background: transparent; }
   .brand-home-affordance { width: 22px; height: 22px; flex: 0 0 22px; }
   .header-actions { margin-left: auto; }
   .settings-label { display: none; }
+  .player-chip .settings-icon { display: inline-block; }
   .player-name-label { display: none; }
   .player-chip { width: 38px; min-width: 38px; padding: 0; }
   .resource-strip { top: 54px; }
@@ -324,4 +330,6 @@ button, input, select, textarea, summary, [role="button"] { touch-action: manipu
   .quantity-adjust-row [data-quantity-half], .quantity-adjust-row [data-quantity-max] { grid-column: span 1; }
   .quantity-adjust-row [data-quantity-half]:nth-last-child(2) { grid-column: 1 / 3; }
   .quantity-adjust-row [data-quantity-max]:last-child { grid-column: 3 / 4; }
+  .operative-recruit { grid-template-columns: minmax(0,1fr); }
+  .operative-recruit > button { width: 100%; min-width: 0; }
 }

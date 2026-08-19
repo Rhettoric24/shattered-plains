@@ -352,6 +352,26 @@ async function load(options = {}) {
     ]);
 
     if (requestId !== latestLoadRequest) return;
+    const dashboardWatchtowerLevel = Math.max(0, Math.min(3, Number(dashboard.player.buildings?.watchtower || 0)));
+    let territoryIntelligence = plateaus?.intelligence || null;
+    const returnedWatchtowerLevel = Number(territoryIntelligence?.watchtower?.level ?? plateaus?.watchtower?.level ?? -1);
+    if (!territoryIntelligence || returnedWatchtowerLevel !== dashboardWatchtowerLevel) {
+      territoryIntelligence = await client.query(refs.listDossiers, {}).catch((error) => {
+        console.warn("Territory Intelligence compatibility query failed.", error);
+        return territoryIntelligence || { kingdoms: [], territories: [], watchtower: plateaus?.watchtower || {} };
+      });
+    }
+    if (requestId !== latestLoadRequest) return;
+    territoryIntelligence = {
+      kingdoms: territoryIntelligence?.kingdoms || [],
+      territories: territoryIntelligence?.territories || [],
+      watchtower: {
+        ...(territoryIntelligence?.watchtower || plateaus?.watchtower || {}),
+        level: dashboardWatchtowerLevel,
+        territoryLevel: dashboardWatchtowerLevel >= 2 ? 2 : dashboardWatchtowerLevel >= 1 ? 1 : 0,
+        counterIntelligence: dashboardWatchtowerLevel >= 3 ? 1 : 0,
+      },
+    };
 
     // Worlds created before seasons existed have no active ledger. Bootstrap is
     // idempotent and fills that migration gap without resetting existing data.
@@ -368,7 +388,7 @@ async function load(options = {}) {
       plateaus,
       plateauRun,
       inbox,
-      intelligence: plateaus?.intelligence || { kingdoms: [], territories: [], watchtower: { level: 0, territoryLevel: 0, counterIntelligence: 0 } },
+      intelligence: territoryIntelligence,
       espionage,
       kingdomLedger,
       ardentia,
@@ -1102,7 +1122,7 @@ function renderResearch() {
   const rules = research.rules || state.config.researchRules;
   const active = research.active;
   const activeName = active?.kind === "doctrine" ? research.doctrines?.[active.doctrine]?.name : rules.projects[active?.project]?.name;
-  const activeHtml = active ? '<article class="upgrade-card investment-card active-research-card"><div class="card-heading"><div><strong>Active Research</strong><span>' + escapeHtml(activeName || "Research") + (active.level ? ' · Level ' + active.level : '') + '</span></div><span class="status-badge ' + (active.status === "paused" ? 'blocked' : 'ready') + '">' + escapeHtml(active.status) + '</span></div><p>Research speed +' + number(research.speed.total) + '%</p><div class="research-speed-breakdown"><span>Monastery +' + number(research.speed.monastery) + '%</span><span>Available Conclaves +' + number(research.speed.conclave) + '%</span><span>Ancient Plateaus +' + number(research.speed.ancient) + '%</span></div><small>' + (active.projectedCompletionAt ? 'Expected ' + new Date(active.projectedCompletionAt).toLocaleString() : 'Paused until the territory requirement is restored.') + '</small></article>' : '<div class="empty">No research is active. Choose a project below.</div>';
+  const activeHtml = active ? '<article class="upgrade-card investment-card active-research-card"><div class="card-heading"><div><strong>Active Research</strong><span>' + escapeHtml(activeName || "Research") + (active.level ? ' · Level ' + active.level : '') + '</span></div><span class="status-badge ' + (active.status === "paused" ? 'blocked' : 'ready') + '">' + escapeHtml(active.status) + '</span></div><p>Research speed +' + number(research.speed.total) + '%</p><div class="research-speed-breakdown"><span>Monastery +' + number(research.speed.monastery) + '%</span><span>Available Conclaves +' + number(research.speed.conclave) + '%</span><span>Ancient Plateaus +' + number(research.speed.ancient) + '%</span></div><small>' + (active.projectedCompletionAt ? 'Expected ' + new Date(active.projectedCompletionAt).toLocaleString() : 'Paused until the territory requirement is restored.') + '</small><p class="rule-callout research-switch-note">You may switch studies in Libraries. Paid progress is saved and can be resumed later.</p></article>' : '<div class="empty">No research is active. Choose a project below.</div>';
   const projectCards = Object.entries(rules.projects).map(([key, project]) => {
     const level = Number(research.completedLevels?.[key] || 0);
     const next = level + 1;
@@ -1118,10 +1138,17 @@ function renderResearch() {
     const speedTooltip = 'Base duration: ' + formatDuration(baseMinutes) + '\nTotal research speed: +' + number(research.speed?.total || 0) + '%\nMonastery: +' + number(research.speed?.monastery || 0) + '%\nConclaves: +' + number(research.speed?.conclave || 0) + '%\nAncient Plateaus: +' + number(research.speed?.ancient || 0) + '%\nAdjusted duration = Base ÷ (1 + total speed).';
     const needsGemPlateau = Boolean(project.requiresGemheartPlateau?.[next - 1]);
     const defenses = Number(project.defensiveSieges?.[next - 1] || 0);
-    const canStart = !active && Number(state.me.buildings.ardentMonastery || 0) >= monastery && state.me.spheres >= spheres && state.me.gemhearts >= gems && Number(research.speed?.researchAncientCount || research.speed?.ancientCount || 0) >= ancient && (!needsGemPlateau || Number(research.speed?.gemheartPlateauCount || 0) > 0) && Number(research.successfulDefensiveSieges || 0) >= defenses;
+    const savedKey = 'project:' + key + ':' + next;
+    const saved = research.savedProgress?.[savedKey];
+    const currentlyActive = active?.kind === 'project' && active.project === key && Number(active.level || 0) === next;
+    const requirementsMet = Number(state.me.buildings.ardentMonastery || 0) >= monastery && Number(research.speed?.researchAncientCount || research.speed?.ancientCount || 0) >= ancient && (!needsGemPlateau || Number(research.speed?.gemheartPlateauCount || 0) > 0) && Number(research.successfulDefensiveSieges || 0) >= defenses;
+    const canStart = !currentlyActive && requirementsMet && (saved || (state.me.spheres >= spheres && state.me.gemhearts >= gems));
+    const savedPercent = saved?.durationBaseMs ? Math.max(1, Math.min(99, Math.floor(Number(saved.accumulatedBaseMs || 0) / Number(saved.durationBaseMs) * 100))) : 0;
+    const actionLabel = currentlyActive ? 'Currently researching' : saved ? 'Resume Level ' + next + (savedPercent ? ' · ' + savedPercent + '%' : '') : active ? 'Switch to Level ' + next : 'Research Level ' + next;
+    const statusLabel = currentlyActive ? 'In progress' : saved ? 'Saved · ' + savedPercent + '%' : canStart ? 'Ready' : 'Requirements unmet';
     const currentEffect = level ? '<p class="research-effect"><strong>Current effect:</strong> ' + escapeHtml(researchEffectText(key, level, project)) + '</p>' : '';
     const special = (needsGemPlateau ? '<div><span>Gemheart territory</span><strong>' + number(research.speed?.gemheartPlateauCount || 0) + ' held</strong></div>' : '') + (defenses ? '<div><span>Defensive sieges</span><strong>' + number(research.successfulDefensiveSieges || 0) + ' / ' + defenses + '</strong></div>' : '');
-    const html = '<article class="upgrade-card investment-card research-card"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>Current Level ' + level + ' · Next Level ' + next + '</span></div><span class="status-badge ' + (canStart ? 'ready' : 'blocked') + '">' + (canStart ? 'Ready' : 'Requirements unmet') + '</span></div><p class="research-description">' + escapeHtml(project.description || "") + '</p>' + currentEffect + '<p class="research-effect"><strong>Next total effect:</strong> ' + escapeHtml(researchEffectText(key, next, project)) + '</p><div class="research-requirements"><div><span>Sphere cost</span><strong>' + number(spheres) + ' Spheres</strong></div><div><span>Gemheart cost</span><strong>' + number(gems) + ' Gemhearts</strong></div><div><span>Research AP</span><strong>' + number(research.speed?.researchAncientCount || research.speed?.ancientCount || 0) + ' / ' + ancient + '</strong></div><div><span>Monastery</span><strong>Level ' + monastery + '</strong></div>' + special + '</div><button type="button" class="research-time-cell" title="' + escapeHtml(speedTooltip) + '"><span>Base time</span><strong>' + formatDuration(baseMinutes) + '</strong><small>Adjusted: ' + formatDuration(adjustedMinutes) + ' with +' + number(research.speed?.total || 0) + '% speed</small></button><button data-research-project="' + key + '"' + (canStart ? '' : ' disabled') + '>Research Level ' + next + '</button></article>';
+    const html = '<article class="upgrade-card investment-card research-card' + (saved ? ' saved-research-card' : '') + '"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>Current Level ' + level + ' · Next Level ' + next + '</span></div><span class="status-badge ' + (canStart || currentlyActive ? 'ready' : 'blocked') + '">' + escapeHtml(statusLabel) + '</span></div><p class="research-description">' + escapeHtml(project.description || "") + '</p>' + currentEffect + '<p class="research-effect"><strong>Next total effect:</strong> ' + escapeHtml(researchEffectText(key, next, project)) + '</p><div class="research-requirements"><div><span>Sphere cost</span><strong>' + (saved ? 'Paid · resume' : number(spheres) + ' Spheres') + '</strong></div><div><span>Gemheart cost</span><strong>' + (saved ? 'Paid · resume' : number(gems) + ' Gemhearts') + '</strong></div><div><span>Research AP</span><strong>' + number(research.speed?.researchAncientCount || research.speed?.ancientCount || 0) + ' / ' + ancient + '</strong></div><div><span>Monastery</span><strong>Level ' + monastery + '</strong></div>' + special + '</div><button type="button" class="research-time-cell" title="' + escapeHtml(speedTooltip) + '"><span>Base time</span><strong>' + formatDuration(baseMinutes) + '</strong><small>' + (saved ? savedPercent + '% preserved · no repeat cost' : 'Adjusted: ' + formatDuration(adjustedMinutes) + ' with +' + number(research.speed?.total || 0) + '% speed') + '</small></button><button data-research-project="' + key + '" data-research-name="' + escapeHtml(project.name) + '"' + (canStart ? '' : ' disabled') + '>' + escapeHtml(actionLabel) + '</button></article>';
     return { library: project.library, completed: false, key, name: project.name, level, effect: level ? researchEffectText(key, level, project) : "", html };
   });
   const rankThresholds = state.config.ardentiaRules?.rankThresholds || [0, 500, 1000, 1500, 2000];
@@ -1153,8 +1180,12 @@ function renderResearch() {
   const doctrineSpeedTooltip = 'Base duration: ' + formatDuration(doctrineMinutes) + '\nTotal research speed: +' + number(research.speed?.total || 0) + '%\nMonastery: +' + number(research.speed?.monastery || 0) + '%\nConclaves: +' + number(research.speed?.conclave || 0) + '%\nAncient Plateaus: +' + number(research.speed?.ancient || 0) + '%';
   const doctrines = Object.entries(research.doctrines || {}).map(([key, doctrine]) => {
     const selected = research.economicDoctrine === key;
-    const canChoose = !active && !selected && state.me.spheres >= doctrineCost;
-    return '<article class="upgrade-card doctrine-card"><div class="card-heading"><div><strong>' + escapeHtml(doctrine.name) + '</strong><span>' + (selected ? 'Current doctrine' : 'Economic Doctrine') + '</span></div><span class="status-badge ' + (selected ? 'ready' : canChoose ? 'ready' : 'blocked') + '">' + (selected ? 'Active' : canChoose ? 'Available' : 'Unavailable') + '</span></div><p class="research-description">' + escapeHtml(doctrine.description) + '</p><div class="doctrine-effects">' + doctrine.effects.map((effect) => '<span>' + escapeHtml(effect) + '</span>').join('') + '</div><div class="research-requirements"><div><span>Sphere cost</span><strong>' + number(doctrineCost) + ' Spheres</strong></div></div><button type="button" class="research-time-cell" title="' + escapeHtml(doctrineSpeedTooltip) + '"><span>Base time</span><strong>' + formatDuration(doctrineMinutes) + '</strong><small>Adjusted: ' + formatDuration(doctrineAdjustedMinutes) + ' with +' + number(research.speed?.total || 0) + '% speed</small></button><button data-research-doctrine="' + key + '"' + (canChoose ? '' : ' disabled') + '>' + (selected ? 'Doctrine active' : research.economicDoctrine ? 'Change doctrine' : 'Adopt doctrine') + '</button></article>';
+    const saved = research.savedProgress?.['doctrine:' + key];
+    const currentlyActive = active?.kind === 'doctrine' && active.doctrine === key;
+    const savedPercent = saved?.durationBaseMs ? Math.max(1, Math.min(99, Math.floor(Number(saved.accumulatedBaseMs || 0) / Number(saved.durationBaseMs) * 100))) : 0;
+    const canChoose = !selected && !currentlyActive && (saved || state.me.spheres >= doctrineCost);
+    const actionLabel = selected ? 'Doctrine active' : currentlyActive ? 'Currently considering' : saved ? 'Resume doctrine · ' + savedPercent + '%' : active ? 'Switch doctrine' : research.economicDoctrine ? 'Change doctrine' : 'Adopt doctrine';
+    return '<article class="upgrade-card doctrine-card' + (saved ? ' saved-research-card' : '') + '"><div class="card-heading"><div><strong>' + escapeHtml(doctrine.name) + '</strong><span>' + (selected ? 'Current doctrine' : 'Economic Doctrine') + '</span></div><span class="status-badge ' + (selected || canChoose || currentlyActive ? 'ready' : 'blocked') + '">' + (selected ? 'Active' : currentlyActive ? 'In progress' : saved ? 'Saved · ' + savedPercent + '%' : canChoose ? 'Available' : 'Unavailable') + '</span></div><p class="research-description">' + escapeHtml(doctrine.description) + '</p><div class="doctrine-effects">' + doctrine.effects.map((effect) => '<span>' + escapeHtml(effect) + '</span>').join('') + '</div><div class="research-requirements"><div><span>Sphere cost</span><strong>' + (saved ? 'Paid · resume' : number(doctrineCost) + ' Spheres') + '</strong></div></div><button type="button" class="research-time-cell" title="' + escapeHtml(doctrineSpeedTooltip) + '"><span>Base time</span><strong>' + formatDuration(doctrineMinutes) + '</strong><small>' + (saved ? savedPercent + '% preserved · no repeat cost' : 'Adjusted: ' + formatDuration(doctrineAdjustedMinutes) + ' with +' + number(research.speed?.total || 0) + '% speed') + '</small></button><button data-research-doctrine="' + key + '" data-research-name="' + escapeHtml(doctrine.name) + '"' + (canChoose ? '' : ' disabled') + '>' + escapeHtml(actionLabel) + '</button></article>';
   }).join('');
   const libraries = ["economic", "military", "ancient"].map((key) => {
     const library = rules.libraries[key];
@@ -1175,8 +1206,14 @@ function renderResearch() {
   bonusesContainer.innerHTML = bonusRows.join("") || '<div class="empty">Complete Research to establish kingdom-wide bonuses.</div>';
   librariesContainer.innerHTML = '<div class="research-libraries">' + libraries + '</div>';
   ardentsContainer.innerHTML = '<div class="cohort-heading"><div><h3>Ardent Cohort</h3><p>Field experience strengthens every Conclave and accelerates the kingdom\'s research. Research AP: ' + number(research.speed?.ancientCount || 0) + ' actual' + (research.speed?.virtualAncient ? ' + ' + number(research.speed.virtualAncient) + ' permanent insight' : '') + '.</p></div><span class="status-badge ready">+' + number(cohortBonus) + '% combined speed</span></div><div class="building-grid">' + (conclaves || '<div class="empty">Form a Scout Conclave from Recruitment.</div>') + '</div>';
-  librariesContainer.querySelectorAll("[data-research-project]").forEach((button) => button.addEventListener("click", () => action(() => client.mutation(refs.startResearch, { project: button.dataset.researchProject }))));
-  librariesContainer.querySelectorAll("[data-research-doctrine]").forEach((button) => button.addEventListener("click", () => action(() => client.mutation(refs.startDoctrine, { doctrine: button.dataset.researchDoctrine }))));
+  librariesContainer.querySelectorAll("[data-research-project]").forEach((button) => button.addEventListener("click", () => {
+    if (active && !window.confirm('Switch Research to ' + button.dataset.researchName + '?\n\nYour current paid progress will be saved and can be resumed later.')) return;
+    action(() => client.mutation(refs.startResearch, { project: button.dataset.researchProject }));
+  }));
+  librariesContainer.querySelectorAll("[data-research-doctrine]").forEach((button) => button.addEventListener("click", () => {
+    if (active && !window.confirm('Switch Research to ' + button.dataset.researchName + '?\n\nYour current paid progress will be saved and can be resumed later.')) return;
+    action(() => client.mutation(refs.startDoctrine, { doctrine: button.dataset.researchDoctrine }));
+  }));
   librariesContainer.querySelectorAll("[data-research-library]").forEach((library) => library.querySelector(".research-library-toggle")?.addEventListener("click", () => { const open = !library.classList.contains("open"); library.classList.toggle("open", open); library.classList.toggle("collapsed", !open); localStorage.setItem("sp-research-library-" + library.dataset.researchLibrary, open ? "open" : "closed"); renderResearch(); }));
   ardentsContainer.querySelectorAll("[data-rename-conclave]").forEach((button) => button.addEventListener("click", () => {
     const name = window.prompt("Name this Scout Conclave", button.dataset.conclaveName);
