@@ -6,11 +6,12 @@ const css = readFileSync(new URL("./clarity-components.css", import.meta.url), "
 const client = readFileSync(new URL("./convex-client.js", import.meta.url), "utf8");
 
 describe("post-overhaul shell", () => {
-  test("places the branded Home control above primary navigation", () => {
+  test("places branding, global controls, resources, and subnavigation in one shell", () => {
     const primaryNav = html.match(/<nav id="dashboard-nav"[\s\S]*?<\/nav>/)?.[0] || "";
-    const sidebar = html.match(/<aside class="sidebar">[\s\S]*?<\/aside>/)?.[0] || "";
+    const globalShell = html.match(/<header id="global-shell"[\s\S]*?<\/header>/)?.[0] || "";
     expect(primaryNav).not.toContain(">Home<");
-    expect(sidebar).toMatch(/id="home-brand"[\s\S]*id="dashboard-nav"/);
+    expect(globalShell).toMatch(/id="home-brand"[\s\S]*class="header-actions"[\s\S]*class="resource-strip"[\s\S]*id="space-subnav"/);
+    expect(html).toMatch(/<\/header>[\s\S]*<aside class="sidebar navigation-rail"/);
     expect(html).toContain('brand-home-affordance');
   });
 
@@ -37,9 +38,9 @@ describe("post-overhaul shell", () => {
   });
 
   test("keeps the mobile brand and controls in one header row", () => {
-    expect(css).toContain(".sidebar { min-height: 0; height: 0; }");
-    expect(css).toContain("z-index: 71;");
-    expect(css).toContain("width: calc(100vw - 168px);");
+    expect(css).toContain(".navigation-rail { position: static; min-height: 0; height: 0;");
+    expect(css).toContain(".dashboard-header { min-height: 50px;");
+    expect(css).toContain(".header-context { display: none; }");
     expect(css).toContain(".player-chip .settings-icon { display: inline-block; }");
   });
 

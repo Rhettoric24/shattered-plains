@@ -9,7 +9,9 @@
     "preview": "npm run build && node outputs/convex-static-server.js dist",
     "convex:dev": "npx convex dev",
     "convex:deploy": "npx convex deploy",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "node scripts/run-e2e.mjs",
+    "test:e2e:update": "node scripts/run-e2e.mjs --update-snapshots"
   },
   "dependencies": {
     "@convex-dev/auth": "latest",
@@ -21,6 +23,7 @@
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
+    "@playwright/test": "^1.62.1",
     "@types/web-push": "^3.6.4",
     "convex-test": "^0.0.54",
     "vitest": "^4.1.10"

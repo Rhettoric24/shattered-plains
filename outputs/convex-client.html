@@ -51,24 +51,13 @@
       </section>
 
       <section id="game-screen" class="dashboard hidden">
-        <aside class="sidebar">
-          <button id="home-brand" class="brand-block brand-home" type="button" data-route-view="home" aria-label="Home — current state of your kingdom">
+        <header id="global-shell" class="global-shell">
+          <div class="dashboard-header">
+            <button id="home-brand" class="brand-block brand-home" type="button" data-route-view="home" aria-label="Home — current state of your kingdom">
             <img class="brand-home-icon" src="app-icon-512.png" alt="" aria-hidden="true" />
             <span class="brand-home-copy"><strong>Shattered Plains</strong><small id="game-date">Not signed in</small></span>
             <span class="brand-home-affordance" aria-hidden="true">⌂</span>
-          </button>
-          <nav id="dashboard-nav" class="side-nav primary-nav" aria-label="Game spaces">
-            <button class="nav-button" type="button" data-route-view="warcamp" data-route-tab="buildings">Warcamp</button>
-            <button class="nav-button" type="button" data-route-view="plains" data-route-tab="raids">Plains <span class="nav-state-dot hidden" id="siege-nav-state" aria-label="Siege needs attention"></span><span class="nav-state-dot hidden" id="run-nav-state" aria-label="Plateau Run open"></span></button>
-            <button class="nav-button" id="intelligence-primary-nav" type="button" data-route-view="intelligence" data-route-tab="ledger"><span data-intelligence-nav-label>Intel</span></button>
-            <button class="nav-button" id="research-primary-nav" type="button" data-route-view="research" data-route-tab="current"><span data-research-nav-label>Research</span></button>
-            <button class="nav-button hidden" type="button" data-view="testing" data-admin-only="true">Testing</button>
-            <button class="nav-button hidden" type="button" data-view="chronicle" data-admin-only="true">Chronicle</button>
-          </nav>
-        </aside>
-
-        <section class="main-panel">
-          <header class="dashboard-header">
+            </button>
             <div class="header-context">
               <p class="eyebrow" id="view-eyebrow">Overview</p>
               <h2 id="view-title">Warcamp status</h2>
@@ -104,7 +93,7 @@
                 <button id="logout" class="secondary" type="button">Sign out</button>
               </section>
             </div>
-          </header>
+          </div>
 
           <section class="resource-strip" aria-label="Current resources">
             <article data-route-view="warcamp" data-route-tab="buildings"><span>Spheres</span><strong id="res-spheres">0</strong></article>
@@ -116,6 +105,20 @@
           </section>
 
           <nav id="space-subnav" class="space-subnav hidden" aria-label="Current game space"></nav>
+        </header>
+
+        <aside class="sidebar navigation-rail" aria-label="Primary game navigation">
+          <nav id="dashboard-nav" class="side-nav primary-nav" aria-label="Game spaces">
+            <button class="nav-button" type="button" data-route-view="warcamp" data-route-tab="buildings">Warcamp</button>
+            <button class="nav-button" type="button" data-route-view="plains" data-route-tab="raids">Plains <span class="nav-state-dot hidden" id="siege-nav-state" aria-label="Siege needs attention"></span><span class="nav-state-dot hidden" id="run-nav-state" aria-label="Plateau Run open"></span></button>
+            <button class="nav-button" id="intelligence-primary-nav" type="button" data-route-view="intelligence" data-route-tab="ledger"><span data-intelligence-nav-label>Intel</span></button>
+            <button class="nav-button" id="research-primary-nav" type="button" data-route-view="research" data-route-tab="current"><span data-research-nav-label>Research</span></button>
+            <button class="nav-button hidden" type="button" data-route-view="testing" data-admin-only="true">Testing</button>
+            <button class="nav-button hidden" type="button" data-route-view="chronicle" data-admin-only="true">Chronicle</button>
+          </nav>
+        </aside>
+
+        <section class="main-panel">
 
 
           <section class="view active home-view" id="view-overview" data-title="Your kingdom now" data-eyebrow="Home">

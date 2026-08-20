@@ -79,9 +79,14 @@ function routeFromLocation() {
   const params = new URLSearchParams(location.search);
   const rawView = params.get("view") || localStorage.getItem("sp-current-view") || "home";
   const legacy = LEGACY_ROUTES[rawView];
+  const view = legacy?.view || rawView;
+  const requestedTab = params.get("tab") || legacy?.tab || localStorage.getItem("sp-current-tab");
+  const tab = requestedTab && ROUTE_SECTIONS[view + ":" + requestedTab]
+    ? requestedTab
+    : DEFAULT_TABS[view] || null;
   return {
-    view: legacy?.view || rawView,
-    tab: params.get("tab") || legacy?.tab || localStorage.getItem("sp-current-tab") || DEFAULT_TABS[legacy?.view || rawView] || null,
+    view,
+    tab,
     focus: params.get("focus") || legacy?.focus || null,
     message: params.get("message") || null,
     kingdom: params.get("kingdom") || null,
@@ -90,7 +95,6 @@ function routeFromLocation() {
 }
 
 let currentRoute = routeFromLocation();
-let currentView = currentRoute.view;
 let lastSelections = { trainUnit: "", target: "", attackUnits: {}, recruitment: {}, espionageMission: {}, espionageDefense: {} };
 let previewListenersReady = false;
 let activePopoverAnchor = null;
@@ -574,99 +578,9 @@ function render() {
   renderIntelligence();
   renderLog();
   renderOverview();
-  renderWorldAlerts();
   renderAdminAccess();
   renderNavStates();
   showRoute(currentRoute, { history: "replace" });
-}
-
-function renderWorldAlerts() {
-  const alerts = buildWorldAlerts();
-  const container = $("world-alerts");
-  if (!container) return;
-  container.innerHTML = alerts.map((alert) => {
-    const action = alert.view
-      ? '<button type="button" data-alert-view="' + alert.view + '">' + escapeHtml(alert.action) + '</button>'
-      : "";
-    return '<article class="world-alert ' + alert.kind + '"><div><strong>' + escapeHtml(alert.title) + '</strong><span>' + escapeHtml(alert.text) + '</span></div>' + action + '</article>';
-  }).join("");
-  container.querySelectorAll("[data-alert-view]").forEach((button) => {
-    button.addEventListener("click", () => showView(button.dataset.alertView));
-  });
-}
-
-function buildWorldAlerts() {
-  const alerts = [];
-  const incoming = state.raids.filter((raid) => raid.targetId === state.me.id);
-  const outgoing = state.raids.filter((raid) => raid.attackerId === state.me.id);
-  const mySieges = state.plateaus.sieges.filter((siege) => siege.attackerId === state.me.id || siege.defenderId === state.me.id);
-
-  if (state.worldPressure?.warning) {
-    alerts.push({
-      kind: "warning",
-      title: state.worldPressure.warning.phase === "launched" ? "Parshendi Retaliation" : "Parshendi Activity Increasing",
-      text: state.worldPressure.warning.message,
-      action: "Open Plateaus",
-      view: "plateaus",
-    });
-  }
-
-  if (state.plateauRun) {
-    const remaining = Math.max(0, Math.ceil((state.plateauRun.joinUntil - Date.now()) / 60000));
-    alerts.push({
-      kind: "critical",
-      title: "Plateau Run Open",
-      text: formatDuration(remaining) + " left to join. Difficulty " + plateauRunDifficultyLabel(state.plateauRun.difficultyPower) + ", loot " + plateauRunLootLabel(state.plateauRun.spherePool) + ".",
-      action: "Open Plateau",
-      view: "plateau",
-    });
-  }
-
-  if (incoming.length) {
-    const soonest = incoming.reduce((next, raid) => Math.min(next, raid.arrivalAt), incoming[0].arrivalAt);
-    const remaining = Math.max(0, Math.ceil((soonest - Date.now()) / 60000));
-    alerts.push({
-      kind: "warning",
-      title: incoming.length + " Incoming Raid" + (incoming.length === 1 ? "" : "s"),
-      text: "Soonest arrival in " + formatDuration(remaining) + ".",
-      action: "Open Raids",
-      view: "raids",
-    });
-  }
-
-  if (mySieges.length) {
-    const soonest = mySieges.reduce((next, siege) => Math.min(next, siege.resolveAt), mySieges[0].resolveAt);
-    const remaining = Math.max(0, Math.ceil((soonest - Date.now()) / 60000));
-    alerts.push({
-      kind: "warning",
-      title: mySieges.length + " Active Siege" + (mySieges.length === 1 ? "" : "s"),
-      text: "Soonest plateau siege resolves in " + formatDuration(remaining) + ".",
-      action: "Open Plateaus",
-      view: "plateaus",
-    });
-  }
-
-  if (state.unreadCount > 0) {
-    alerts.push({
-      kind: "info",
-      title: state.unreadCount + " Unread Message" + (state.unreadCount === 1 ? "" : "s"),
-      text: "New reports or player messages are waiting.",
-      action: "Open Inbox",
-      view: "inbox",
-    });
-  }
-
-  if (outgoing.length) {
-    alerts.push({
-      kind: "info",
-      title: outgoing.length + " Outgoing Raid" + (outgoing.length === 1 ? "" : "s"),
-      text: "Forces are committed away from your warcamp.",
-      action: "Open Raids",
-      view: "raids",
-    });
-  }
-
-  return alerts;
 }
 
 function renderAdminAccess() {
@@ -830,7 +744,6 @@ function showRoute(routeOrLegacy, options = {}) {
   if (!section) return;
   const previousRoute = currentRoute;
   currentRoute = route;
-  currentView = route.view;
   localStorage.setItem("sp-current-view", route.view);
   if (route.tab && route.tab !== "teaser") localStorage.setItem("sp-current-tab", route.tab);
   const url = new URL(location.href);
@@ -839,12 +752,11 @@ function showRoute(routeOrLegacy, options = {}) {
   if (route.tab && route.tab !== "teaser") url.searchParams.set("tab", route.tab);
   for (const key of ["focus", "message", "kingdom", "category"]) if (route[key]) url.searchParams.set(key, route[key]);
   if (options.history !== "none") history[options.history === "replace" ? "replaceState" : "pushState"](route, "", url);
-  closeMobileMenu();
   document.querySelectorAll(".view").forEach((section) => {
     section.classList.toggle("active", section.id === "view-" + sectionName);
   });
   document.querySelectorAll(".nav-button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.routeView === route.view || button.dataset.view === route.view);
+    button.classList.toggle("active", button.dataset.routeView === route.view);
   });
   $("home-brand")?.classList.toggle("active", route.view === "home");
   if (route.view === "home") $("home-brand")?.setAttribute("aria-current", "page"); else $("home-brand")?.removeAttribute("aria-current");
@@ -2930,21 +2842,10 @@ function isMobileLayout() {
   return window.matchMedia("(max-width: 680px)").matches;
 }
 
-function closeMobileMenu() {
-  const nav = $("dashboard-nav");
-  const toggle = $("mobile-menu-toggle");
-  if (!nav || !toggle) return;
-  nav.classList.remove("open");
-  toggle.setAttribute("aria-expanded", "false");
-}
-
-function toggleMobileMenu() {
-  const nav = $("dashboard-nav");
-  const toggle = $("mobile-menu-toggle");
-  if (!nav || !toggle) return;
-  const nextOpen = !nav.classList.contains("open");
-  nav.classList.toggle("open", nextOpen);
-  toggle.setAttribute("aria-expanded", String(nextOpen));
+function syncGlobalShellHeight() {
+  const shell = $("global-shell");
+  const height = shell && !shell.classList.contains("hidden") ? Math.ceil(shell.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty("--global-shell-height", height + "px");
 }
 
 function showTapTooltip(text, anchor = null) {
@@ -3275,38 +3176,6 @@ function updateGemheartCountdowns() {
     }
   });
 }
-document.querySelectorAll(".nav-button").forEach((button) => {
-  button.addEventListener("click", () => {
-    if (button.dataset.adminOnly === "true" && !state?.isAdmin) return;
-    showView(button.dataset.view);
-  });
-});
-if ($("mobile-menu-toggle")) {
-  $("mobile-menu-toggle").addEventListener("click", (event) => {
-    event.stopPropagation();
-    toggleMobileMenu();
-  });
-}
-document.addEventListener("click", (event) => {
-  const nav = $("dashboard-nav");
-  const toggle = $("mobile-menu-toggle");
-  if (isMobileLayout() && nav?.classList.contains("open") && !nav.contains(event.target) && !toggle?.contains(event.target)) {
-    closeMobileMenu();
-  }
-});
-document.querySelectorAll("[data-view-link]").forEach((element) => {
-  element.setAttribute("role", "button");
-  element.setAttribute("tabindex", "0");
-  element.addEventListener("click", () => {
-    if (!state) return;
-    showView(element.dataset.viewLink);
-  });
-  element.addEventListener("keydown", (event) => {
-    if (!state || (event.key !== "Enter" && event.key !== " ")) return;
-    event.preventDefault();
-    showView(element.dataset.viewLink);
-  });
-});
 document.addEventListener("click", (event) => {
   if (event.target.closest("#tap-tooltip")) return;
   const calculation = event.target.closest(".stat-cell[title], .outlook-cell[title], .research-time-cell[title]");
@@ -3314,7 +3183,7 @@ document.addEventListener("click", (event) => {
     showTapTooltip(calculation.getAttribute("title"), calculation);
     return;
   }
-  if (event.target.closest("button, input, select, textarea, [data-view-link], [data-route-view], .nav-button")) {
+  if (event.target.closest("button, input, select, textarea, [data-route-view]")) {
     hideTapTooltip();
     return;
   }
@@ -3332,10 +3201,13 @@ document.addEventListener("keydown", (event) => { if (event.key === "Escape") hi
 window.addEventListener("resize", () => {
   const notificationsOpen = !$("notification-panel")?.classList.contains("hidden");
   document.body.classList.toggle("notification-modal-open", Boolean(notificationsOpen && isMobileLayout()));
-  if (!isMobileLayout()) {
-    closeMobileMenu();
-  }
+  syncGlobalShellHeight();
 });
+
+if ("ResizeObserver" in window && $("global-shell")) {
+  new ResizeObserver(syncGlobalShellHeight).observe($("global-shell"));
+}
+window.requestAnimationFrame(syncGlobalShellHeight);
 
 window.addEventListener("popstate", (event) => {
   if (!state) return;

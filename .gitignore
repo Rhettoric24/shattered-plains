@@ -4,3 +4,7 @@ dist/
 .env
 .env.local
 .env.*.local
+.env.e2e.local
+playwright-report/
+test-results/
+debug.log

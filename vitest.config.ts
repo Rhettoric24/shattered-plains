@@ -1,5 +1,8 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  test: { environment: "edge-runtime" },
+  test: {
+    environment: "edge-runtime",
+    include: ["outputs/**/*.test.js", "convex/**/*.test.ts"],
+  },
 });
