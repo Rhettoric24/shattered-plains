@@ -1,6 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { syncEspionageControlLock } from "./espionage-ui-state.js";
 import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
+import { createSessionQueryCache, projectGameClock, routeNeedsChronicle } from "./data-loading-state.js";
 
 const CONVEX_URL =
   window.SHATTERED_PLAINS_CONFIG?.convexUrl ||
@@ -106,6 +107,8 @@ let notificationBaselineReady = false;
 let knownNotificationIds = new Set();
 let deferredInstallPrompt = null;
 let quantityIncrement = [1, 10, 50, 100].includes(Number(localStorage.getItem("sp-quantity-increment"))) ? Number(localStorage.getItem("sp-quantity-increment")) : 10;
+const sessionQueries = createSessionQueryCache();
+const routeDetails = { events: [], eventsLoadedAt: 0, eventsRequest: null };
 
 const $ = (id) => document.getElementById(id);
 
@@ -287,6 +290,7 @@ function setAuthTokens(tokens) {
   client.setAuth(authToken);
   localStorage.setItem(AUTH_TOKEN_KEY, authToken);
   localStorage.setItem(AUTH_REFRESH_KEY, refreshToken);
+  sessionQueries.setSession(authToken);
 }
 
 function clearAuthTokens() {
@@ -295,6 +299,37 @@ function clearAuthTokens() {
   client.clearAuth();
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_REFRESH_KEY);
+  sessionQueries.clear();
+  routeDetails.events = [];
+  routeDetails.eventsLoadedAt = 0;
+  routeDetails.eventsRequest = null;
+}
+
+async function loadChronicleEventsForRoute(route) {
+  if (!routeNeedsChronicle(route)) return routeDetails.events;
+  if (routeDetails.eventsRequest) return routeDetails.eventsRequest;
+  routeDetails.eventsRequest = client.query(refs.listEvents, {}).then((events) => {
+    routeDetails.events = events;
+    routeDetails.eventsLoadedAt = Date.now();
+    routeDetails.eventsRequest = null;
+    return events;
+  }, (error) => {
+    routeDetails.eventsRequest = null;
+    throw error;
+  });
+  return routeDetails.eventsRequest;
+}
+
+async function refreshRouteDetails(route) {
+  if (!state || !routeNeedsChronicle(route) || Date.now() - routeDetails.eventsLoadedAt < 1000) return;
+  try {
+    const events = await loadChronicleEventsForRoute(route);
+    if (!state || !routeNeedsChronicle(currentRoute)) return;
+    state.log = events.map((event) => ({ text: event.text, at: event.createdAt, kind: event.kind || "world", gameDate: event.gameDate || null }));
+    renderLog();
+  } catch (error) {
+    console.warn("Chronicle history could not be loaded.", error);
+  }
 }
 
 async function load(options = {}) {
@@ -302,6 +337,7 @@ async function load(options = {}) {
   const allowRefresh = options.allowRefresh ?? true;
   const allowSeasonBootstrap = options.allowSeasonBootstrap ?? true;
   if (!authToken) return signedOut();
+  sessionQueries.setSession(authToken);
   captureSelections();
 
   try {
@@ -313,12 +349,12 @@ async function load(options = {}) {
       clock,
       adminStatus,
     ] = await Promise.all([
-      client.query(refs.getGameConfig, {}),
+      sessionQueries.get("config", () => client.query(refs.getGameConfig, {})),
       client.query(refs.getDashboard, {}),
       client.query(refs.listPlayers, {}),
-      client.query(refs.listEvents, {}),
-      client.query(refs.getClock, {}),
-      client.query(refs.isAdmin, {}),
+      loadChronicleEventsForRoute(currentRoute),
+      sessionQueries.get("clock", async () => ({ ...(await client.query(refs.getClock, {})), browserReceivedAt: Date.now() })),
+      sessionQueries.get("admin", () => client.query(refs.isAdmin, {})),
     ]);
 
     if (requestId !== latestLoadRequest) return;
@@ -335,24 +371,24 @@ async function load(options = {}) {
       client.query(refs.listPlateaus, {}),
       client.query(refs.getCurrentPlateauRun, {}),
       client.query(refs.listInbox, {}),
-      client.query(refs.getEspionageStatus, {}).catch((error) => {
+      Number(dashboard.player.buildings?.espionageNetwork || 0) >= 1 ? client.query(refs.getEspionageStatus, {}).catch((error) => {
         console.warn("Espionage backend is not available yet.", error);
         return { networkLevel: 0, available: {}, defending: {}, onMission: {}, counterIntelligence: 0, targets: [], missions: [], rules: { operatives: ESPIONAGE_UI_DEFAULTS.operatives, network: ESPIONAGE_UI_DEFAULTS.network } };
-      }),
+      }) : Promise.resolve({ networkLevel: 0, available: {}, defending: {}, onMission: {}, counterIntelligence: 0, targets: [], missions: [], rules: { operatives: ESPIONAGE_UI_DEFAULTS.operatives, network: ESPIONAGE_UI_DEFAULTS.network } }),
       Number(dashboard.player.buildings?.espionageNetwork || 0) >= 1 ? client.query(refs.getKingdomLedger, {}).catch((error) => {
         console.warn("Kingdom Intelligence backend is unavailable.", error);
         return { loadError: true, errorMessage: friendlyError(error), season: null, rows: [], generatedAt: Date.now() };
       }) : Promise.resolve({ locked: true, season: null, rows: [], generatedAt: Date.now() }),
-      client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })),
-      client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })),
+      Number(dashboard.player.buildings?.ardentMonastery || 0) >= 1 ? client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })) : Promise.resolve({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10, conclaves: [] }),
+      Number(dashboard.player.buildings?.ardentMonastery || 0) >= 1 ? client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })) : Promise.resolve({ unlocked: false, completedLevels: dashboard.completedResearch || {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } }),
       client.query(refs.listNotifications, {}).catch(() => ({ notifications: [], unreadCount: 0, preferences: { combat: true, missions: true, research: true, plateauRuns: true, messages: true }, devices: [], vapidPublicKey: null })),
-      client.query(refs.getPushConfiguration, {}).catch(() => ({ vapidPublicKey: null, configured: false })),
+      sessionQueries.get("pushConfiguration", () => client.query(refs.getPushConfiguration, {}).catch(() => ({ vapidPublicKey: null, configured: false }))),
       client.query(refs.getSeasonLedger, {}).catch((error) => {
         console.warn("Season Ledger backend is unavailable.", error);
         return { loadError: true, season: null, total: 0, categoryTotals: {}, events: [], achievements: [], rules: null, opponentChains: [] };
       }),
       client.query(refs.getWorldPressure, {}).catch(() => ({ hostility: 0, state: { key: "quiet", label: "Quiet", min: 0, max: 16 }, nextState: null, progressPercent: 0, nextDecayAt: null, nextRetaliationAt: null, retaliationEligible: false, warning: null })),
-      client.query(refs.getPlayerSettings, {}).catch(() => ({ confirmConsequentialMissions: true, researchTeased: false })),
+      sessionQueries.get("settings", () => client.query(refs.getPlayerSettings, {}).catch(() => ({ confirmConsequentialMissions: true, researchTeased: false }))),
     ]);
 
     if (requestId !== latestLoadRequest) return;
@@ -360,6 +396,9 @@ async function load(options = {}) {
     let territoryIntelligence = plateaus?.intelligence || null;
     const returnedWatchtowerLevel = Number(territoryIntelligence?.watchtower?.level ?? plateaus?.watchtower?.level ?? -1);
     if (!territoryIntelligence || returnedWatchtowerLevel !== dashboardWatchtowerLevel) {
+      const fallbackReason = !territoryIntelligence ? "missing plateaus.intelligence" : `watchtower mismatch (${returnedWatchtowerLevel} returned, ${dashboardWatchtowerLevel} expected)`;
+      console.warn("Territory Intelligence compatibility fallback:", fallbackReason);
+      console.count("Territory Intelligence compatibility fallback count");
       territoryIntelligence = await client.query(refs.listDossiers, {}).catch((error) => {
         console.warn("Territory Intelligence compatibility query failed.", error);
         return territoryIntelligence || { kingdoms: [], territories: [], watchtower: plateaus?.watchtower || {} };
@@ -464,7 +503,8 @@ function buildState(data) {
 
   return {
     config,
-    gameDate: data.clock?.label || "World clock unavailable",
+    gameClock: data.clock || null,
+    gameDate: projectGameClock(data.clock, data.config.realMsPerGameDay)?.label || data.clock?.label || "World clock unavailable",
     me: {
       id: player._id,
       name: player.name,
@@ -764,6 +804,7 @@ function showRoute(routeOrLegacy, options = {}) {
   $("view-eyebrow").textContent = section.dataset.eyebrow || "Command";
   renderSpaceSubnav(route);
   bindRouteControls();
+  void refreshRouteDetails(route);
   if (route.view === "spanreed" && localStorage.getItem("sp-auto-read-inbox") === "true" && state?.unreadCount > 0) {
     action(() => client.mutation(refs.markInboxRead, {}));
   }
@@ -1636,7 +1677,7 @@ function siegeCard(siege) {
       : "Parshendi hold " + neutralDefenseLabel(plateau?.neutralDefenseRemaining || 0);
   const defenderPanel = isDefender && (siege.targetType === "player" || siege.targetType === "parshendi_retaliation") ? siegeDefenderPanel(siege, plateau) : "";
   const conclaveText = isAttacker && siege.ardentiaConclave ? ' Ardentia Scout Conclave attached.' : '';
-  return '<article class="list-item raid-item siege-card" data-entity-id="' + escapeHtml(siege.id) + '"><strong>' + title + '</strong><span>' + escapeHtml(plateau?.name || "Unknown plateau") + '</span><small>' + attackerText + '. ' + committedText + '. ' + defenseText + '.' + conclaveText + ' Resolves in ' + formatDuration(remaining) + '.</small>' + defenderPanel + '</article>';
+  return '<article class="list-item raid-item siege-card" data-entity-id="' + escapeHtml(siege.id) + '"><strong>' + title + '</strong><span>' + escapeHtml(plateau?.name || "Unknown plateau") + '</span><small>' + attackerText + '. ' + committedText + '. ' + defenseText + '.' + conclaveText + ' Resolves in <span data-local-countdown-at="' + Number(siege.resolveAt) + '">' + formatDuration(remaining) + '</span>.</small>' + defenderPanel + '</article>';
 }
 
 function siegeDefenderPanel(siege, plateau) {
@@ -1716,7 +1757,7 @@ function raidListMarkup(raids, emptyText) {
       ? 'Power ' + formatStat(raid.power) + ', Speed ' + formatStat(raid.speed) + externalDefenseText(raid) + ', travel ' + formatDuration(raid.travelMinutes) + '.'
       : 'Estimated strength ' + operationPowerLabel(raid.power) + externalDefenseText(raid) + ', travel ' + formatDuration(raid.travelMinutes) + '.';
     const activityLabel = direction === "Outgoing" ? "My Raid" : "World Raid";
-    return '<article class="list-item raid-item ' + direction.toLowerCase() + '"><strong>' + activityLabel + ':</strong> ' + escapeHtml(raid.attackerName) + ' to <strong>' + escapeHtml(raid.targetName) + '</strong><span>' + force + '</span><small>' + details + ' Resolves ' + arrival + ' (' + formatDuration(remaining) + ' left).</small></article>';
+    return '<article class="list-item raid-item ' + direction.toLowerCase() + '"><strong>' + activityLabel + ':</strong> ' + escapeHtml(raid.attackerName) + ' to <strong>' + escapeHtml(raid.targetName) + '</strong><span>' + force + '</span><small>' + details + ' Resolves ' + arrival + ' (<span data-local-countdown-at="' + Number(raid.arrivalAt) + '">' + formatDuration(remaining) + '</span> left).</small></article>';
   }).join("") : '<div class="empty">' + emptyText + '</div>';
 }
 
@@ -1750,7 +1791,7 @@ function renderPlateau() {
   }
   $("plateau-run-submit").textContent = myCommitment ? "Update commitment" : "Commit to plateau run";
   $("cancel-plateau-commitment").classList.toggle("hidden", !myCommitment);
-  status.innerHTML = '<div class="plateau-card"><strong>Join window open</strong><span>' + formatDuration(remaining) + ' left</span><small>Difficulty ' + plateauRunDifficultyLabel(run.difficultyPower) + '. Loot: ' + number(run.gemheartReward) + ' Gemheart and a ' + plateauRunLootLabel(run.spherePool) + ' sphere pool.</small></div>';
+  status.innerHTML = '<div class="plateau-card"><strong>Join window open</strong><span><b data-local-countdown-at="' + Number(run.joinUntil) + '">' + formatDuration(remaining) + '</b> left</span><small>Difficulty ' + plateauRunDifficultyLabel(run.difficultyPower) + '. Loot: ' + number(run.gemheartReward) + ' Gemheart and a ' + plateauRunLootLabel(run.spherePool) + ' sphere pool.</small></div>';
   participants.innerHTML = run.participants.length ? run.participants.map((entry) => {
     const bonus = entry.joinOrderSpeedBonus ? " +" + Math.round(entry.joinOrderSpeedBonus * 100) + "% join speed" : "";
     const isMine = entry.playerId === state.me.id;
@@ -2016,7 +2057,7 @@ function renderOverview() {
   (state.espionage?.missions || []).filter((mission) => mission.status === "pending").forEach((mission) => operations.push({ label: "Espionage investigation", detail: mission.targetName + " · " + mission.category, at: mission.resolveAt, view: "intelligence" }));
   if (state.plateauRun?.participants.some((entry) => entry.playerId === state.me.id)) operations.push({ label: "Plateau Run", detail: "Warcamp committed", at: state.plateauRun.joinUntil, view: "plateau" });
   operations.sort((a, b) => a.at - b.at);
-  $("overview-operations").innerHTML = operations.length ? operations.map((item) => '<button type="button" class="operation-row" data-operation-view="' + item.view + '"><span><strong>' + escapeHtml(item.label) + '</strong><small>' + escapeHtml(item.detail) + '</small></span><b>' + formatDuration(Math.max(0, Math.ceil((item.at - Date.now()) / 60000))) + '</b></button>').join("") : '<div class="empty">No armies are currently committed. Your next move is yours.</div>';
+  $("overview-operations").innerHTML = operations.length ? operations.map((item) => '<button type="button" class="operation-row" data-operation-view="' + item.view + '"><span><strong>' + escapeHtml(item.label) + '</strong><small>' + escapeHtml(item.detail) + '</small></span><b data-local-countdown-at="' + Number(item.at) + '">' + formatDuration(Math.max(0, Math.ceil((item.at - Date.now()) / 60000))) + '</b></button>').join("") : '<div class="empty">No armies are currently committed. Your next move is yours.</div>';
   $("overview-operations").querySelectorAll("[data-operation-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.operationView)));
 }
 
@@ -2054,9 +2095,9 @@ function renderHostility() {
     ? number(Math.max(0, Number(pressure.nextState.min) - hostility)) + " points to " + pressure.nextState.label
     : "Maximum Hostility reached";
   const decay = pressure.nextDecayAt
-    ? " Peaceful decay in " + formatDuration(Math.max(0, Math.ceil((pressure.nextDecayAt - Date.now()) / 60000))) + "."
+    ? ' Peaceful decay in <b data-local-countdown-at="' + Number(pressure.nextDecayAt) + '">' + formatDuration(Math.max(0, Math.ceil((pressure.nextDecayAt - Date.now()) / 60000))) + '</b>.'
     : "";
-  if ($("hostility-summary")) $("hostility-summary").innerHTML = '<strong>' + escapeHtml(nextState) + '</strong><span>Neutral conquest, raids, Plateau Run victories, and Deep Plains operations raise Hostility.' + escapeHtml(decay) + '</span>';
+  if ($("hostility-summary")) $("hostility-summary").innerHTML = '<strong>' + escapeHtml(nextState) + '</strong><span>Neutral conquest, raids, Plateau Run victories, and Deep Plains operations raise Hostility.' + decay + '</span>';
 
   const warning = pressure.warning;
   const warningPanel = $("retaliation-warning-panel");
@@ -2329,9 +2370,9 @@ function renderEspionage() {
   const missions = $("espionage-missions");
   if (missions) missions.innerHTML = (espionage.missions || []).map((mission) => {
     const pending = mission.status === "pending";
-    const time = pending ? 'Resolves in ' + formatDuration(Math.max(0, Math.ceil((mission.resolveAt - Date.now()) / 60000))) : 'Resolved ' + intelligenceReportAge(mission.resolvedAt);
+    const time = pending ? 'Resolves in <span data-local-countdown-at="' + Number(mission.resolveAt) + '">' + formatDuration(Math.max(0, Math.ceil((mission.resolveAt - Date.now()) / 60000))) + '</span>' : 'Resolved ' + escapeHtml(intelligenceReportAge(mission.resolvedAt));
     const result = pending ? number(mission.finalSpyPower) + ' Spy Power committed' : (mission.outcome || 'resolved').replace(/^./, (letter) => letter.toUpperCase()) + (mission.incidentalCategory ? ' · Incidental ' + mission.incidentalCategory : '') + (mission.bonusDiscoveryId ? ' · Bonus Discovery' : '');
-    return '<article class="list-item espionage-mission-row"><strong>' + escapeHtml(mission.targetName) + ' — ' + escapeHtml(mission.category[0].toUpperCase() + mission.category.slice(1)) + '</strong><span>' + escapeHtml(result) + '</span><small>' + escapeHtml(time) + '</small></article>';
+    return '<article class="list-item espionage-mission-row"><strong>' + escapeHtml(mission.targetName) + ' — ' + escapeHtml(mission.category[0].toUpperCase() + mission.category.slice(1)) + '</strong><span>' + escapeHtml(result) + '</span><small>' + time + '</small></article>';
   }).join("") || '<div class="empty">No investigations launched yet.</div>';
   const controls = $("espionage-controls");
   syncEspionageControlLock(controls, networkLocked);
@@ -3068,7 +3109,12 @@ $("account-panel")?.addEventListener("click", (event) => event.stopPropagation()
 $("mission-confirmations")?.addEventListener("change", () => {
   const confirmConsequentialMissions = $("mission-confirmations").checked;
   state.playerSettings.confirmConsequentialMissions = confirmConsequentialMissions;
-  action(() => client.mutation(refs.updatePlayerSettings, { confirmConsequentialMissions }));
+  sessionQueries.invalidate("settings");
+  action(async () => {
+    const updated = await client.mutation(refs.updatePlayerSettings, { confirmConsequentialMissions });
+    sessionQueries.set("settings", { ...(state.playerSettings || {}), ...updated });
+    return updated;
+  });
 });
 $("notification-panel").addEventListener("click", (event) => event.stopPropagation());
 $("notification-backdrop").addEventListener("click", () => setNotificationPanelOpen(false));
@@ -3176,6 +3222,21 @@ function updateGemheartCountdowns() {
     }
   });
 }
+
+function updateLocalTimePresentation() {
+  updateGemheartCountdowns();
+  document.querySelectorAll("[data-local-countdown-at]").forEach((element) => {
+    const minutes = Math.max(0, Math.ceil((Number(element.dataset.localCountdownAt) - Date.now()) / 60000));
+    element.textContent = formatDuration(minutes);
+  });
+  if (state?.gameClock) {
+    const projected = projectGameClock(state.gameClock, state.config?.realMsPerGameDay);
+    if (projected) {
+      state.gameDate = projected.label;
+      if ($("game-date")) $("game-date").textContent = projected.label;
+    }
+  }
+}
 document.addEventListener("click", (event) => {
   if (event.target.closest("#tap-tooltip")) return;
   const calculation = event.target.closest(".stat-cell[title], .outlook-cell[title], .research-time-cell[title]");
@@ -3238,4 +3299,4 @@ else signedOut();
 setInterval(() => {
   if (authToken) load();
 }, DASHBOARD_REFRESH_MS);
-setInterval(updateGemheartCountdowns, 1000);
+setInterval(updateLocalTimePresentation, 1000);
