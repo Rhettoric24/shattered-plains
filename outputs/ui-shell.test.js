@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 
 const html = readFileSync(new URL("./convex-client.html", import.meta.url), "utf8");
-const css = readFileSync(new URL("./clarity-components.css", import.meta.url), "utf8");
+const css = ["shattered-plains-styles.css", "clarity-components.css", "clarity-responsive.css"]
+  .map((file) => readFileSync(new URL(`./${file}`, import.meta.url), "utf8"))
+  .join("\n");
 const client = readFileSync(new URL("./convex-client.js", import.meta.url), "utf8");
 
 describe("post-overhaul shell", () => {
@@ -21,9 +23,9 @@ describe("post-overhaul shell", () => {
   });
 
   test("anchors mobile navigation and keeps the alert surface inside safe-area bounds", () => {
-    expect(css).toContain("grid-template-columns: repeat(4,minmax(0,1fr))");
-    expect(css).toContain("bottom: max(10px,env(safe-area-inset-bottom))");
-    expect(css).toContain("top: max(10px,env(safe-area-inset-top))");
+    expect(css).toMatch(/grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+    expect(css).toMatch(/bottom:\s*max\(10px,\s*env\(safe-area-inset-bottom\)\)/);
+    expect(css).toMatch(/top:\s*max\(10px,\s*env\(safe-area-inset-top\)\)/);
   });
 
   test("keeps player identity visible on larger screens and compacts it on mobile", () => {
@@ -46,7 +48,7 @@ describe("post-overhaul shell", () => {
 
   test("keeps operative recruitment controls from stretching the Recruit button", () => {
     expect(css).toContain(".operative-recruit > button");
-    expect(css).toContain("width: min(132px,100%)");
+    expect(css).toMatch(/width:\s*min\(132px,\s*100%\)/);
     expect(css).toContain("height: 42px");
   });
 

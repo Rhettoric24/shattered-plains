@@ -71,8 +71,37 @@ const destinations: Destination[] = [
 ];
 
 async function expectNoMajorHorizontalOverflow(page: Page) {
-  const overflow = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, page: document.documentElement.scrollWidth }));
-  expect(overflow.page, `page width ${overflow.page}px exceeds viewport ${overflow.viewport}px`).toBeLessThanOrEqual(overflow.viewport + 2);
+  const overflow = await page.evaluate(() => {
+    const viewport = document.documentElement.clientWidth;
+    const isInsideContainedScroller = (element: Element) => {
+      let parent = element.parentElement;
+      while (parent && parent !== document.body) {
+        const style = getComputedStyle(parent);
+        const rect = parent.getBoundingClientRect();
+        if (["auto", "scroll"].includes(style.overflowX) && rect.left >= -2 && rect.right <= viewport + 2) return true;
+        parent = parent.parentElement;
+      }
+      return false;
+    };
+    const offenders = [...document.querySelectorAll("body *")]
+      .map((element) => ({
+        element,
+        rect: element.getBoundingClientRect(),
+      }))
+      .filter(({ element, rect }) => (rect.right > viewport + 2 || rect.left < -2) && !isInsideContainedScroller(element))
+      .slice(0, 5)
+      .map(({ element, rect }) => `${element.tagName.toLowerCase()}#${element.id}.${[...element.classList].join(".")} [${Math.round(rect.left)}, ${Math.round(rect.right)}]`);
+    const landmarks = ["body", ".dashboard", "#global-shell", ".resource-strip"]
+      .map((selector) => {
+        const element = document.querySelector(selector);
+        if (!element) return `${selector}: missing`;
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return `${selector}: [${Math.round(rect.left)}, ${Math.round(rect.right)}], width=${style.width}, min=${style.minWidth}, overflow=${style.overflowX}`;
+      });
+    return { viewport, page: document.documentElement.scrollWidth, offenders, landmarks };
+  });
+  expect(overflow.offenders, `page width ${overflow.page}px exceeds viewport ${overflow.viewport}px; offenders: ${overflow.offenders.join(", ")}; landmarks: ${overflow.landmarks.join(" | ")}`).toEqual([]);
 }
 
 async function expectContained(locator: Locator) {
@@ -316,6 +345,17 @@ test("legacy view URLs resolve through the current router", async ({ page }) => 
       window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
     }, legacyView);
     await expect(page.locator(expectedSection)).toBeVisible();
+  }
+});
+
+test("responsive transition widths retain shell containment", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1440", "one browser project is sufficient for breakpoint boundary coverage");
+  await page.getByRole("button", { name: /^Plains/ }).click();
+  for (const width of [679, 681, 719, 721, 899, 901, 979, 981]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expectNoMajorHorizontalOverflow(page);
+    await expectContained(page.locator("#global-shell"));
+    await expectContained(page.locator("#space-subnav:not(.hidden)"));
   }
 });
 

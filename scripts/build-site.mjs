@@ -85,7 +85,6 @@ await esbuild.build({
 
 for (const stylesheet of [
   "shattered-plains-styles.css",
-  "clarity-layout.css",
   "clarity-components.css",
   "clarity-responsive.css",
 ]) {
