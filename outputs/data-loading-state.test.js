@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { createCompatibilityFallbackCache, createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, runMutationAction, SAFETY_RECONCILIATION_MS } from "./data-loading-state.js";
+import { createCompatibilityFallbackCache, createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, routeNeedsPlateauBoard, routeNeedsTerritoryIntelligence, runMutationAction, SAFETY_RECONCILIATION_MS } from "./data-loading-state.js";
 
 describe("Phase 1 data loading lifecycle", () => {
   test("loads a session-stable value once until the authenticated session changes", async () => {
@@ -59,6 +59,13 @@ describe("Phase 1 data loading lifecycle", () => {
     expect(routeNeedsChronicle({ view: "chronicle" })).toBe(true);
   });
 
+  test("scopes heavy plateau and territory subscriptions to their destination routes", () => {
+    expect(routeNeedsPlateauBoard({ view: "home" })).toBe(false);
+    expect(routeNeedsPlateauBoard({ view: "plains", tab: "sieges" })).toBe(true);
+    expect(routeNeedsTerritoryIntelligence({ view: "intelligence", tab: "ledger" })).toBe(false);
+    expect(routeNeedsTerritoryIntelligence({ view: "intelligence", tab: "territory" })).toBe(true);
+  });
+
   test("fallback reconciliation is substantially slower than the former 30-second cycle", () => {
     expect(SAFETY_RECONCILIATION_MS).toBe(300_000);
     expect(SAFETY_RECONCILIATION_MS).toBeGreaterThan(30_000);
@@ -116,6 +123,30 @@ describe("Phase 1 data loading lifecycle", () => {
     expect(clients[0].close).toHaveBeenCalledTimes(1);
     await lifecycle.dispose();
     expect(clients[1].close).toHaveBeenCalledTimes(1);
+  });
+
+  test("route changes remove heavy plateau listeners without duplicating global listeners", async () => {
+    const unsubscribes = new Map();
+    const client = {
+      setAuth: vi.fn(),
+      onUpdate: vi.fn((query) => {
+        const unsubscribe = vi.fn();
+        unsubscribes.set(query, unsubscribe);
+        return unsubscribe;
+      }),
+      close: vi.fn(),
+    };
+    const lifecycle = createSubscriptionLifecycle({ createClient: () => client });
+    lifecycle.start("session", async () => "token");
+    lifecycle.sync([
+      { key: "plateauSummary", query: "plateaus:getMyPlateauState" },
+      { key: "plateauBoard", query: "plateaus:getSiegeBoard" },
+    ]);
+    lifecycle.sync([{ key: "plateauSummary", query: "plateaus:getMyPlateauState" }]);
+    expect(unsubscribes.get("plateaus:getSiegeBoard")).toHaveBeenCalledTimes(1);
+    expect(unsubscribes.get("plateaus:getMyPlateauState")).not.toHaveBeenCalled();
+    expect(client.onUpdate).toHaveBeenCalledTimes(2);
+    await lifecycle.dispose();
   });
 
   test("subscription changes are coalesced into one visible refresh batch", async () => {

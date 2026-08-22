@@ -1,7 +1,7 @@
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { syncEspionageControlLock } from "./espionage-ui-state.js";
 import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
-import { createCompatibilityFallbackCache, createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, runMutationAction } from "./data-loading-state.js";
+import { createCompatibilityFallbackCache, createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, routeNeedsPlateauBoard, routeNeedsTerritoryIntelligence, runMutationAction } from "./data-loading-state.js";
 
 const CONVEX_URL =
   window.SHATTERED_PLAINS_CONFIG?.convexUrl ||
@@ -180,7 +180,8 @@ const refs = {
   listVisibleRaids: "raids:listVisibleRaids",
   forceResolveRaid: "raids:forceResolveRaid",
   forceResolveAllRaids: "raids:forceResolveAllRaids",
-  listPlateaus: "plateaus:listPlateaus",
+  getMyPlateauState: "plateaus:getMyPlateauState",
+  getSiegeBoard: "plateaus:getSiegeBoard",
   launchNeutralSiege: "plateaus:launchNeutralSiege",
   launchPlayerSiege: "plateaus:launchPlayerSiege",
   commitSiegeDefenders: "plateaus:commitSiegeDefenders",
@@ -395,13 +396,15 @@ function subscriptionSpecs(data) {
     playerStateSubscription(refs),
     { key: "players", query: refs.listPlayers },
     { key: "raids", query: refs.listVisibleRaids },
-    { key: "plateaus", query: refs.listPlateaus },
+    { key: "plateauSummary", query: refs.getMyPlateauState },
     { key: "plateauRun", query: refs.getCurrentPlateauRun },
     { key: "inbox", query: refs.listInbox },
     { key: "notifications", query: refs.listNotifications },
     { key: "seasonLedger", query: refs.getSeasonLedger },
     { key: "worldPressure", query: refs.getWorldPressure },
     ...(routeNeedsChronicle(currentRoute) ? [{ key: "events", query: refs.listEvents }] : []),
+    ...(routeNeedsPlateauBoard(currentRoute) ? [{ key: "plateauBoard", query: refs.getSiegeBoard }] : []),
+    ...(routeNeedsTerritoryIntelligence(currentRoute) ? [{ key: "intelligence", query: refs.listDossiers }] : []),
     ...(network >= 1 ? [
       { key: "espionage", query: refs.getEspionageStatus },
       { key: "kingdomLedger", query: refs.getKingdomLedger },
@@ -411,6 +414,18 @@ function subscriptionSpecs(data) {
       { key: "research", query: refs.getResearchStatus },
     ] : []),
   ];
+}
+
+function composePlateauState(summary, board) {
+  return {
+    types: summary?.types || board?.types || [],
+    counts: summary?.counts || { sphere: 0, bridged: 0, gemheart: 0, ancient: 0 },
+    mine: summary?.mine || [],
+    neutral: board?.neutral || [],
+    rivals: board?.rivals || [],
+    sieges: routeNeedsPlateauBoard(currentRoute) ? (board?.sieges || summary?.sieges || []) : (summary?.sieges || []),
+    watchtower: summary?.watchtower || board?.watchtower || { level: 0, territoryLevel: 0 },
+  };
 }
 
 function ensureReactiveSubscriptions(data) {
@@ -429,6 +444,7 @@ function applyReactiveBatch(batch, expectedSessionGeneration) {
     if (!authToken || !rawStateData || expectedSessionGeneration !== authSessionGeneration) return;
     const accountingInputsBefore = playerAccountingInputKey(rawStateData);
     for (const [key, value] of batch) rawStateData[key] = value;
+    rawStateData.plateaus = composePlateauState(rawStateData.plateauSummary, rawStateData.plateauBoard);
     if (!rawStateData.playerSummary?.player || !rawStateData.plateaus) return;
     if (playerAccountingInputKey(rawStateData) !== accountingInputsBefore) {
       rawStateData.playerAccounting = await client.query(refs.getPlayerAccounting, {}).catch((error) => {
@@ -436,7 +452,7 @@ function applyReactiveBatch(batch, expectedSessionGeneration) {
         return rawStateData.playerAccounting;
       });
     }
-    rawStateData.intelligence = await resolveTerritoryIntelligence(rawStateData.playerSummary, rawStateData.plateaus);
+    if (!rawStateData.intelligence) rawStateData.intelligence = { kingdoms: [], territories: [], watchtower: rawStateData.plateaus.watchtower };
     if (expectedSessionGeneration !== authSessionGeneration) return;
     state = buildState(rawStateData);
     processNewNotificationRows(state.notifications);
@@ -486,9 +502,11 @@ async function load(options = {}) {
       return;
     }
 
-    const [raids, plateaus, plateauRun, inbox, espionage, kingdomLedger, ardentia, research, notifications, pushConfiguration, seasonLedger, worldPressure, playerSettings] = await Promise.all([
+    const [raids, plateauSummary, plateauBoard, territoryIntelligence, plateauRun, inbox, espionage, kingdomLedger, ardentia, research, notifications, pushConfiguration, seasonLedger, worldPressure, playerSettings] = await Promise.all([
       client.query(refs.listVisibleRaids, {}),
-      client.query(refs.listPlateaus, {}),
+      client.query(refs.getMyPlateauState, {}),
+      routeNeedsPlateauBoard(currentRoute) ? client.query(refs.getSiegeBoard, {}) : Promise.resolve(null),
+      routeNeedsTerritoryIntelligence(currentRoute) ? client.query(refs.listDossiers, {}) : Promise.resolve(null),
       client.query(refs.getCurrentPlateauRun, {}),
       client.query(refs.listInbox, {}),
       Number(playerSummary.player.buildings?.espionageNetwork || 0) >= 1 ? client.query(refs.getEspionageStatus, {}).catch((error) => {
@@ -512,7 +530,8 @@ async function load(options = {}) {
     ]);
 
     if (requestId !== latestLoadRequest) return;
-    const territoryIntelligence = await resolveTerritoryIntelligence(playerSummary, plateaus);
+    const plateaus = composePlateauState(plateauSummary, plateauBoard);
+    const resolvedTerritoryIntelligence = territoryIntelligence || { kingdoms: [], territories: [], watchtower: plateauSummary.watchtower };
     if (requestId !== latestLoadRequest) return;
 
     // Worlds created before seasons existed have no active ledger. Bootstrap is
@@ -528,10 +547,12 @@ async function load(options = {}) {
       playerAccounting,
       players,
       raids,
+      plateauSummary,
+      plateauBoard,
       plateaus,
       plateauRun,
       inbox,
-      intelligence: territoryIntelligence,
+      intelligence: resolvedTerritoryIntelligence,
       espionage,
       kingdomLedger,
       ardentia,

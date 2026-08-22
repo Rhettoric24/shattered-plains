@@ -76,6 +76,14 @@ export function routeNeedsChronicle(route) {
   return route?.view === "chronicle";
 }
 
+export function routeNeedsPlateauBoard(route) {
+  return route?.view === "plains";
+}
+
+export function routeNeedsTerritoryIntelligence(route) {
+  return route?.view === "intelligence" && route?.tab === "territory";
+}
+
 export const SAFETY_RECONCILIATION_MS = 5 * 60 * 1000;
 
 export async function runMutationAction(work, { refresh = "subscriptions", requestFullLoad } = {}) {

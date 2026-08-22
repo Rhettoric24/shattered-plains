@@ -142,6 +142,61 @@ function decoratePlateauForOwner(plateau: any, now: number, gemheartIntervalMs: 
   };
 }
 
+export const getMyPlateauState = query({
+  args: {},
+  handler: async (ctx) => {
+    const viewer = await requireCurrentPlayer(ctx);
+    const now = Date.now();
+    const mine = await ctx.db.query("plateaus").withIndex("by_owner", (q) => q.eq("ownerPlayerId", viewer._id)).take(100);
+    const research = await completedResearch(ctx, viewer._id);
+    const gemHours = Number(researchEffect(research, "gemCutting"));
+    const baseHours = gemHours > 0 ? gemHours : PLATEAU_RULES.gemheartIntervalMs / 3600000;
+    const gemheartInterval = (baseHours - (research.__doctrineGemheartBaron ? 1 : 0)) * 60 * 60 * 1000;
+    const [attacking, defending] = await Promise.all([
+      ctx.db.query("sieges").withIndex("by_attacker_and_status", (q) => q.eq("attackerId", viewer._id).eq("status", "pending")).take(100),
+      ctx.db.query("sieges").withIndex("by_defender_and_status", (q) => q.eq("defenderId", viewer._id).eq("status", "pending")).take(100),
+    ]);
+    const sieges = [...new Map([...attacking, ...defending].map((siege) => [String(siege._id), siege])).values()];
+    const playerIds = new Set<Id<"players">>();
+    for (const siege of sieges) {
+      if (siege.attackerId) playerIds.add(siege.attackerId);
+      if (siege.defenderId) playerIds.add(siege.defenderId);
+    }
+    const players = (await Promise.all([...playerIds].map((id) => ctx.db.get(id)))).filter((row) => row !== null);
+    const names = new Map(players.map((player) => [String(player._id), player.name]));
+    const watchtowerLevel = Math.min(3, viewer.buildings.watchtower ?? 0);
+    const passiveTerritoryLevel = watchtowerTerritoryLevel(watchtowerLevel);
+    return {
+      types: plateauTypes(),
+      counts: mine.reduce((counts, plateau) => {
+        counts[identityPlateauType(plateau.type)] += 1;
+        return counts;
+      }, { sphere: 0, bridged: 0, gemheart: 0, ancient: 0 }),
+      mine: mine.map((plateau) => decoratePlateauForOwner(plateau, now, gemheartInterval)),
+      sieges: sieges.map((siege) => {
+        const isAttacker = siege.attackerId === viewer._id;
+        const isDefender = siege.defenderId === viewer._id;
+        return {
+          _id: siege._id,
+          plateauId: siege.plateauId,
+          ...(siege.attackerId ? { attackerId: siege.attackerId } : {}),
+          ...(siege.defenderId ? { defenderId: siege.defenderId } : {}),
+          targetType: siege.targetType,
+          attackerName: siege.targetType === "parshendi_retaliation" ? "Parshendi" : siege.attackerId ? names.get(String(siege.attackerId)) ?? "Unknown" : "Unknown",
+          defenderName: siege.defenderId ? names.get(String(siege.defenderId)) ?? "Unknown" : "Parshendi",
+          attackerIntel: presentIntelNumber(siege.attackerPower, isAttacker ? 3 : isDefender ? passiveTerritoryLevel : 0),
+          ...(isAttacker ? { attackerUnits: siege.attackerUnits, attackerPower: siege.attackerPower, attackerSpeed: siege.attackerSpeed, ardentiaConclave: Boolean(siege.ardentiaConclave) } : {}),
+          ...(isDefender ? { defenderUnits: siege.defenderUnits, defenderPower: siege.defenderPower, defenderSpeed: siege.defenderSpeed, defenderCommittedAt: siege.defenderCommittedAt ?? null, fortifyPercent: siege.fortifyPercent, emergencyDefensePercent: siege.emergencyDefensePercent, emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent } : {}),
+          departAt: siege.departAt,
+          resolveAt: siege.resolveAt,
+          status: siege.status,
+        };
+      }),
+      watchtower: { level: watchtowerLevel, territoryLevel: passiveTerritoryLevel },
+    };
+  },
+});
+
 async function purchaseEmergencyDefense(
   ctx: MutationCtx,
   args: { siegeId: Id<"sieges">; percent: number },
@@ -424,6 +479,10 @@ export const listPlateaus = query({
     };
   },
 });
+
+// Current clients load this broad board only while the Shattered Plains route is active.
+// Keep listPlateaus registered above for mixed-version clients.
+export const getSiegeBoard = listPlateaus;
 
 export const launchNeutralSiege = mutation({
   args: {
