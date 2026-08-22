@@ -54,6 +54,8 @@ describe("post-overhaul shell", () => {
 
   test("recovers Territory Intelligence when plateau payloads are out of sync", () => {
     expect(client).toContain("returnedWatchtowerLevel !== dashboardWatchtowerLevel");
+    expect(client).toContain("territoryIntelligenceFallbacks.resolve");
     expect(client).toContain("client.query(refs.listDossiers");
   });
+
 });

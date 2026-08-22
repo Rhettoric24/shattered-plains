@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { insertGameEvent } from "./eventHelpers";
 import { getCurrentPlayer, requireAuthUserId } from "./ownership";
@@ -201,7 +202,24 @@ export const getPlayerByName = query({
   },
 });
 
-async function buildDashboard(ctx: QueryCtx, player: any) {
+function playerSummary(player: Doc<"players">) {
+  return {
+    _id: player._id,
+    name: player.name,
+    acres: player.acres,
+    spheres: player.spheres,
+    gemhearts: player.gemhearts,
+    units: player.units,
+    buildings: player.buildings,
+    operatives: player.operatives,
+    defendingOperatives: player.defendingOperatives,
+    ardentiaConclaves: player.ardentiaConclaves ?? 0,
+    lastEconomyAt: player.lastEconomyAt ?? player.createdAt,
+    createdAt: player.createdAt,
+  };
+}
+
+async function buildPlayerAccounting(ctx: QueryCtx, player: Doc<"players">) {
   const owned = await ownedPlateaus(ctx, player._id);
   const plateauCounts = emptyPlateauCounts();
   let largePlateauCount = 0;
@@ -214,14 +232,16 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
   const plateauAttributes = { large: largePlateauCount, highground: highgroundPlateauCount };
 
   const completed = await completedResearch(ctx, player._id);
-  const pending = pendingEconomy({ ...player, plateauCounts, completedResearch: completed }, Date.now());
   const ownedUnits = await ownedUnitsIncludingAway(ctx, player._id, player.units);
   const ownedOperatives = await ownedOperativesIncludingAway(ctx, player._id, player.operatives, player.defendingOperatives);
+  const buildingStats = calculateBuildingStats(
+    player.acres,
+    player.buildings,
+    plateauCounts,
+    completed,
+  );
 
   return {
-    player,
-    effectiveSpheres: player.spheres + pending.income,
-    pendingIncome: pending.income,
     plateauCounts,
     ownedPlateauCount: owned.length,
     armyStats: calculateArmyStats(player.units, completed),
@@ -241,14 +261,28 @@ async function buildDashboard(ctx: QueryCtx, player: any) {
         bridgedTravelReduction(plateauCounts) * 100,
       ),
     },
-    buildingStats: calculateBuildingStats(
-      player.acres,
-      player.buildings,
-      plateauCounts,
-      completed,
-    ),
+    buildingStats,
+    economy: {
+      incomePerGameDay: buildingStats.totalIncomePerDay,
+    },
   };
 }
+
+export const getPlayerSummary = query({
+  args: {},
+  handler: async (ctx) => {
+    const player = await getCurrentPlayer(ctx);
+    return player ? { player: playerSummary(player) } : null;
+  },
+});
+
+export const getPlayerAccounting = query({
+  args: {},
+  handler: async (ctx) => {
+    const player = await getCurrentPlayer(ctx);
+    return player ? await buildPlayerAccounting(ctx, player) : null;
+  },
+});
 
 export const getDashboard = query({
   args: {},
@@ -257,7 +291,17 @@ export const getDashboard = query({
     if (!player) {
       return null;
     }
-    return await buildDashboard(ctx, player);
+    const accounting = await buildPlayerAccounting(ctx, player);
+    const pending = pendingEconomy(
+      { ...player, plateauCounts: accounting.plateauCounts, completedResearch: accounting.completedResearch },
+      Date.now(),
+    );
+    return {
+      player,
+      ...accounting,
+      effectiveSpheres: player.spheres + pending.income,
+      pendingIncome: pending.income,
+    };
   },
 });
 

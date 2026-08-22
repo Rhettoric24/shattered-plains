@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { createSessionQueryCache, createSubscriptionLifecycle, projectGameClock, routeNeedsChronicle, SAFETY_RECONCILIATION_MS } from "./data-loading-state.js";
+import { createCompatibilityFallbackCache, createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, runMutationAction, SAFETY_RECONCILIATION_MS } from "./data-loading-state.js";
 
 describe("Phase 1 data loading lifecycle", () => {
   test("loads a session-stable value once until the authenticated session changes", async () => {
@@ -29,6 +29,31 @@ describe("Phase 1 data loading lifecycle", () => {
     expect(projectGameClock(clock, 3_600_000, 1_900_000).label).toBe("Day 3, hour 0");
   });
 
+  test("projects authoritative Sphere income locally from a settled reference", () => {
+    const player = { spheres: 1200, lastEconomyAt: 1_000, createdAt: 1_000 };
+    const accounting = { economy: { incomePerGameDay: 360 } };
+    expect(projectPlayerSpheres(player, accounting, 3_600_000, 1_801_000)).toBe(1380);
+  });
+
+  test("refreshes accounting only when authoritative accounting inputs change", () => {
+    const base = {
+      playerSummary: { player: { acres: 20, spheres: 100, gemhearts: 1, units: { bridgeman: 2 }, buildings: { market: 1 }, operatives: {}, defendingOperatives: {}, ardentiaConclaves: 0 } },
+      plateaus: { mine: [{ _id: "p1", type: "sphere", status: "owned", large: false, highground: false }] },
+      research: { completedLevels: { marketEconomics: 1 }, economicDoctrine: null },
+    };
+    const key = playerAccountingInputKey(base);
+    expect(playerAccountingInputKey({ ...base, playerSummary: { player: { ...base.playerSummary.player, spheres: 500, gemhearts: 9, lastActiveAt: 99 } } })).toBe(key);
+    expect(playerAccountingInputKey({ ...base, playerSummary: { player: { ...base.playerSummary.player, units: { bridgeman: 3 } } } })).not.toBe(key);
+    expect(playerAccountingInputKey({ ...base, plateaus: { mine: [{ ...base.plateaus.mine[0], large: true }] } })).not.toBe(key);
+    expect(playerAccountingInputKey({ ...base, research: { ...base.research, completedLevels: { marketEconomics: 2 } } })).not.toBe(key);
+  });
+
+  test("subscribes current clients to the narrow player summary instead of the legacy dashboard", () => {
+    const spec = playerStateSubscription({ getPlayerSummary: "players:getPlayerSummary", getDashboard: "players:getDashboard" });
+    expect(spec).toEqual({ key: "playerSummary", query: "players:getPlayerSummary" });
+    expect(spec.query).not.toBe("players:getDashboard");
+  });
+
   test("loads Chronicle history only for its destination route", () => {
     expect(routeNeedsChronicle({ view: "home" })).toBe(false);
     expect(routeNeedsChronicle({ view: "chronicle" })).toBe(true);
@@ -37,6 +62,30 @@ describe("Phase 1 data loading lifecycle", () => {
   test("fallback reconciliation is substantially slower than the former 30-second cycle", () => {
     expect(SAFETY_RECONCILIATION_MS).toBe(300_000);
     expect(SAFETY_RECONCILIATION_MS).toBeGreaterThan(30_000);
+  });
+
+  test("subscription-covered mutations skip a full load unless one is explicitly required", async () => {
+    const work = vi.fn().mockResolvedValue({ updated: true });
+    const requestFullLoad = vi.fn().mockResolvedValue(undefined);
+    expect(await runMutationAction(work, { requestFullLoad })).toEqual({ updated: true });
+    expect(requestFullLoad).not.toHaveBeenCalled();
+    await runMutationAction(work, { refresh: "full", requestFullLoad });
+    expect(requestFullLoad).toHaveBeenCalledTimes(1);
+  });
+
+  test("coalesces overlapping full-load requests", async () => {
+    let finish;
+    const load = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+    const coordinator = createLoadCoordinator(load);
+    const first = coordinator.request({ reason: "first" });
+    const second = coordinator.request({ reason: "second" });
+    expect(first).toBe(second);
+    expect(coordinator.active).toBe(true);
+    await Promise.resolve();
+    expect(load).toHaveBeenCalledTimes(1);
+    finish("done");
+    await expect(first).resolves.toBe("done");
+    expect(coordinator.active).toBe(false);
   });
 
   test("subscriptions initialize once, deduplicate, and dispose across sessions", async () => {
@@ -93,5 +142,58 @@ describe("Phase 1 data loading lifecycle", () => {
     expect([...batches[0].keys()]).toEqual(["dashboard", "notifications"]);
     await lifecycle.dispose();
     vi.useRealTimers();
+  });
+
+  test("reuses a compatibility fallback until its compatibility inputs change", async () => {
+    const cache = createCompatibilityFallbackCache();
+    const loadFallback = vi.fn().mockResolvedValue({ territories: ["resolved"] });
+    const missing = { embeddedValue: null, returnedVersion: -1, expectedVersion: 1, loadFallback };
+    expect(await cache.resolve(missing)).toEqual({ territories: ["resolved"] });
+    expect(await cache.resolve(missing)).toEqual({ territories: ["resolved"] });
+    expect(loadFallback).toHaveBeenCalledTimes(1);
+
+    await cache.resolve({ ...missing, expectedVersion: 2 });
+    expect(loadFallback).toHaveBeenCalledTimes(2);
+    cache.clear();
+    await cache.resolve(missing);
+    expect(loadFallback).toHaveBeenCalledTimes(3);
+  });
+
+  test("uses compatible embedded intelligence without invoking the fallback", async () => {
+    const cache = createCompatibilityFallbackCache();
+    const embeddedValue = { territories: ["embedded"] };
+    const loadFallback = vi.fn();
+    expect(await cache.resolve({ embeddedValue, returnedVersion: 2, expectedVersion: 2, loadFallback })).toBe(embeddedValue);
+    expect(loadFallback).not.toHaveBeenCalled();
+  });
+
+  test("pauses safety reconciliation while hidden and reconciles on foreground resume", () => {
+    let visible = false;
+    let authenticated = true;
+    let intervalCallback;
+    let visibilityCallback;
+    const reconcile = vi.fn();
+    const lifecycle = createReconciliationLifecycle({
+      reconcile,
+      isAuthenticated: () => authenticated,
+      isVisible: () => visible,
+      setIntervalFn: (callback) => { intervalCallback = callback; return 7; },
+      clearIntervalFn: vi.fn(),
+      addVisibilityListener: (callback) => { visibilityCallback = callback; },
+      removeVisibilityListener: vi.fn(),
+    });
+
+    intervalCallback();
+    visibilityCallback();
+    expect(reconcile).not.toHaveBeenCalled();
+    visible = true;
+    visibilityCallback();
+    expect(reconcile).toHaveBeenCalledWith("foreground-resume");
+    intervalCallback();
+    expect(reconcile).toHaveBeenLastCalledWith("safety-reconciliation");
+    authenticated = false;
+    visibilityCallback();
+    expect(reconcile).toHaveBeenCalledTimes(2);
+    lifecycle.dispose();
   });
 });

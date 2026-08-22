@@ -50,20 +50,14 @@ export async function ownedUnitsIncludingAway(
     units = addUnits(units, siege.defenderUnits ?? {});
   }
 
-  const openRuns = await ctx.db
-    .query("plateauRuns")
-    .withIndex("by_status", (q) => q.eq("status", "open"))
+  const recentCommitments = await ctx.db
+    .query("plateauCommitments")
+    .withIndex("by_player", (q) => q.eq("playerId", playerId))
+    .order("desc")
     .take(20);
-  for (const run of openRuns) {
-    const commitment = await ctx.db
-      .query("plateauCommitments")
-      .withIndex("by_run_player", (q) =>
-        q.eq("plateauRunId", run._id).eq("playerId", playerId),
-      )
-      .unique();
-    if (commitment) {
-      units = addUnits(units, commitment.units);
-    }
+  for (const commitment of recentCommitments) {
+    const run = await ctx.db.get(commitment.plateauRunId);
+    if (run?.status === "open") units = addUnits(units, commitment.units);
   }
 
   return units;

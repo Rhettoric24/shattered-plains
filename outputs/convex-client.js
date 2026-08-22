@@ -1,7 +1,7 @@
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { syncEspionageControlLock } from "./espionage-ui-state.js";
 import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
-import { createSessionQueryCache, createSubscriptionLifecycle, projectGameClock, routeNeedsChronicle, SAFETY_RECONCILIATION_MS } from "./data-loading-state.js";
+import { createCompatibilityFallbackCache, createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, runMutationAction } from "./data-loading-state.js";
 
 const CONVEX_URL =
   window.SHATTERED_PLAINS_CONFIG?.convexUrl ||
@@ -39,7 +39,6 @@ if (authToken) client.setAuth(authToken);
 let authSessionGeneration = authToken ? 1 : 0;
 let state = null;
 let rawStateData = null;
-let loadInFlight = null;
 const SPACE_TABS = {
   warcamp: [{ key: "buildings", label: "Buildings" }, { key: "recruitment", label: "Recruitment" }],
   plains: [{ key: "raids", label: "Raids" }, { key: "sieges", label: "Sieges" }, { key: "plateau-runs", label: "Plateau Runs" }],
@@ -114,6 +113,8 @@ const routeDetails = { events: [], eventsLoadedAt: 0, eventsRequest: null };
 const subscriptionLifecycle = createSubscriptionLifecycle({
   createClient: () => new ConvexClient(CONVEX_URL, { unsavedChangesWarning: false }),
 });
+const territoryIntelligenceFallbacks = createCompatibilityFallbackCache();
+const loadCoordinator = createLoadCoordinator((options) => load(options));
 let reactiveRenderPromise = Promise.resolve();
 
 const $ = (id) => document.getElementById(id);
@@ -160,7 +161,8 @@ const refs = {
   getGameConfig: "config:getGameConfig",
   getPlayerSettings: "settings:get",
   updatePlayerSettings: "settings:update",
-  getDashboard: "players:getDashboard",
+  getPlayerSummary: "players:getPlayerSummary",
+  getPlayerAccounting: "players:getPlayerAccounting",
   createPlayer: "players:createPlayer",
   listPlayers: "players:listPlayers",
   upgradeBuilding: "buildings:upgradeBuilding",
@@ -360,11 +362,18 @@ async function resolveTerritoryIntelligence(dashboard, plateaus) {
   const returnedWatchtowerLevel = Number(territoryIntelligence?.watchtower?.level ?? plateaus?.watchtower?.level ?? -1);
   if (!territoryIntelligence || returnedWatchtowerLevel !== dashboardWatchtowerLevel) {
     const fallbackReason = !territoryIntelligence ? "missing plateaus.intelligence" : `watchtower mismatch (${returnedWatchtowerLevel} returned, ${dashboardWatchtowerLevel} expected)`;
-    console.warn("Territory Intelligence compatibility fallback:", fallbackReason);
-    console.count("Territory Intelligence compatibility fallback count");
-    territoryIntelligence = await client.query(refs.listDossiers, {}).catch((error) => {
-      console.warn("Territory Intelligence compatibility query failed.", error);
-      return territoryIntelligence || { kingdoms: [], territories: [], watchtower: plateaus?.watchtower || {} };
+    territoryIntelligence = await territoryIntelligenceFallbacks.resolve({
+      embeddedValue: territoryIntelligence,
+      returnedVersion: returnedWatchtowerLevel,
+      expectedVersion: dashboardWatchtowerLevel,
+      loadFallback: async () => {
+        console.warn("Territory Intelligence compatibility fallback:", fallbackReason);
+        console.count("Territory Intelligence compatibility fallback count");
+        return await client.query(refs.listDossiers, {}).catch((error) => {
+          console.warn("Territory Intelligence compatibility query failed.", error);
+          return territoryIntelligence || { kingdoms: [], territories: [], watchtower: plateaus?.watchtower || {} };
+        });
+      },
     });
   }
   return {
@@ -380,10 +389,10 @@ async function resolveTerritoryIntelligence(dashboard, plateaus) {
 }
 
 function subscriptionSpecs(data) {
-  const monastery = Number(data.dashboard?.player?.buildings?.ardentMonastery || 0);
-  const network = Number(data.dashboard?.player?.buildings?.espionageNetwork || 0);
+  const monastery = Number(data.playerSummary?.player?.buildings?.ardentMonastery || 0);
+  const network = Number(data.playerSummary?.player?.buildings?.espionageNetwork || 0);
   return [
-    { key: "dashboard", query: refs.getDashboard },
+    playerStateSubscription(refs),
     { key: "players", query: refs.listPlayers },
     { key: "raids", query: refs.listVisibleRaids },
     { key: "plateaus", query: refs.listPlateaus },
@@ -405,7 +414,7 @@ function subscriptionSpecs(data) {
 }
 
 function ensureReactiveSubscriptions(data) {
-  if (!authToken || !data?.dashboard?.player) return;
+  if (!authToken || !data?.playerSummary?.player) return;
   const sessionKey = `auth-${authSessionGeneration}`;
   const expectedSessionGeneration = authSessionGeneration;
   subscriptionLifecycle.start(sessionKey, fetchSubscriptionAuthToken, {
@@ -418,9 +427,16 @@ function ensureReactiveSubscriptions(data) {
 function applyReactiveBatch(batch, expectedSessionGeneration) {
   reactiveRenderPromise = reactiveRenderPromise.then(async () => {
     if (!authToken || !rawStateData || expectedSessionGeneration !== authSessionGeneration) return;
+    const accountingInputsBefore = playerAccountingInputKey(rawStateData);
     for (const [key, value] of batch) rawStateData[key] = value;
-    if (!rawStateData.dashboard?.player || !rawStateData.plateaus) return;
-    rawStateData.intelligence = await resolveTerritoryIntelligence(rawStateData.dashboard, rawStateData.plateaus);
+    if (!rawStateData.playerSummary?.player || !rawStateData.plateaus) return;
+    if (playerAccountingInputKey(rawStateData) !== accountingInputsBefore) {
+      rawStateData.playerAccounting = await client.query(refs.getPlayerAccounting, {}).catch((error) => {
+        console.warn("Player accounting refresh failed; the safety reconciliation will recover it.", error);
+        return rawStateData.playerAccounting;
+      });
+    }
+    rawStateData.intelligence = await resolveTerritoryIntelligence(rawStateData.playerSummary, rawStateData.plateaus);
     if (expectedSessionGeneration !== authSessionGeneration) return;
     state = buildState(rawStateData);
     processNewNotificationRows(state.notifications);
@@ -430,9 +446,7 @@ function applyReactiveBatch(batch, expectedSessionGeneration) {
 }
 
 function requestLoad(options = {}) {
-  if (loadInFlight) return loadInFlight;
-  loadInFlight = load(options).finally(() => { loadInFlight = null; });
-  return loadInFlight;
+  return loadCoordinator.request(options);
 }
 
 async function load(options = {}) {
@@ -440,20 +454,23 @@ async function load(options = {}) {
   const allowRefresh = options.allowRefresh ?? true;
   const allowSeasonBootstrap = options.allowSeasonBootstrap ?? true;
   if (!authToken) return signedOut();
+  territoryIntelligenceFallbacks.clear();
   sessionQueries.setSession(authToken);
   captureSelections();
 
   try {
     const [
       config,
-      dashboard,
+      playerSummary,
+      playerAccounting,
       players,
       events,
       clock,
       adminStatus,
     ] = await Promise.all([
       sessionQueries.get("config", () => client.query(refs.getGameConfig, {})),
-      client.query(refs.getDashboard, {}),
+      client.query(refs.getPlayerSummary, {}),
+      client.query(refs.getPlayerAccounting, {}),
       client.query(refs.listPlayers, {}),
       loadChronicleEventsForRoute(currentRoute),
       sessionQueries.get("clock", async () => ({ ...(await client.query(refs.getClock, {})), browserReceivedAt: Date.now() })),
@@ -462,7 +479,7 @@ async function load(options = {}) {
 
     if (requestId !== latestLoadRequest) return;
 
-    if (!dashboard || !dashboard.player) {
+    if (!playerSummary || !playerSummary.player || !playerAccounting) {
       state = null;
       signedOut();
       showAccountMessage("This login worked, but no warcamp is attached to it. Create a new account with a warcamp, or delete this test auth account and start fresh.");
@@ -474,16 +491,16 @@ async function load(options = {}) {
       client.query(refs.listPlateaus, {}),
       client.query(refs.getCurrentPlateauRun, {}),
       client.query(refs.listInbox, {}),
-      Number(dashboard.player.buildings?.espionageNetwork || 0) >= 1 ? client.query(refs.getEspionageStatus, {}).catch((error) => {
+      Number(playerSummary.player.buildings?.espionageNetwork || 0) >= 1 ? client.query(refs.getEspionageStatus, {}).catch((error) => {
         console.warn("Espionage backend is not available yet.", error);
         return { networkLevel: 0, available: {}, defending: {}, onMission: {}, counterIntelligence: 0, targets: [], missions: [], rules: { operatives: ESPIONAGE_UI_DEFAULTS.operatives, network: ESPIONAGE_UI_DEFAULTS.network } };
       }) : Promise.resolve({ networkLevel: 0, available: {}, defending: {}, onMission: {}, counterIntelligence: 0, targets: [], missions: [], rules: { operatives: ESPIONAGE_UI_DEFAULTS.operatives, network: ESPIONAGE_UI_DEFAULTS.network } }),
-      Number(dashboard.player.buildings?.espionageNetwork || 0) >= 1 ? client.query(refs.getKingdomLedger, {}).catch((error) => {
+      Number(playerSummary.player.buildings?.espionageNetwork || 0) >= 1 ? client.query(refs.getKingdomLedger, {}).catch((error) => {
         console.warn("Kingdom Intelligence backend is unavailable.", error);
         return { loadError: true, errorMessage: friendlyError(error), season: null, rows: [], generatedAt: Date.now() };
       }) : Promise.resolve({ locked: true, season: null, rows: [], generatedAt: Date.now() }),
-      Number(dashboard.player.buildings?.ardentMonastery || 0) >= 1 ? client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })) : Promise.resolve({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10, conclaves: [] }),
-      Number(dashboard.player.buildings?.ardentMonastery || 0) >= 1 ? client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })) : Promise.resolve({ unlocked: false, completedLevels: dashboard.completedResearch || {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } }),
+      Number(playerSummary.player.buildings?.ardentMonastery || 0) >= 1 ? client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })) : Promise.resolve({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10, conclaves: [] }),
+      Number(playerSummary.player.buildings?.ardentMonastery || 0) >= 1 ? client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })) : Promise.resolve({ unlocked: false, completedLevels: playerAccounting.completedResearch || {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } }),
       client.query(refs.listNotifications, {}).catch(() => ({ notifications: [], unreadCount: 0, preferences: { combat: true, missions: true, research: true, plateauRuns: true, messages: true }, devices: [], vapidPublicKey: null })),
       sessionQueries.get("pushConfiguration", () => client.query(refs.getPushConfiguration, {}).catch(() => ({ vapidPublicKey: null, configured: false }))),
       client.query(refs.getSeasonLedger, {}).catch((error) => {
@@ -495,7 +512,7 @@ async function load(options = {}) {
     ]);
 
     if (requestId !== latestLoadRequest) return;
-    const territoryIntelligence = await resolveTerritoryIntelligence(dashboard, plateaus);
+    const territoryIntelligence = await resolveTerritoryIntelligence(playerSummary, plateaus);
     if (requestId !== latestLoadRequest) return;
 
     // Worlds created before seasons existed have no active ledger. Bootstrap is
@@ -507,7 +524,8 @@ async function load(options = {}) {
 
     rawStateData = {
       config,
-      dashboard,
+      playerSummary,
+      playerAccounting,
       players,
       raids,
       plateaus,
@@ -548,7 +566,8 @@ function showAccountMessage(text) {
 }
 
 function buildState(data) {
-  const player = data.dashboard.player;
+  const player = data.playerSummary.player;
+  const accounting = data.playerAccounting;
   const playerUnits = normalizeRosterUnits(player.units, Object.keys(data.config.units || {}));
   const buildingRules = {
     ...(data.config.buildings || {}),
@@ -576,7 +595,7 @@ function buildState(data) {
   );
   const totalUnitsAtHome = sumUnits(playerUnits);
   const totalUnitsOwned = totalUnitsAtHome + sumUnits(unitsAway);
-  const availableStats = data.dashboard.armyStats;
+  const availableStats = accounting.armyStats;
   const playerRows = data.players.map((entry) => ({
     id: entry._id,
     _id: entry._id,
@@ -592,27 +611,32 @@ function buildState(data) {
     me: {
       id: player._id,
       name: player.name,
-      acres: data.dashboard.ownedPlateauCount || 0,
-      spheres: data.dashboard.effectiveSpheres,
+      acres: accounting.ownedPlateauCount || 0,
+      spheres: projectPlayerSpheres(player, accounting, data.config.realMsPerGameDay),
       gemhearts: player.gemhearts,
       units: playerUnits,
       availableUnits: playerUnits,
       unitsAway,
       buildings: playerBuildings,
-      buildingStats: data.dashboard.buildingStats,
-      provisions: data.dashboard.provisions || { used: 0, capacity: 0, remaining: 0 },
-      plateauBonuses: data.dashboard.plateauBonuses || { sphereIncomeBonusPercent: 0, bridgedTravelReductionPercent: 0 },
-      plateauAttributes: data.dashboard.plateauAttributes || { large: 0, highground: 0 },
-      totalIncomePerDay: data.dashboard.buildingStats.totalIncomePerDay,
+      buildingStats: accounting.buildingStats,
+      provisions: accounting.provisions || { used: 0, capacity: 0, remaining: 0 },
+      plateauBonuses: accounting.plateauBonuses || { sphereIncomeBonusPercent: 0, bridgedTravelReductionPercent: 0 },
+      plateauAttributes: accounting.plateauAttributes || { large: 0, highground: 0 },
+      totalIncomePerDay: accounting.buildingStats.totalIncomePerDay,
       totalUnits: totalUnitsOwned,
       totalAvailableUnits: totalUnitsAtHome,
       power: availableStats.power,
       homePower: availableStats.power,
-      completedResearch: data.dashboard.completedResearch || {},
+      completedResearch: accounting.completedResearch || {},
+      sphereEconomy: {
+        player,
+        accounting,
+        realMsPerGameDay: data.config.realMsPerGameDay,
+      },
     },
     players: playerRows,
     playerMap: Object.fromEntries(playerRows.map((entry) => [entry.id, entry])),
-    openAcres: data.dashboard.neutralPlateauCount || 0,
+    openAcres: 0,
     plateaus: decoratePlateaus(data.plateaus, playerRows, data.config.units),
     raids: decorateRaids(data.raids, playerRows, data.config.units),
     plateauRun: decoratePlateauRun(data.plateauRun, data.config.units),
@@ -2537,9 +2561,10 @@ function plateauRunLootLabel(spheres) {
 async function action(work, options = {}) {
   try {
     captureSelections();
-    const result = await work();
-    if (options.refresh !== false) await requestLoad();
-    return result;
+    return await runMutationAction(work, {
+      refresh: options.refresh,
+      requestFullLoad: () => requestLoad({ reason: "post-mutation" }),
+    });
   } catch (error) {
     alert(friendlyError(error));
     return null;
@@ -3319,6 +3344,11 @@ function updateLocalTimePresentation() {
       if ($("game-date")) $("game-date").textContent = projected.label;
     }
   }
+  if (state?.me?.sphereEconomy) {
+    const economy = state.me.sphereEconomy;
+    state.me.spheres = projectPlayerSpheres(economy.player, economy.accounting, economy.realMsPerGameDay);
+    if ($("res-spheres")) $("res-spheres").textContent = number(state.me.spheres);
+  }
 }
 document.addEventListener("click", (event) => {
   if (event.target.closest("#tap-tooltip")) return;
@@ -3378,7 +3408,9 @@ if ("serviceWorker" in navigator) {
 
 if (authToken) requestLoad();
 else signedOut();
-setInterval(() => {
-  if (authToken) requestLoad({ reason: "safety-reconciliation" });
-}, SAFETY_RECONCILIATION_MS);
+createReconciliationLifecycle({
+  reconcile: (reason) => requestLoad({ reason }),
+  isAuthenticated: () => Boolean(authToken),
+  isVisible: () => document.visibilityState !== "hidden",
+});
 setInterval(updateLocalTimePresentation, 1000);

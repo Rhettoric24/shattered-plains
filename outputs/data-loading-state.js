@@ -38,11 +38,110 @@ export function projectGameClock(clock, realMsPerGameDay, now = Date.now()) {
   return { day, hour, elapsedGameDays, label: `Day ${day}, hour ${hour}` };
 }
 
+export function projectPlayerSpheres(player, accounting, realMsPerGameDay, now = Date.now()) {
+  const settled = Number(player?.spheres || 0);
+  const referenceAt = Number(player?.lastEconomyAt ?? player?.createdAt ?? now);
+  const incomePerGameDay = Number(accounting?.economy?.incomePerGameDay || 0);
+  const elapsedGameDays = Math.max(0, now - referenceAt) / Math.max(1, Number(realMsPerGameDay) || 1);
+  return Math.round((settled + incomePerGameDay * elapsedGameDays) * 1000) / 1000;
+}
+
+export function playerAccountingInputKey(data) {
+  const player = data?.playerSummary?.player || {};
+  const mine = (data?.plateaus?.mine || []).map((plateau) => [
+    String(plateau._id), plateau.type, Boolean(plateau.large), Boolean(plateau.highground), plateau.status,
+  ]).sort((left, right) => left[0].localeCompare(right[0]));
+  return JSON.stringify({
+    player: {
+      acres: player.acres,
+      units: player.units,
+      buildings: player.buildings,
+      operatives: player.operatives,
+      defendingOperatives: player.defendingOperatives,
+      ardentiaConclaves: player.ardentiaConclaves,
+    },
+    mine,
+    research: data?.research ? {
+      completedLevels: data.research.completedLevels,
+      economicDoctrine: data.research.economicDoctrine,
+    } : null,
+  });
+}
+
+export function playerStateSubscription(refs) {
+  return { key: "playerSummary", query: refs.getPlayerSummary };
+}
+
 export function routeNeedsChronicle(route) {
   return route?.view === "chronicle";
 }
 
 export const SAFETY_RECONCILIATION_MS = 5 * 60 * 1000;
+
+export async function runMutationAction(work, { refresh = "subscriptions", requestFullLoad } = {}) {
+  const result = await work();
+  if (refresh === "full") await requestFullLoad?.();
+  return result;
+}
+
+export function createLoadCoordinator(load) {
+  let inFlight = null;
+  return {
+    request(options = {}) {
+      if (inFlight) return inFlight;
+      inFlight = Promise.resolve().then(() => load(options)).finally(() => { inFlight = null; });
+      return inFlight;
+    },
+    get active() { return Boolean(inFlight); },
+  };
+}
+
+export function createCompatibilityFallbackCache() {
+  const values = new Map();
+  return {
+    async resolve({ embeddedValue, returnedVersion, expectedVersion, loadFallback }) {
+      if (embeddedValue && returnedVersion === expectedVersion) return embeddedValue;
+      const key = `${embeddedValue ? "mismatch" : "missing"}:${returnedVersion}:${expectedVersion}`;
+      if (values.has(key)) return await values.get(key);
+      const request = Promise.resolve().then(loadFallback);
+      values.set(key, request);
+      try {
+        return await request;
+      } catch (error) {
+        values.delete(key);
+        throw error;
+      }
+    },
+    clear() { values.clear(); },
+  };
+}
+
+export function createReconciliationLifecycle({
+  reconcile,
+  isAuthenticated,
+  isVisible,
+  intervalMs = SAFETY_RECONCILIATION_MS,
+  setIntervalFn = setInterval,
+  clearIntervalFn = clearInterval,
+  addVisibilityListener = (listener) => document.addEventListener("visibilitychange", listener),
+  removeVisibilityListener = (listener) => document.removeEventListener("visibilitychange", listener),
+}) {
+  const reconcileIfVisible = (reason) => {
+    if (!isAuthenticated() || !isVisible()) return false;
+    reconcile(reason);
+    return true;
+  };
+  const onVisibilityChange = () => reconcileIfVisible("foreground-resume");
+  const intervalId = setIntervalFn(() => reconcileIfVisible("safety-reconciliation"), intervalMs);
+  addVisibilityListener(onVisibilityChange);
+  return {
+    reconcileIfVisible,
+    dispose() {
+      clearIntervalFn(intervalId);
+      removeVisibilityListener(onVisibilityChange);
+    },
+  };
+}
 
 export function createSubscriptionLifecycle({ createClient, debounceMs = 50, setTimer = setTimeout, clearTimer = clearTimeout }) {
   let sessionKey = null;
