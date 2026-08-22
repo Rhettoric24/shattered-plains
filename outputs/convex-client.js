@@ -1,7 +1,7 @@
-import { ConvexHttpClient } from "convex/browser";
+import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { syncEspionageControlLock } from "./espionage-ui-state.js";
 import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
-import { createSessionQueryCache, projectGameClock, routeNeedsChronicle } from "./data-loading-state.js";
+import { createSessionQueryCache, createSubscriptionLifecycle, projectGameClock, routeNeedsChronicle, SAFETY_RECONCILIATION_MS } from "./data-loading-state.js";
 
 const CONVEX_URL =
   window.SHATTERED_PLAINS_CONFIG?.convexUrl ||
@@ -9,7 +9,6 @@ const CONVEX_URL =
 const client = new ConvexHttpClient(CONVEX_URL);
 const AUTH_TOKEN_KEY = "sp-convex-auth-token";
 const AUTH_REFRESH_KEY = "sp-convex-auth-refresh-token";
-const DASHBOARD_REFRESH_MS = 30000;
 const ESPIONAGE_UI_DEFAULTS = {
   building: {
     name: "Ghostblood Network",
@@ -37,7 +36,10 @@ const ESPIONAGE_UI_DEFAULTS = {
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY);
 let refreshToken = localStorage.getItem(AUTH_REFRESH_KEY);
 if (authToken) client.setAuth(authToken);
+let authSessionGeneration = authToken ? 1 : 0;
 let state = null;
+let rawStateData = null;
+let loadInFlight = null;
 const SPACE_TABS = {
   warcamp: [{ key: "buildings", label: "Buildings" }, { key: "recruitment", label: "Recruitment" }],
   plains: [{ key: "raids", label: "Raids" }, { key: "sieges", label: "Sieges" }, { key: "plateau-runs", label: "Plateau Runs" }],
@@ -109,6 +111,10 @@ let deferredInstallPrompt = null;
 let quantityIncrement = [1, 10, 50, 100].includes(Number(localStorage.getItem("sp-quantity-increment"))) ? Number(localStorage.getItem("sp-quantity-increment")) : 10;
 const sessionQueries = createSessionQueryCache();
 const routeDetails = { events: [], eventsLoadedAt: 0, eventsRequest: null };
+const subscriptionLifecycle = createSubscriptionLifecycle({
+  createClient: () => new ConvexClient(CONVEX_URL, { unsavedChangesWarning: false }),
+});
+let reactiveRenderPromise = Promise.resolve();
 
 const $ = (id) => document.getElementById(id);
 
@@ -280,17 +286,28 @@ async function refreshAuthToken() {
   const authClient = new ConvexHttpClient(CONVEX_URL);
   const result = await authClient.action(refs.signIn, { refreshToken });
   if (!result.tokens) return false;
-  setAuthTokens(result.tokens);
+  setAuthTokens(result.tokens, { newSession: false });
   return true;
 }
 
-function setAuthTokens(tokens) {
+function setAuthTokens(tokens, options = {}) {
+  const newSession = options.newSession ?? true;
   authToken = tokens.token;
   refreshToken = tokens.refreshToken;
   client.setAuth(authToken);
   localStorage.setItem(AUTH_TOKEN_KEY, authToken);
   localStorage.setItem(AUTH_REFRESH_KEY, refreshToken);
   sessionQueries.setSession(authToken);
+  if (newSession) authSessionGeneration += 1;
+}
+
+async function fetchSubscriptionAuthToken({ forceRefreshToken }) {
+  if (!forceRefreshToken || !refreshToken) return authToken;
+  const authClient = new ConvexHttpClient(CONVEX_URL);
+  const result = await authClient.action(refs.signIn, { refreshToken });
+  if (!result.tokens) return null;
+  setAuthTokens(result.tokens, { newSession: false });
+  return authToken;
 }
 
 function clearAuthTokens() {
@@ -303,6 +320,9 @@ function clearAuthTokens() {
   routeDetails.events = [];
   routeDetails.eventsLoadedAt = 0;
   routeDetails.eventsRequest = null;
+  rawStateData = null;
+  authSessionGeneration += 1;
+  void subscriptionLifecycle.dispose();
 }
 
 async function loadChronicleEventsForRoute(route) {
@@ -325,11 +345,94 @@ async function refreshRouteDetails(route) {
   try {
     const events = await loadChronicleEventsForRoute(route);
     if (!state || !routeNeedsChronicle(currentRoute)) return;
+    if (rawStateData) rawStateData.events = events;
     state.log = events.map((event) => ({ text: event.text, at: event.createdAt, kind: event.kind || "world", gameDate: event.gameDate || null }));
     renderLog();
+    ensureReactiveSubscriptions(rawStateData);
   } catch (error) {
     console.warn("Chronicle history could not be loaded.", error);
   }
+}
+
+async function resolveTerritoryIntelligence(dashboard, plateaus) {
+  const dashboardWatchtowerLevel = Math.max(0, Math.min(3, Number(dashboard.player.buildings?.watchtower || 0)));
+  let territoryIntelligence = plateaus?.intelligence || null;
+  const returnedWatchtowerLevel = Number(territoryIntelligence?.watchtower?.level ?? plateaus?.watchtower?.level ?? -1);
+  if (!territoryIntelligence || returnedWatchtowerLevel !== dashboardWatchtowerLevel) {
+    const fallbackReason = !territoryIntelligence ? "missing plateaus.intelligence" : `watchtower mismatch (${returnedWatchtowerLevel} returned, ${dashboardWatchtowerLevel} expected)`;
+    console.warn("Territory Intelligence compatibility fallback:", fallbackReason);
+    console.count("Territory Intelligence compatibility fallback count");
+    territoryIntelligence = await client.query(refs.listDossiers, {}).catch((error) => {
+      console.warn("Territory Intelligence compatibility query failed.", error);
+      return territoryIntelligence || { kingdoms: [], territories: [], watchtower: plateaus?.watchtower || {} };
+    });
+  }
+  return {
+    kingdoms: territoryIntelligence?.kingdoms || [],
+    territories: territoryIntelligence?.territories || [],
+    watchtower: {
+      ...(territoryIntelligence?.watchtower || plateaus?.watchtower || {}),
+      level: dashboardWatchtowerLevel,
+      territoryLevel: dashboardWatchtowerLevel >= 2 ? 2 : dashboardWatchtowerLevel >= 1 ? 1 : 0,
+      counterIntelligence: dashboardWatchtowerLevel >= 3 ? 1 : 0,
+    },
+  };
+}
+
+function subscriptionSpecs(data) {
+  const monastery = Number(data.dashboard?.player?.buildings?.ardentMonastery || 0);
+  const network = Number(data.dashboard?.player?.buildings?.espionageNetwork || 0);
+  return [
+    { key: "dashboard", query: refs.getDashboard },
+    { key: "players", query: refs.listPlayers },
+    { key: "raids", query: refs.listVisibleRaids },
+    { key: "plateaus", query: refs.listPlateaus },
+    { key: "plateauRun", query: refs.getCurrentPlateauRun },
+    { key: "inbox", query: refs.listInbox },
+    { key: "notifications", query: refs.listNotifications },
+    { key: "seasonLedger", query: refs.getSeasonLedger },
+    { key: "worldPressure", query: refs.getWorldPressure },
+    ...(routeNeedsChronicle(currentRoute) ? [{ key: "events", query: refs.listEvents }] : []),
+    ...(network >= 1 ? [
+      { key: "espionage", query: refs.getEspionageStatus },
+      { key: "kingdomLedger", query: refs.getKingdomLedger },
+    ] : []),
+    ...(monastery >= 1 ? [
+      { key: "ardentia", query: refs.getArdentiaStatus },
+      { key: "research", query: refs.getResearchStatus },
+    ] : []),
+  ];
+}
+
+function ensureReactiveSubscriptions(data) {
+  if (!authToken || !data?.dashboard?.player) return;
+  const sessionKey = `auth-${authSessionGeneration}`;
+  const expectedSessionGeneration = authSessionGeneration;
+  subscriptionLifecycle.start(sessionKey, fetchSubscriptionAuthToken, {
+    onBatch: (batch) => applyReactiveBatch(batch, expectedSessionGeneration),
+    onError: (error, key) => console.warn(`Convex subscription ${key} failed; the safety reconciliation remains active.`, error),
+  });
+  subscriptionLifecycle.sync(subscriptionSpecs(data));
+}
+
+function applyReactiveBatch(batch, expectedSessionGeneration) {
+  reactiveRenderPromise = reactiveRenderPromise.then(async () => {
+    if (!authToken || !rawStateData || expectedSessionGeneration !== authSessionGeneration) return;
+    for (const [key, value] of batch) rawStateData[key] = value;
+    if (!rawStateData.dashboard?.player || !rawStateData.plateaus) return;
+    rawStateData.intelligence = await resolveTerritoryIntelligence(rawStateData.dashboard, rawStateData.plateaus);
+    if (expectedSessionGeneration !== authSessionGeneration) return;
+    state = buildState(rawStateData);
+    processNewNotificationRows(state.notifications);
+    render();
+    ensureReactiveSubscriptions(rawStateData);
+  }).catch((error) => console.error("Reactive state update failed; the safety reconciliation will recover it.", error));
+}
+
+function requestLoad(options = {}) {
+  if (loadInFlight) return loadInFlight;
+  loadInFlight = load(options).finally(() => { loadInFlight = null; });
+  return loadInFlight;
 }
 
 async function load(options = {}) {
@@ -392,29 +495,8 @@ async function load(options = {}) {
     ]);
 
     if (requestId !== latestLoadRequest) return;
-    const dashboardWatchtowerLevel = Math.max(0, Math.min(3, Number(dashboard.player.buildings?.watchtower || 0)));
-    let territoryIntelligence = plateaus?.intelligence || null;
-    const returnedWatchtowerLevel = Number(territoryIntelligence?.watchtower?.level ?? plateaus?.watchtower?.level ?? -1);
-    if (!territoryIntelligence || returnedWatchtowerLevel !== dashboardWatchtowerLevel) {
-      const fallbackReason = !territoryIntelligence ? "missing plateaus.intelligence" : `watchtower mismatch (${returnedWatchtowerLevel} returned, ${dashboardWatchtowerLevel} expected)`;
-      console.warn("Territory Intelligence compatibility fallback:", fallbackReason);
-      console.count("Territory Intelligence compatibility fallback count");
-      territoryIntelligence = await client.query(refs.listDossiers, {}).catch((error) => {
-        console.warn("Territory Intelligence compatibility query failed.", error);
-        return territoryIntelligence || { kingdoms: [], territories: [], watchtower: plateaus?.watchtower || {} };
-      });
-    }
+    const territoryIntelligence = await resolveTerritoryIntelligence(dashboard, plateaus);
     if (requestId !== latestLoadRequest) return;
-    territoryIntelligence = {
-      kingdoms: territoryIntelligence?.kingdoms || [],
-      territories: territoryIntelligence?.territories || [],
-      watchtower: {
-        ...(territoryIntelligence?.watchtower || plateaus?.watchtower || {}),
-        level: dashboardWatchtowerLevel,
-        territoryLevel: dashboardWatchtowerLevel >= 2 ? 2 : dashboardWatchtowerLevel >= 1 ? 1 : 0,
-        counterIntelligence: dashboardWatchtowerLevel >= 3 ? 1 : 0,
-      },
-    };
 
     // Worlds created before seasons existed have no active ledger. Bootstrap is
     // idempotent and fills that migration gap without resetting existing data.
@@ -423,7 +505,7 @@ async function load(options = {}) {
       return await load({ allowRefresh: false, allowSeasonBootstrap: false });
     }
 
-    state = buildState({
+    rawStateData = {
       config,
       dashboard,
       players,
@@ -444,9 +526,11 @@ async function load(options = {}) {
       events,
       clock,
       adminStatus,
-    });
+    };
+    state = buildState(rawStateData);
     processNewNotificationRows(state.notifications);
     render();
+    ensureReactiveSubscriptions(rawStateData);
   } catch (error) {
     if (requestId !== latestLoadRequest) return;
     if (allowRefresh && await refreshAuthToken()) {
@@ -805,6 +889,7 @@ function showRoute(routeOrLegacy, options = {}) {
   renderSpaceSubnav(route);
   bindRouteControls();
   void refreshRouteDetails(route);
+  ensureReactiveSubscriptions(rawStateData);
   if (route.view === "spanreed" && localStorage.getItem("sp-auto-read-inbox") === "true" && state?.unreadCount > 0) {
     action(() => client.mutation(refs.markInboxRead, {}));
   }
@@ -2001,7 +2086,6 @@ async function enablePushNotifications() {
     deviceLabel: `${navigator.platform || "Device"} · ${navigator.userAgent.includes("Mobile") ? "Mobile" : "Browser"}`,
     soundEnabled: $("notification-sound").checked,
   });
-  await load();
 }
 
 async function disablePushNotifications() {
@@ -2009,7 +2093,6 @@ async function disablePushNotifications() {
   if (!subscription) return;
   await client.mutation(refs.removePushDevice, { endpoint: subscription.endpoint });
   await subscription.unsubscribe();
-  await load();
 }
 
 async function updatePushControls() {
@@ -2451,11 +2534,11 @@ function plateauRunLootLabel(spheres) {
   return "Massive";
 }
 
-async function action(work) {
+async function action(work, options = {}) {
   try {
     captureSelections();
     const result = await work();
-    await load();
+    if (options.refresh !== false) await requestLoad();
     return result;
   } catch (error) {
     alert(friendlyError(error));
@@ -3114,7 +3197,7 @@ $("mission-confirmations")?.addEventListener("change", () => {
     const updated = await client.mutation(refs.updatePlayerSettings, { confirmConsequentialMissions });
     sessionQueries.set("settings", { ...(state.playerSettings || {}), ...updated });
     return updated;
-  });
+  }, { refresh: false });
 });
 $("notification-panel").addEventListener("click", (event) => event.stopPropagation());
 $("notification-backdrop").addEventListener("click", () => setNotificationPanelOpen(false));
@@ -3287,16 +3370,15 @@ if ("serviceWorker" in navigator) {
     if (event.data?.type === "push-notification") {
       showNotificationToast(event.data.notification?.title, event.data.notification?.body);
       if (event.data.notification?.id) knownNotificationIds.add(String(event.data.notification.id));
-      if (authToken) load();
     }
     if (event.data?.type === "open-route" && state) showRoute(event.data.route || { view: "home" });
     if (event.data?.type === "open-view" && state) showView(event.data.view || "home");
   });
 }
 
-if (authToken) load();
+if (authToken) requestLoad();
 else signedOut();
 setInterval(() => {
-  if (authToken) load();
-}, DASHBOARD_REFRESH_MS);
+  if (authToken) requestLoad({ reason: "safety-reconciliation" });
+}, SAFETY_RECONCILIATION_MS);
 setInterval(updateLocalTimePresentation, 1000);

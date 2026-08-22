@@ -20,6 +20,7 @@ const authState = path.join(__dirname, "test-results", ".auth", "developed-kingd
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  updateSnapshots: "none",
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
