@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { createCompatibilityFallbackCache, createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, routeNeedsPlateauBoard, routeNeedsTerritoryIntelligence, runMutationAction, SAFETY_RECONCILIATION_MS } from "./data-loading-state.js";
+import { createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, routeNeedsPlateauBoard, routeNeedsTerritoryIntelligence, runMutationAction, SAFETY_RECONCILIATION_MS } from "./data-loading-state.js";
 
 describe("Phase 1 data loading lifecycle", () => {
   test("loads a session-stable value once until the authenticated session changes", async () => {
@@ -48,10 +48,9 @@ describe("Phase 1 data loading lifecycle", () => {
     expect(playerAccountingInputKey({ ...base, research: { ...base.research, completedLevels: { marketEconomics: 2 } } })).not.toBe(key);
   });
 
-  test("subscribes current clients to the narrow player summary instead of the legacy dashboard", () => {
-    const spec = playerStateSubscription({ getPlayerSummary: "players:getPlayerSummary", getDashboard: "players:getDashboard" });
+  test("subscribes current clients to the narrow player summary", () => {
+    const spec = playerStateSubscription({ getPlayerSummary: "players:getPlayerSummary" });
     expect(spec).toEqual({ key: "playerSummary", query: "players:getPlayerSummary" });
-    expect(spec.query).not.toBe("players:getDashboard");
   });
 
   test("loads Chronicle history only for its destination route", () => {
@@ -114,8 +113,8 @@ describe("Phase 1 data loading lifecycle", () => {
     const lifecycle = createSubscriptionLifecycle({ createClient, debounceMs: 0 });
     expect(lifecycle.start("session-a", async () => "token")).toBe(true);
     expect(lifecycle.start("session-a", async () => "token")).toBe(false);
-    lifecycle.sync([{ key: "dashboard", query: "players:getDashboard" }, { key: "dashboard", query: "players:getDashboard" }]);
-    lifecycle.sync([{ key: "dashboard", query: "players:getDashboard" }]);
+    lifecycle.sync([{ key: "playerSummary", query: "players:getPlayerSummary" }, { key: "playerSummary", query: "players:getPlayerSummary" }]);
+    lifecycle.sync([{ key: "playerSummary", query: "players:getPlayerSummary" }]);
     expect(clients[0].onUpdate).toHaveBeenCalledTimes(1);
     expect(lifecycle.size).toBe(1);
     expect(lifecycle.start("session-b", async () => "other-token")).toBe(true);
@@ -163,39 +162,16 @@ describe("Phase 1 data loading lifecycle", () => {
     });
     lifecycle.start("session", async () => "token", { onBatch: (batch) => batches.push(batch) });
     lifecycle.sync([
-      { key: "dashboard", query: "players:getDashboard" },
+      { key: "playerSummary", query: "players:getPlayerSummary" },
       { key: "notifications", query: "notifications:list" },
     ]);
-    callbacks.get("players:getDashboard")({ player: { name: "Kaladin" } });
+    callbacks.get("players:getPlayerSummary")({ player: { name: "Kaladin" } });
     callbacks.get("notifications:list")({ unreadCount: 1 });
     await vi.advanceTimersByTimeAsync(25);
     expect(batches).toHaveLength(1);
-    expect([...batches[0].keys()]).toEqual(["dashboard", "notifications"]);
+    expect([...batches[0].keys()]).toEqual(["playerSummary", "notifications"]);
     await lifecycle.dispose();
     vi.useRealTimers();
-  });
-
-  test("reuses a compatibility fallback until its compatibility inputs change", async () => {
-    const cache = createCompatibilityFallbackCache();
-    const loadFallback = vi.fn().mockResolvedValue({ territories: ["resolved"] });
-    const missing = { embeddedValue: null, returnedVersion: -1, expectedVersion: 1, loadFallback };
-    expect(await cache.resolve(missing)).toEqual({ territories: ["resolved"] });
-    expect(await cache.resolve(missing)).toEqual({ territories: ["resolved"] });
-    expect(loadFallback).toHaveBeenCalledTimes(1);
-
-    await cache.resolve({ ...missing, expectedVersion: 2 });
-    expect(loadFallback).toHaveBeenCalledTimes(2);
-    cache.clear();
-    await cache.resolve(missing);
-    expect(loadFallback).toHaveBeenCalledTimes(3);
-  });
-
-  test("uses compatible embedded intelligence without invoking the fallback", async () => {
-    const cache = createCompatibilityFallbackCache();
-    const embeddedValue = { territories: ["embedded"] };
-    const loadFallback = vi.fn();
-    expect(await cache.resolve({ embeddedValue, returnedVersion: 2, expectedVersion: 2, loadFallback })).toBe(embeddedValue);
-    expect(loadFallback).not.toHaveBeenCalled();
   });
 
   test("pauses safety reconciliation while hidden and reconciles on foreground resume", () => {

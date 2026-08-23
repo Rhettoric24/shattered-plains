@@ -32,26 +32,20 @@ async function representativePlayer(t: ReturnType<typeof convexTest>, subject: s
 }
 
 describe("player summary and accounting boundaries", () => {
-  test("preserves legacy provisions, availability modifiers, and economy inputs", async () => {
+  test("preserves provisions, availability modifiers, and economy inputs", async () => {
     const t = convexTest(schema, modules);
     const subject = "accounting-user";
     await representativePlayer(t, subject);
     const player = t.withIdentity({ subject });
-    const [legacy, accounting] = await Promise.all([
-      player.query(api.players.getDashboard, {}),
-      player.query(api.players.getPlayerAccounting, {}),
-    ]);
+    const accounting = await player.query(api.players.getPlayerAccounting, {});
     expect(accounting).toMatchObject({
-      provisions: legacy!.provisions,
-      armyStats: legacy!.armyStats,
-      completedResearch: legacy!.completedResearch,
-      plateauCounts: legacy!.plateauCounts,
-      plateauAttributes: legacy!.plateauAttributes,
-      plateauBonuses: legacy!.plateauBonuses,
-      buildingStats: legacy!.buildingStats,
+      completedResearch: { marketEconomics: 1 },
+      plateauCounts: { sphere: 1, bridged: 0, gemheart: 0, ancient: 0 },
+      plateauAttributes: { large: 1, highground: 0 },
+      plateauBonuses: { sphereIncomeBonusPercent: 10, bridgedTravelReductionPercent: 0 },
     });
     expect(accounting!.provisions).toEqual({ used: 41, capacity: 217, remaining: 176, largeBonusPercent: 10 });
-    expect(accounting!.economy.incomePerGameDay).toBe(legacy!.buildingStats.totalIncomePerDay);
+    expect(accounting!.economy.incomePerGameDay).toBe(accounting!.buildingStats.totalIncomePerDay);
     const summary = await player.query(api.players.getPlayerSummary, {});
     expect(summary!.player.units).toEqual(units);
     expect(summary!.player.operatives).toEqual(operatives);

@@ -1,7 +1,7 @@
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { syncEspionageControlLock } from "./espionage-ui-state.js";
 import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
-import { createCompatibilityFallbackCache, createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, routeNeedsPlateauBoard, routeNeedsTerritoryIntelligence, runMutationAction } from "./data-loading-state.js";
+import { createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, routeNeedsPlateauBoard, routeNeedsTerritoryIntelligence, runMutationAction } from "./data-loading-state.js";
 
 const CONVEX_URL =
   window.SHATTERED_PLAINS_CONFIG?.convexUrl ||
@@ -113,7 +113,6 @@ const routeDetails = { events: [], eventsLoadedAt: 0, eventsRequest: null };
 const subscriptionLifecycle = createSubscriptionLifecycle({
   createClient: () => new ConvexClient(CONVEX_URL, { unsavedChangesWarning: false }),
 });
-const territoryIntelligenceFallbacks = createCompatibilityFallbackCache();
 const loadCoordinator = createLoadCoordinator((options) => load(options));
 let reactiveRenderPromise = Promise.resolve();
 
@@ -357,38 +356,6 @@ async function refreshRouteDetails(route) {
   }
 }
 
-async function resolveTerritoryIntelligence(dashboard, plateaus) {
-  const dashboardWatchtowerLevel = Math.max(0, Math.min(3, Number(dashboard.player.buildings?.watchtower || 0)));
-  let territoryIntelligence = plateaus?.intelligence || null;
-  const returnedWatchtowerLevel = Number(territoryIntelligence?.watchtower?.level ?? plateaus?.watchtower?.level ?? -1);
-  if (!territoryIntelligence || returnedWatchtowerLevel !== dashboardWatchtowerLevel) {
-    const fallbackReason = !territoryIntelligence ? "missing plateaus.intelligence" : `watchtower mismatch (${returnedWatchtowerLevel} returned, ${dashboardWatchtowerLevel} expected)`;
-    territoryIntelligence = await territoryIntelligenceFallbacks.resolve({
-      embeddedValue: territoryIntelligence,
-      returnedVersion: returnedWatchtowerLevel,
-      expectedVersion: dashboardWatchtowerLevel,
-      loadFallback: async () => {
-        console.warn("Territory Intelligence compatibility fallback:", fallbackReason);
-        console.count("Territory Intelligence compatibility fallback count");
-        return await client.query(refs.listDossiers, {}).catch((error) => {
-          console.warn("Territory Intelligence compatibility query failed.", error);
-          return territoryIntelligence || { kingdoms: [], territories: [], watchtower: plateaus?.watchtower || {} };
-        });
-      },
-    });
-  }
-  return {
-    kingdoms: territoryIntelligence?.kingdoms || [],
-    territories: territoryIntelligence?.territories || [],
-    watchtower: {
-      ...(territoryIntelligence?.watchtower || plateaus?.watchtower || {}),
-      level: dashboardWatchtowerLevel,
-      territoryLevel: dashboardWatchtowerLevel >= 2 ? 2 : dashboardWatchtowerLevel >= 1 ? 1 : 0,
-      counterIntelligence: dashboardWatchtowerLevel >= 3 ? 1 : 0,
-    },
-  };
-}
-
 function subscriptionSpecs(data) {
   const monastery = Number(data.playerSummary?.player?.buildings?.ardentMonastery || 0);
   const network = Number(data.playerSummary?.player?.buildings?.espionageNetwork || 0);
@@ -470,7 +437,6 @@ async function load(options = {}) {
   const allowRefresh = options.allowRefresh ?? true;
   const allowSeasonBootstrap = options.allowSeasonBootstrap ?? true;
   if (!authToken) return signedOut();
-  territoryIntelligenceFallbacks.clear();
   sessionQueries.setSession(authToken);
   captureSelections();
 

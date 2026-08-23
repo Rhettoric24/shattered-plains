@@ -20,7 +20,6 @@ import {
   emptyPlateauCounts,
   emptyUnits,
   sphereIncomeBonus,
-  pendingEconomy,
   STARTING_RULES,
   WORLD_KEY,
 } from "./rules";
@@ -281,27 +280,6 @@ export const getPlayerAccounting = query({
   handler: async (ctx) => {
     const player = await getCurrentPlayer(ctx);
     return player ? await buildPlayerAccounting(ctx, player) : null;
-  },
-});
-
-export const getDashboard = query({
-  args: {},
-  handler: async (ctx) => {
-    const player = await getCurrentPlayer(ctx);
-    if (!player) {
-      return null;
-    }
-    const accounting = await buildPlayerAccounting(ctx, player);
-    const pending = pendingEconomy(
-      { ...player, plateauCounts: accounting.plateauCounts, completedResearch: accounting.completedResearch },
-      Date.now(),
-    );
-    return {
-      player,
-      ...accounting,
-      effectiveSpheres: player.spheres + pending.income,
-      pendingIncome: pending.income,
-    };
   },
 });
 

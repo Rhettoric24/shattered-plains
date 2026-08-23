@@ -25,19 +25,18 @@ async function addPlateau(t: ReturnType<typeof convexTest>, name: string, status
 }
 
 describe("scoped plateau queries", () => {
-  test("owned summary matches legacy inventory and Gemheart timing", async () => {
+  test("owned summary returns authoritative inventory and Gemheart timing", async () => {
     const t = convexTest(schema, modules);
     const subject = "plateau-owner";
     const owner = await addPlayer(t, subject, "Owner");
     await addPlateau(t, "Owned Gemheart", "owned", owner, "gemheart");
     const player = t.withIdentity({ subject });
-    const [summary, legacy] = await Promise.all([
-      player.query(api.plateaus.getMyPlateauState, {}),
-      player.query(api.plateaus.listPlateaus, {}),
-    ]);
-    expect(summary.counts).toEqual(legacy.counts);
-    expect(summary.mine).toEqual(legacy.mine);
-    expect(summary.mine[0].gemheartProgress).toEqual(legacy.mine[0].gemheartProgress);
+    const summary = await player.query(api.plateaus.getMyPlateauState, {});
+    expect(summary.counts).toEqual({ sphere: 0, bridged: 0, gemheart: 1, ancient: 0 });
+    expect(summary.mine).toHaveLength(1);
+    expect(summary.mine[0]).toMatchObject({ name: "Owned Gemheart", type: "gemheart", typeName: "Gemheart Plateau", large: true });
+    expect(summary.mine[0].gemheartProgress).toMatchObject({ lastGemheartAt: 1000 });
+    expect(summary.mine[0].gemheartProgress!.nextGemheartAt).toBeGreaterThan(1000);
   });
 
   test("viewer summary includes only incoming and outgoing sieges", async () => {

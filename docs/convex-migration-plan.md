@@ -62,7 +62,8 @@ The project is moving from prototype name-based login to real account ownership.
 - Authenticated functions now use clean names and derive the acting player from the signed-in account:
   - `players.createPlayer`
   - `players.getPlayer`
-  - `players.getDashboard`
+  - `players.getPlayerSummary`
+  - `players.getPlayerAccounting`
   - `army.trainUnit`
   - `buildings.upgradeBuilding`
   - `raids.launchOpenAcreRaid`

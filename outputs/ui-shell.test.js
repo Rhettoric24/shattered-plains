@@ -5,8 +5,6 @@ const html = readFileSync(new URL("./convex-client.html", import.meta.url), "utf
 const css = ["shattered-plains-styles.css", "clarity-components.css", "clarity-responsive.css"]
   .map((file) => readFileSync(new URL(`./${file}`, import.meta.url), "utf8"))
   .join("\n");
-const client = readFileSync(new URL("./convex-client.js", import.meta.url), "utf8");
-
 describe("post-overhaul shell", () => {
   test("places branding, global controls, resources, and subnavigation in one shell", () => {
     const primaryNav = html.match(/<nav id="dashboard-nav"[\s\S]*?<\/nav>/)?.[0] || "";
@@ -50,12 +48,6 @@ describe("post-overhaul shell", () => {
     expect(css).toContain(".operative-recruit > button");
     expect(css).toMatch(/width:\s*min\(132px,\s*100%\)/);
     expect(css).toContain("height: 42px");
-  });
-
-  test("recovers Territory Intelligence when plateau payloads are out of sync", () => {
-    expect(client).toContain("returnedWatchtowerLevel !== dashboardWatchtowerLevel");
-    expect(client).toContain("territoryIntelligenceFallbacks.resolve");
-    expect(client).toContain("client.query(refs.listDossiers");
   });
 
 });

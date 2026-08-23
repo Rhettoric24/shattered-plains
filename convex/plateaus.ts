@@ -251,7 +251,7 @@ async function purchaseEmergencyDefense(
   };
 }
 
-export const listPlateaus = query({
+export const getSiegeBoard = query({
   args: {},
   handler: async (ctx) => {
     const viewer = await requireCurrentPlayer(ctx);
@@ -479,10 +479,6 @@ export const listPlateaus = query({
     };
   },
 });
-
-// Current clients load this broad board only while the Shattered Plains route is active.
-// Keep listPlateaus registered above for mixed-version clients.
-export const getSiegeBoard = listPlateaus;
 
 export const launchNeutralSiege = mutation({
   args: {

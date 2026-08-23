@@ -104,26 +104,6 @@ export function createLoadCoordinator(load) {
   };
 }
 
-export function createCompatibilityFallbackCache() {
-  const values = new Map();
-  return {
-    async resolve({ embeddedValue, returnedVersion, expectedVersion, loadFallback }) {
-      if (embeddedValue && returnedVersion === expectedVersion) return embeddedValue;
-      const key = `${embeddedValue ? "mismatch" : "missing"}:${returnedVersion}:${expectedVersion}`;
-      if (values.has(key)) return await values.get(key);
-      const request = Promise.resolve().then(loadFallback);
-      values.set(key, request);
-      try {
-        return await request;
-      } catch (error) {
-        values.delete(key);
-        throw error;
-      }
-    },
-    clear() { values.clear(); },
-  };
-}
-
 export function createReconciliationLifecycle({
   reconcile,
   isAuthenticated,
