@@ -1158,6 +1158,7 @@ export const resolveSiege = internalMutation({
           });
           outcomeText = `${defender.name} held ${plateau.name} against ${attacker.name}.`;
           await recordSuccessfulDefensiveSiege(ctx, defender._id, now);
+          await reconcileRetaliationSchedule(ctx, defender._id, now);
           if (siege.scoringSeasonId) await recordSiegeDefenseScore(ctx, {
             siegeId: siege._id, seasonId: siege.scoringSeasonId, defenderId: defender._id, attackerId: attacker._id,
             attackerName: attacker.name, plateauName: plateau.name, now,
