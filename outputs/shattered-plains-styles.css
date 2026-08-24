@@ -80,7 +80,7 @@ h3 { font-size: 1rem; color: var(--accent); }
 .notification-bell { position: relative; width: 44px; padding: 0; font-size: 1.1rem; }
 .notification-bell .nav-badge { position: absolute; top: -7px; right: -7px; }
 .notification-backdrop { display: none; }
-.notification-panel { position: absolute; z-index: 120; top: calc(100% + 10px); right: 0; width: min(410px, calc(100vw - 30px)); max-height: min(680px, calc(100vh - 100px)); overflow: auto; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #0a1728; box-shadow: var(--shadow); }
+.notification-panel { position: absolute; z-index: 120; top: calc(100% + 10px); right: 0; width: min(560px, calc(100vw - 30px)); max-height: min(680px, calc(100vh - 100px)); overflow: auto; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #0a1728; box-shadow: var(--shadow); }
 .notification-panel-top { position: sticky; z-index: 2; top: -16px; margin: -16px -16px 12px; padding: 16px; border-bottom: 1px solid rgba(216,229,245,.18); background: #0a1728; }
 .notification-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .notification-heading-actions { display: flex; align-items: center; gap: 8px; }

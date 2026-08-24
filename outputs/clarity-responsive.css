@@ -39,7 +39,7 @@
   .primary-nav .nav-button { display: flex; place-content: center; align-items: center; gap: 3px; min-width: 0; min-height: 48px; padding: 3px 4px; font-size: .72rem; text-align: center; }
   .primary-nav [data-admin-only] { display: none; }
   .tap-tooltip { bottom: calc(76px + env(safe-area-inset-bottom)); }
-  .notification-panel { top: max(10px, env(safe-area-inset-top)); right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); left: 10px; width: auto; max-height: none; transform: none; }
+  .notification-panel { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); left: 10px; width: auto; max-height: none; transform: none; }
   .notification-backdrop { position: fixed; inset: 0; }
   .increment-picker { grid-template-columns: auto repeat(4, minmax(38px, 1fr)); }
   .quantity-adjust-row { grid-template-columns: minmax(44px, .7fr) minmax(62px, 1.35fr) minmax(44px, .7fr); }
@@ -58,7 +58,7 @@
   body { overflow-x: hidden; }
   body.notification-modal-open { overflow: hidden; }
   .notification-backdrop { display: block; z-index: 119; background: rgba(2, 8, 16, .72); backdrop-filter: blur(3px); }
-  .notification-panel { position: fixed; z-index: 120; padding: 14px; border-radius: 12px; overscroll-behavior: contain; }
+  .notification-panel { z-index: 120; padding: 14px; border-radius: 12px; overscroll-behavior: contain; }
   .notification-panel-top { top: -14px; margin: -14px -14px 12px; padding: 14px; }
   .notification-heading { align-items: flex-start; }
   .notification-heading-actions { flex-shrink: 0; }

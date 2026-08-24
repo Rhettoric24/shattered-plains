@@ -87,9 +87,11 @@
               </div>
               <button id="account-toggle" class="player-chip" type="button" aria-expanded="false" aria-controls="account-panel"><span class="settings-icon" aria-hidden="true">⚙</span><span class="settings-label">Settings</span><strong id="player-name" class="player-name-label">Player</strong><small id="admin-status" class="sr-only">Standard account</small></button>
               <section id="account-panel" class="account-panel-menu hidden" role="dialog" aria-label="Account and game settings">
+                <p class="settings-identity"><span>Kingdom</span><strong id="settings-player-name">Player</strong></p>
                 <label class="preference-toggle"><input id="mission-confirmations" type="checkbox" checked> Confirm consequential missions</label>
                 <p class="hint">Enter or Return never launches a mission, regardless of this setting.</p>
                 <button id="logout" class="secondary" type="button">Sign out</button>
+                <p class="build-identifier">Build: <code id="build-identifier">dev</code></p>
               </section>
             </div>
           </div>

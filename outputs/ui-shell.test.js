@@ -26,9 +26,14 @@ describe("post-overhaul shell", () => {
     expect(css).toMatch(/top:\s*max\(10px,\s*env\(safe-area-inset-top\)\)/);
   });
 
-  test("keeps player identity visible on larger screens and compacts it on mobile", () => {
+  test("keeps player identity in the desktop header and mobile-accessible Settings", () => {
     expect(html).toContain('id="player-name" class="player-name-label"');
+    expect(html).toContain('id="settings-player-name"');
     expect(css).toContain(".player-name-label { display: none; }");
+  });
+
+  test("exposes build diagnostics in Settings", () => {
+    expect(html).toMatch(/Build:\s*<code id="build-identifier">[^<]+<\/code>/);
   });
 
   test("makes the principal Home summaries full width", () => {

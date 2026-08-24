@@ -1,4 +1,5 @@
 import esbuild from "esbuild";
+import { execFileSync } from "node:child_process";
 import fs from "fs/promises";
 import path from "path";
 
@@ -27,6 +28,22 @@ async function readLocalEnv() {
 }
 
 const localEnv = await readLocalEnv();
+function resolveBuildIdentifier() {
+  const candidate = process.env.GITHUB_SHA || (() => {
+    try {
+      return execFileSync("git", ["rev-parse", "--short=7", "HEAD"], {
+        cwd: root,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+    } catch {
+      return "dev";
+    }
+  })();
+  const sanitized = candidate.trim().toLowerCase().match(/^[0-9a-f]{7,40}$/)?.[0];
+  return sanitized ? sanitized.slice(0, 7) : "dev";
+}
+
 const convexUrl =
   process.env.CONVEX_URL ||
   process.env.NEXT_PUBLIC_CONVEX_URL ||
@@ -109,16 +126,17 @@ const sourceHtml = await fs.readFile(
   path.join(root, "outputs", "convex-client.html"),
   "utf8",
 );
-const configScript = `<script>window.SHATTERED_PLAINS_CONFIG = ${JSON.stringify({ convexUrl })};</script>`;
-const buildId = Date.now().toString(36);
+const buildIdentifier = resolveBuildIdentifier();
+const configScript = `<script>window.SHATTERED_PLAINS_CONFIG = ${JSON.stringify({ convexUrl, buildIdentifier })};</script>`;
+const cacheKey = Date.now().toString(36);
 const html = sourceHtml.replace(
   /href="([^"]+\.css)"/g,
-  `href="$1?v=${buildId}"`,
+  `href="$1?v=${cacheKey}"`,
 ).replace(
   '<script type="module" src="convex-client.js"></script>',
-  `${configScript}\n    <script type="module" src="convex-client.js?v=${buildId}"></script>`,
+  `${configScript}\n    <script type="module" src="convex-client.js?v=${cacheKey}"></script>`,
 );
 
 await fs.writeFile(path.join(dist, "index.html"), html);
 
-console.log(`Built dist/ for ${convexUrl}`);
+console.log(`Built dist/ for ${convexUrl} (build ${buildIdentifier})`);

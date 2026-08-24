@@ -219,6 +219,11 @@ button, input, select, textarea, summary, [role="button"] { touch-action: manipu
 .settings-icon { color: var(--muted); font-size: .8rem; font-weight: 700; line-height: 1; }
 .settings-label { color: var(--text); font-size: .75rem; }
 .account-panel-menu { z-index: 111; }
+.settings-identity { display: grid; gap: 3px; margin: 0 0 14px; }
+.settings-identity span, .build-identifier { color: var(--muted); font-size: .72rem; }
+.settings-identity strong { color: var(--text); overflow-wrap: anywhere; }
+.build-identifier { margin: 14px 0 0; user-select: text; }
+.build-identifier code { color: var(--accent); user-select: all; }
 .notification-backdrop { z-index: 119; }
 
 .quantity-control { display: grid; gap: 6px; min-width: 0; }

@@ -18,6 +18,7 @@ type PixelRect = { x: number; y: number; width: number; height: number };
 
 const maskColor = "#25364a";
 const globalDynamicMasks = ["#game-date", ".resource-strip strong", "#inbox-badge", "#notification-badge", ".nav-state-dot"];
+const runtimeProblems = new WeakMap<Page, string[]>();
 
 const destinations: Destination[] = [
   {
@@ -314,9 +315,47 @@ async function expectEspionageLayouts(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
+  const problems: string[] = [];
+  runtimeProblems.set(page, problems);
+  page.on("pageerror", (error) => problems.push(`page error: ${error.message}`));
+  page.on("console", (message) => {
+    if (message.type() === "error") problems.push(`console error: ${message.text()}`);
+  });
+  page.on("requestfailed", (request) => {
+    const reason = request.failure()?.errorText || "unknown failure";
+    if (!reason.includes("ERR_ABORTED")) problems.push(`request failed: ${request.method()} ${request.url()} (${reason})`);
+  });
   await page.goto("/");
   await expect(page.locator("#game-screen")).toBeVisible({ timeout: 30_000 });
   await page.addStyleTag({ content: "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } .nav-state-dot { display: none !important; }" });
+});
+
+test.afterEach(async ({ page }) => {
+  expect(runtimeProblems.get(page) || [], "browser runtime and network failures").toEqual([]);
+});
+
+test("friend-test identity, build, and alerts diagnostics are accessible", async ({ page }) => {
+  const headerName = (await page.locator("#player-name").textContent())?.trim();
+  expect(headerName).toBeTruthy();
+
+  const viewport = page.viewportSize();
+  if (viewport && viewport.width > 900) await expect(page.locator("#player-name")).toBeVisible();
+
+  await page.locator("#account-toggle").click();
+  await expect(page.locator("#account-panel")).toBeVisible();
+  await expect(page.locator("#settings-player-name")).toBeVisible();
+  await expect(page.locator("#settings-player-name")).toHaveText(headerName!);
+  await expect(page.locator("#build-identifier")).toHaveText(/^(?:[0-9a-f]{7}|dev)$/);
+
+  await page.locator("#notification-bell").click();
+  const panel = page.locator("#notification-panel");
+  await expect(panel).toBeVisible();
+  const panelBox = await panel.boundingBox();
+  expect(panelBox).not.toBeNull();
+  if (panelBox && viewport) {
+    if (viewport.width > 900) expect(panelBox.width).toBeGreaterThanOrEqual(540);
+    else expect(panelBox.width).toBeGreaterThanOrEqual(viewport.width - 60);
+  }
 });
 
 test("primary navigation reaches every representative view", async ({ page }) => {

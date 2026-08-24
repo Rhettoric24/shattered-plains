@@ -6,6 +6,7 @@ import { createLoadCoordinator, createReconciliationLifecycle, createSessionQuer
 const CONVEX_URL =
   window.SHATTERED_PLAINS_CONFIG?.convexUrl ||
   "https://clean-yak-51.convex.cloud";
+const BUILD_IDENTIFIER = window.SHATTERED_PLAINS_CONFIG?.buildIdentifier || "dev";
 const client = new ConvexHttpClient(CONVEX_URL);
 const AUTH_TOKEN_KEY = "sp-convex-auth-token";
 const AUTH_REFRESH_KEY = "sp-convex-auth-refresh-token";
@@ -684,6 +685,8 @@ function render() {
   $("game-screen").classList.remove("hidden");
   $("game-date").textContent = state.gameDate;
   $("player-name").textContent = me.name;
+  $("settings-player-name").textContent = me.name;
+  $("build-identifier").textContent = BUILD_IDENTIFIER;
   $("res-acres").textContent = number(me.acres);
   $("res-spheres").textContent = number(me.spheres);
   $("res-gemhearts").textContent = number(me.gemhearts || 0);
