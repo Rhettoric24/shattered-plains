@@ -12,6 +12,7 @@ import {
 import {
   createBalancedHomePlateaus,
   createSeasonNeutralPlateaus,
+  migrateWorldBrutalityPlateauDefenses,
 } from "./plateauHelpers";
 import {
   emptyBuildings,
@@ -475,6 +476,22 @@ export const resetWorldKeepAccounts = mutation({
     }
 
     return await performWorldResetKeepAccounts(ctx);
+  },
+});
+
+export const migrateWorldBrutalityV1 = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return await migrateWorldBrutalityPlateauDefenses(ctx, Date.now());
+  },
+});
+
+export const migrateWorldBrutalityV1FromDashboard = mutation({
+  args: { adminKey: v.string() },
+  handler: async (ctx, args) => {
+    requireDashboardAdminKey(args.adminKey);
+    return await migrateWorldBrutalityPlateauDefenses(ctx, Date.now());
   },
 });
 

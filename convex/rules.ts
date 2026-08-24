@@ -155,8 +155,15 @@ export const PLATEAU_RULES = {
   trainingDiscountPerPlateau: 0.1,
   gemheartIntervalMs: 12 * 60 * 60 * 1000,
   highgroundDefenseBonus: 0.2,
-  neutralDefenseMin: 120,
-  neutralDefenseMax: 220,
+  neutralDefenseMin: 400,
+  neutralDefenseMax: 750,
+  neutralDefenseBalanceVersion: 1,
+  neutralDefenseByClass: {
+    small: 400,
+    normal: 500,
+    large: 650,
+    gemheart: 750,
+  },
   neutralHighgroundChancePercent: 12,
   siegeFortifySpheresPerPercent: 50,
   siegeFortifyMaxPercent: 100,
@@ -171,8 +178,8 @@ export const PLATEAU_RULES = {
 export const COMBAT_RULES = {
   openDefenseBase: 0.6,
   openDefensePerAcre: 0.18,
-  parshendiSphereRaidMinDefense: 20,
-  parshendiSphereRaidMaxDefense: 50,
+  parshendiSphereRaidMinDefense: 100,
+  parshendiSphereRaidMaxDefense: 200,
   parshendiSphereRaidMinReward: 250,
   parshendiSphereRaidMaxReward: 650,
 } as const;

@@ -39,6 +39,7 @@ import {
 import { applyHostility } from "./worldPressure";
 import {
   hostilityScaledValue,
+  raidDefenseDisclosure,
   seededFraction,
   seededInt,
   WORLD_PRESSURE_RULES,
@@ -256,7 +257,7 @@ export const listVisibleRaids = query({
       .withIndex("by_status_arrival", (q) => q.eq("status", "pending"))
       .collect();
 
-    return pending.filter((raid) => {
+    const visible = pending.filter((raid) => {
       const watchtower = viewer.buildings.watchtower ?? 0;
       if (raid.attackerId === viewer._id) return true;
       if (
@@ -270,6 +271,31 @@ export const listVisibleRaids = query({
       if (watchtower >= 5) return true;
       return false;
     });
+    return await Promise.all(visible.map(async (raid) => {
+      if (
+        (raid.targetType !== "parshendi_spheres" && raid.targetType !== "deep_plains") ||
+        raid.defensePower === undefined
+      ) return raid;
+
+      const hostility = raid.hostilityAtLaunch ?? 0;
+      const isDeepPlains = raid.targetType === "deep_plains";
+      const baseRange = isDeepPlains
+        ? WORLD_PRESSURE_RULES.deepPlains.defensePower
+        : [COMBAT_RULES.parshendiSphereRaidMinDefense, COMBAT_RULES.parshendiSphereRaidMaxDefense] as const;
+      const factor = isDeepPlains
+        ? WORLD_PRESSURE_RULES.deepPlains.difficultyHostilityFactor
+        : WORLD_PRESSURE_RULES.neutralRaid.difficultyHostilityFactor;
+      const conclaveBoost = raid.attackerId === viewer._id && raid.conclaveId ? 2 : 0;
+      const intelligenceLevel = Math.max(0, Math.min(5, (viewer.buildings.watchtower ?? 0) + conclaveBoost));
+      const defenseIntel = raidDefenseDisclosure({
+        defense: raid.defensePower,
+        intelligenceLevel,
+        broadMinimum: hostilityScaledValue(baseRange[0], hostility, factor),
+        broadMaximum: hostilityScaledValue(baseRange[1], hostility, factor),
+      });
+      const { defensePower: _hiddenDefensePower, ...safeRaid } = raid;
+      return { ...safeRaid, defenseIntel };
+    }));
   },
 });
 

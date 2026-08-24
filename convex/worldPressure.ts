@@ -88,10 +88,28 @@ async function ownedEligiblePlateaus(ctx: DbCtx, playerId: Id<"players">) {
 }
 
 async function activeRetaliation(ctx: DbCtx, playerId: Id<"players">) {
-  return await ctx.db
+  const active = await ctx.db
     .query("parshendiRetaliations")
     .withIndex("by_playerId_and_active", (q) => q.eq("playerId", playerId).eq("active", true))
-    .unique();
+    .take(10);
+  return active.sort((left, right) => {
+    const leftPriority = left.phase === "launched" ? 0 : 1;
+    const rightPriority = right.phase === "launched" ? 0 : 1;
+    return leftPriority - rightPriority || left.createdAt - right.createdAt;
+  })[0] ?? null;
+}
+
+async function clearRetaliationSchedule(
+  ctx: MutationCtx,
+  row: Doc<"kingdomWorldPressure">,
+  now: number,
+) {
+  if (!row.nextRetaliationAt && !row.retaliationScheduleToken) return;
+  await ctx.db.patch(row._id, {
+    nextRetaliationAt: undefined,
+    retaliationScheduleToken: undefined,
+    updatedAt: now,
+  });
 }
 
 function cooldownRange(state: HostilityState) {
@@ -110,15 +128,10 @@ async function scheduleRetaliation(
   const state = hostilityState(row.hostility).key;
   const range = cooldownRange(state);
   const active = await activeRetaliation(ctx, row.playerId);
-  const eligiblePlateaus = range && !active ? await ownedEligiblePlateaus(ctx, row.playerId) : [];
-  if (!range || active || eligiblePlateaus.length === 0) {
-    if (row.nextRetaliationAt || row.retaliationScheduleToken) {
-      await ctx.db.patch(row._id, {
-        nextRetaliationAt: undefined,
-        retaliationScheduleToken: undefined,
-        updatedAt: now,
-      });
-    }
+  const player = range && !active ? await ctx.db.get(row.playerId) : null;
+  const eligiblePlateaus = range && !active && player ? await ownedEligiblePlateaus(ctx, row.playerId) : [];
+  if (!range || active || !player || eligiblePlateaus.length === 0) {
+    await clearRetaliationSchedule(ctx, row, now);
     return;
   }
   if (!forceRecalculate && row.nextRetaliationAt && row.retaliationScheduleToken) return;
@@ -138,6 +151,68 @@ async function scheduleRetaliation(
     playerId: row.playerId,
     scheduleToken: token,
   });
+}
+
+export async function reconcileRetaliationSchedule(
+  ctx: MutationCtx,
+  playerId: Id<"players">,
+  now = Date.now(),
+) {
+  const row = await pressureRow(ctx, playerId);
+  if (!row) return { scheduled: false };
+  const decayed = materializeHostilityDecay({ ...row, now });
+  if (decayed.hostility !== row.hostility || decayed.decayIntervalsApplied !== row.decayIntervalsApplied) {
+    await ctx.db.patch(row._id, {
+      hostility: decayed.hostility,
+      decayIntervalsApplied: decayed.decayIntervalsApplied,
+      updatedAt: now,
+    });
+  }
+  const updated = (await ctx.db.get(row._id))!;
+  await scheduleRetaliation(ctx, updated, now);
+  const reconciled = (await ctx.db.get(row._id))!;
+  return { scheduled: Boolean(reconciled.retaliationScheduleToken) };
+}
+
+export async function cancelRetaliation(
+  ctx: MutationCtx,
+  args: { retaliationId: Id<"parshendiRetaliations">; now: number },
+) {
+  const retaliation = await ctx.db.get(args.retaliationId);
+  if (!retaliation) return { cancelled: false };
+  if (retaliation.active || retaliation.phase !== "cancelled") {
+    await ctx.db.patch(retaliation._id, {
+      phase: "cancelled",
+      active: false,
+      outcome: "cancelled",
+      resolvedAt: args.now,
+      updatedAt: args.now,
+    });
+  }
+  await reconcileRetaliationSchedule(ctx, retaliation.playerId, args.now);
+  return { cancelled: true };
+}
+
+export async function cancelRetaliationForMalformedSiege(
+  ctx: MutationCtx,
+  args: {
+    siegeId: Id<"sieges">;
+    retaliationId?: Id<"parshendiRetaliations">;
+    defenderId?: Id<"players">;
+    now: number;
+  },
+) {
+  let retaliationId = args.retaliationId;
+  if (!retaliationId && args.defenderId) {
+    const candidates = await ctx.db
+      .query("parshendiRetaliations")
+      .withIndex("by_playerId_and_active", (q) => q.eq("playerId", args.defenderId!).eq("active", true))
+      .take(10);
+    retaliationId = candidates.find((candidate) => candidate.siegeId === args.siegeId)?._id;
+  }
+  return retaliationId
+    ? await cancelRetaliation(ctx, { retaliationId, now: args.now })
+    : { cancelled: false };
 }
 
 async function scheduleNextDecay(ctx: MutationCtx, row: Doc<"kingdomWorldPressure">, now: number) {
@@ -408,7 +483,10 @@ export const beginRetaliationFormation = internalMutation({
     const target = weightedTarget(plateaus, now, `${args.scheduleToken}:target`);
     const player = await ctx.db.get(args.playerId);
     const season = await activeSeason(ctx);
-    if (!target || !player || !season) return { formed: false };
+    if (!target || !player || !season) {
+      await clearRetaliationSchedule(ctx, row, now);
+      return { formed: false };
+    }
     const allUnits = await ownedUnitsIncludingAway(ctx, player._id, player.units);
     const completed = await completedResearch(ctx, player._id);
     const militaryCapacity = effectivePower(allUnits, completed);
@@ -474,20 +552,8 @@ export const launchRetaliation = internalMutation({
       target = weightedTarget(await ownedEligiblePlateaus(ctx, retaliation.playerId), now, `${retaliation._id}:${now}:retarget`);
     }
     if (!player || !target) {
-      if (!player || (await ownedEligiblePlateaus(ctx, retaliation.playerId)).length === 0) {
-        await ctx.db.patch(retaliation._id, {
-          phase: "cancelled",
-          active: false,
-          outcome: "cancelled",
-          resolvedAt: now,
-          updatedAt: now,
-        });
-        return { launched: false };
-      }
-      const retryAt = now + WORLD_PRESSURE_RULES.retaliation.retryDelayMs;
-      await ctx.db.patch(retaliation._id, { launchAt: retryAt, updatedAt: now });
-      await ctx.scheduler.runAt(retryAt, internal.worldPressure.launchRetaliation, { retaliationId: retaliation._id });
-      return { launched: false, deferred: true };
+      await cancelRetaliation(ctx, { retaliationId: retaliation._id, now });
+      return { launched: false };
     }
     const resolveAt = now + WORLD_PRESSURE_RULES.retaliation.siegeDurationMs;
     const siegeId = await ctx.db.insert("sieges", {

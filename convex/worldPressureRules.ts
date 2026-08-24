@@ -24,7 +24,6 @@ export const WORLD_PRESSURE_RULES = {
     },
     warningLeadHours: [3, 5],
     siegeDurationMs: 60 * 60 * 1000,
-    retryDelayMs: 60 * 60 * 1000,
     hostilityMultipliers: {
       quiet: 0,
       watchful: 0,
@@ -34,7 +33,7 @@ export const WORLD_PRESSURE_RULES = {
       relentless: 1.1,
     },
     seasonPressurePerDay: 20,
-    minimumPower: 20,
+    minimumPower: 100,
     weakKingdomPowerRatioCap: 2,
     weakKingdomPowerFlatCap: 100,
     targetWeights: {
@@ -54,7 +53,7 @@ export const WORLD_PRESSURE_RULES = {
     },
   },
   reclamation: {
-    defensePerReclamation: 0.1,
+    defensePerReclamation: 0.2,
   },
   neutralRaid: {
     difficultyHostilityFactor: 1,
@@ -155,6 +154,27 @@ export function hostilityScaledValue(base: number, hostility: number, factor: nu
   return Math.round(base * (1 + (clampHostility(hostility) / 100) * factor));
 }
 
+export function raidDefenseDisclosure(args: {
+  defense: number;
+  intelligenceLevel: number;
+  broadMinimum: number;
+  broadMaximum: number;
+}) {
+  const broadMinimum = Math.max(0, Math.round(Math.min(args.broadMinimum, args.broadMaximum)));
+  const broadMaximum = Math.max(broadMinimum, Math.round(Math.max(args.broadMinimum, args.broadMaximum)));
+  const defense = Math.max(broadMinimum, Math.min(broadMaximum, Math.round(args.defense)));
+  const level = Math.max(0, Math.min(5, Math.floor(args.intelligenceLevel)));
+  if (level >= 5) return { level, mode: "exact" as const, value: defense };
+  if (level === 0) return { level, mode: "range" as const, min: broadMinimum, max: broadMaximum };
+  const uncertainty = level === 1 ? 35 : level === 2 ? 20 : 10;
+  return {
+    level,
+    mode: "estimate" as const,
+    min: Math.max(broadMinimum, defense - uncertainty),
+    max: Math.min(broadMaximum, defense + uncertainty),
+  };
+}
+
 export function reclamationDefense(baseDefense: number, reclamationCount: number) {
   return Math.round(
     Math.max(0, baseDefense) *
@@ -192,7 +212,7 @@ export function retaliationPower(args: {
     WORLD_PRESSURE_RULES.retaliation.seasonPressurePerDay * Math.max(1, Math.floor(args.seasonDay));
   const safetyCap = capacity * WORLD_PRESSURE_RULES.retaliation.weakKingdomPowerRatioCap +
     WORLD_PRESSURE_RULES.retaliation.weakKingdomPowerFlatCap;
-  return Math.round(Math.max(WORLD_PRESSURE_RULES.retaliation.minimumPower, Math.min(raw, safetyCap)));
+  return Math.round(Math.min(safetyCap, Math.max(WORLD_PRESSURE_RULES.retaliation.minimumPower, raw)));
 }
 
 export function retaliationReward(power: number) {

@@ -5,6 +5,7 @@ import {
   hostilityState,
   materializeHostilityDecay,
   plateauCaptureHostility,
+  raidDefenseDisclosure,
   reclamationDefense,
   retaliationPower,
   retaliationReward,
@@ -12,6 +13,8 @@ import {
   seededFraction,
   WORLD_PRESSURE_RULES,
 } from "./worldPressureRules";
+import { neutralPlateauBaseDefense } from "./plateauHelpers";
+import { COMBAT_RULES } from "./rules";
 
 describe("World Pressure rules", () => {
   test("clamps Hostility and maps every qualitative boundary", () => {
@@ -39,16 +42,40 @@ describe("World Pressure rules", () => {
   });
 
   test("makes raid difficulty grow faster than rewards", () => {
-    expect(hostilityScaledValue(50, 100, WORLD_PRESSURE_RULES.neutralRaid.difficultyHostilityFactor)).toBe(100);
+    expect([0, 25, 50, 75, 100].map((hostility) => [
+      hostilityScaledValue(COMBAT_RULES.parshendiSphereRaidMinDefense, hostility, WORLD_PRESSURE_RULES.neutralRaid.difficultyHostilityFactor),
+      hostilityScaledValue(COMBAT_RULES.parshendiSphereRaidMaxDefense, hostility, WORLD_PRESSURE_RULES.neutralRaid.difficultyHostilityFactor),
+    ])).toEqual([[100, 200], [125, 250], [150, 300], [175, 350], [200, 400]]);
     expect(hostilityScaledValue(500, 100, WORLD_PRESSURE_RULES.neutralRaid.rewardHostilityFactor)).toBe(800);
     expect(2).toBeGreaterThan(1.6);
+  });
+
+  test("narrows one true raid defense without changing it", () => {
+    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 0, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ mode: "range", min: 100, max: 200 });
+    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 1, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ mode: "estimate", min: 128, max: 198 });
+    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 2, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ min: 143, max: 183 });
+    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 3, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ min: 153, max: 173 });
+    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 5, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ mode: "exact", value: 163 });
+  });
+
+  test("maps current neutral plateau classes with Gemheart precedence", () => {
+    expect(neutralPlateauBaseDefense("sphere", false)).toBe(500);
+    expect(neutralPlateauBaseDefense("sphere", true)).toBe(650);
+    expect(neutralPlateauBaseDefense("gemheart", false)).toBe(750);
+    expect(neutralPlateauBaseDefense("gemheart", true)).toBe(750);
+    expect(COMBAT_RULES.parshendiSphereRaidMinDefense).toBe(100);
+    expect(COMBAT_RULES.parshendiSphereRaidMaxDefense).toBe(200);
   });
 
   test("uses supplied retaliation formula with a weak-kingdom safety ceiling", () => {
     expect(retaliationPower({ militaryCapacity: 600, hostility: 100, seasonDay: 4 })).toBe(740);
     expect(retaliationPower({ militaryCapacity: 600, hostility: 60, seasonDay: 4 })).toBe(470);
     expect(retaliationPower({ militaryCapacity: 0, hostility: 100, seasonDay: 50 })).toBe(100);
+    expect(retaliationPower({ militaryCapacity: 10, hostility: 100, seasonDay: 50 })).toBe(120);
     expect(retaliationReward(740)).toBe(248);
+    expect(WORLD_PRESSURE_RULES.retaliation.cooldownHours).toEqual({
+      agitated: [24, 36], hostile: [18, 24], vengeful: [12, 18], relentless: [8, 14],
+    });
   });
 
   test("favors valuable and recent targets without making history dominant", () => {
@@ -63,8 +90,8 @@ describe("World Pressure rules", () => {
   });
 
   test("reclamation defense is uncapped, linear, and does not compound", () => {
-    expect([0, 1, 5, 10, 20, 50].map((count) => reclamationDefense(100, count))).toEqual([100, 110, 150, 200, 300, 600]);
-    expect(reclamationDefense(100, 1000)).toBe(10100);
+    expect([0, 1, 3, 5].map((count) => reclamationDefense(500, count))).toEqual([500, 600, 800, 1000]);
+    expect(reclamationDefense(100, 1000)).toBe(20100);
   });
 
   test("backend seeded rolls are stable and cover the exact ten-percent comparison", () => {

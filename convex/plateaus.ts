@@ -60,7 +60,12 @@ import {
   travelMsForUnits,
   type UnitCounts,
 } from "./rules";
-import { applyHostility, completeRetaliation } from "./worldPressure";
+import {
+  applyHostility,
+  cancelRetaliationForMalformedSiege,
+  completeRetaliation,
+  reconcileRetaliationSchedule,
+} from "./worldPressure";
 import { plateauCaptureHostility, reclamationDefense } from "./worldPressureRules";
 
 function cleanUnits(units: UnitCounts) {
@@ -726,6 +731,7 @@ export const fortifySiege = mutation({
     percent: v.number(),
   },
   handler: async (ctx, args) => {
+    // Cached clients may still call this legacy alias; it intentionally buys Emergency Defense.
     return await purchaseEmergencyDefense(ctx, args);
   },
 });
@@ -849,10 +855,19 @@ export const resolveSiege = internalMutation({
     const plateau = await ctx.db.get(siege.plateauId);
     const attacker = siege.attackerId ? await ctx.db.get(siege.attackerId) : null;
     if (!plateau || (!attacker && siege.targetType !== "parshendi_retaliation")) {
+      const now = Date.now();
+      if (siege.targetType === "parshendi_retaliation") {
+        await cancelRetaliationForMalformedSiege(ctx, {
+          siegeId: siege._id,
+          retaliationId: siege.retaliationId,
+          defenderId: siege.defenderId,
+          now,
+        });
+      }
       if (siege) {
         await ctx.db.patch(siege._id, {
           status: "resolved",
-          resolvedAt: Date.now(),
+          resolvedAt: now,
         });
       }
       return { resolved: false };
@@ -870,6 +885,12 @@ export const resolveSiege = internalMutation({
       if (!defender || !siege.retaliationId) {
         await ctx.db.patch(siege._id, { status: "resolved", resolvedAt: now });
         await ctx.db.patch(plateau._id, { activeSiegeId: undefined, updatedAt: now });
+        await cancelRetaliationForMalformedSiege(ctx, {
+          siegeId: siege._id,
+          retaliationId: siege.retaliationId,
+          defenderId: siege.defenderId,
+          now,
+        });
         return { resolved: false };
       }
       const defenderUnits = normalizeUnits(siege.defenderUnits ?? emptyUnits());
@@ -1122,6 +1143,8 @@ export const resolveSiege = internalMutation({
           await reconcileResearch(ctx, attacker._id, now);
           await reconcileResearch(ctx, defender._id, now);
           await observePlateauOwnership(ctx, { plateauId: plateau._id, previousOwnerId: defender._id, newOwnerId: attacker._id, heldSince: now, now });
+          await reconcileRetaliationSchedule(ctx, attacker._id, now);
+          await reconcileRetaliationSchedule(ctx, defender._id, now);
           outcomeText = `${attacker.name} captured ${plateau.name} from ${defender.name}.`;
           if (siege.scoringSeasonId && siege.opponentChainPosition) await recordSiegeVictoryScore(ctx, {
             siegeId: siege._id, seasonId: siege.scoringSeasonId, attackerId: attacker._id, defenderId: defender._id,

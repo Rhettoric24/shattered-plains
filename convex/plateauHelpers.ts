@@ -15,6 +15,7 @@ import {
   researchEffect,
   doctrineFromResearch,
 } from "./rules";
+import { reclamationDefense } from "./worldPressureRules";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -153,6 +154,41 @@ export async function createBalancedHomePlateaus(
   };
 }
 
+export function neutralPlateauBaseDefense(type: string, large = false) {
+  if (type === "gemheart") return PLATEAU_RULES.neutralDefenseByClass.gemheart;
+  if (large) return PLATEAU_RULES.neutralDefenseByClass.large;
+  return PLATEAU_RULES.neutralDefenseByClass.normal;
+}
+
+export async function migrateWorldBrutalityPlateauDefenses(ctx: MutationCtx, now: number) {
+  const plateaus = await ctx.db
+    .query("plateaus")
+    .withIndex("by_origin_and_balance_version", (q) =>
+      q.eq("origin", "neutral").eq("neutralDefenseBalanceVersion", undefined),
+    )
+    .take(500);
+  let migrated = 0;
+  for (const plateau of plateaus) {
+    const baseNeutralDefense = neutralPlateauBaseDefense(identityPlateauType(plateau.type), plateau.large);
+    const reclamationCount = Math.max(0, Math.floor(plateau.parshendiReclamationCount ?? 0));
+    const neutralDefenseInitial = reclamationDefense(baseNeutralDefense, reclamationCount);
+    const progress = plateau.neutralDefenseInitial > 0
+      ? Math.max(0, Math.min(1, plateau.neutralDefenseRemaining / plateau.neutralDefenseInitial))
+      : 1;
+    await ctx.db.patch(plateau._id, {
+      baseNeutralDefense,
+      neutralDefenseInitial,
+      neutralDefenseRemaining: plateau.status === "neutral"
+        ? Math.max(1, Math.round(neutralDefenseInitial * progress))
+        : 0,
+      neutralDefenseBalanceVersion: PLATEAU_RULES.neutralDefenseBalanceVersion,
+      updatedAt: now,
+    });
+    migrated += 1;
+  }
+  return { scanned: plateaus.length, migrated };
+}
+
 export async function createNeutralPlateaus(
   ctx: MutationCtx,
   count: number,
@@ -167,17 +203,13 @@ export async function createNeutralPlateaus(
     const sequence = start + index;
     const seed = `${now}:neutral:${sequence}`;
     const type = neutralType(seed, allowGemheart);
-    const defense = seededInt(
-      `${seed}:defense`,
-      PLATEAU_RULES.neutralDefenseMin,
-      PLATEAU_RULES.neutralDefenseMax,
-    );
     const highground =
       seededInt(`${seed}:highground`, 1, 100) <=
       PLATEAU_RULES.neutralHighgroundChancePercent;
     const large =
       seededInt(`${seed}:large`, 1, 100) <=
       PLATEAU_RULES.neutralLargeChancePercent;
+    const defense = neutralPlateauBaseDefense(type, large);
 
     await ctx.db.insert("plateaus", {
       name: neutralName(type, sequence),
@@ -189,6 +221,7 @@ export async function createNeutralPlateaus(
       neutralDefenseInitial: defense,
       neutralDefenseRemaining: defense,
       baseNeutralDefense: defense,
+      neutralDefenseBalanceVersion: PLATEAU_RULES.neutralDefenseBalanceVersion,
       parshendiReclamationCount: 0,
       createdAt: now,
       updatedAt: now,
@@ -205,17 +238,13 @@ async function createSpecificNeutralPlateau(
   now: number,
 ) {
   const seed = `${now}:neutral:${sequence}:${type}`;
-  const defense = seededInt(
-    `${seed}:defense`,
-    PLATEAU_RULES.neutralDefenseMin,
-    PLATEAU_RULES.neutralDefenseMax,
-  );
   const highground =
     seededInt(`${seed}:highground`, 1, 100) <=
     PLATEAU_RULES.neutralHighgroundChancePercent;
   const large =
     seededInt(`${seed}:large`, 1, 100) <=
     PLATEAU_RULES.neutralLargeChancePercent;
+  const defense = neutralPlateauBaseDefense(type, large);
 
   await ctx.db.insert("plateaus", {
     name: neutralName(type, sequence),
@@ -227,6 +256,7 @@ async function createSpecificNeutralPlateau(
     neutralDefenseInitial: defense,
     neutralDefenseRemaining: defense,
     baseNeutralDefense: defense,
+    neutralDefenseBalanceVersion: PLATEAU_RULES.neutralDefenseBalanceVersion,
     parshendiReclamationCount: 0,
     createdAt: now,
     updatedAt: now,

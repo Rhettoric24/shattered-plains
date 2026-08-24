@@ -2528,8 +2528,8 @@ function openPlateauTarget(plateauId) {
 }
 
 function externalDefenseText(raid) {
-  if (!raid.defensePower) return "";
-  return ", opposition " + neutralDefenseLabel(raid.defensePower);
+  if (!raid.defenseIntel) return "";
+  return ", opposition " + formatIntelValue(raid.defenseIntel);
 }
 
 function plateauRunDifficultyLabel(power) {
@@ -2617,7 +2617,7 @@ function decorateRaids(raids, players, unitsConfig) {
     power: raid.power,
     speed: raid.speed,
     acres: raid.acres || 0,
-    defensePower: raid.defensePower,
+    defenseIntel: raid.defenseIntel,
     rewardSpheres: raid.rewardSpheres,
     arrivalAt: raid.arriveAt,
     travelMinutes: Math.max(1, Math.round((raid.arriveAt - raid.departAt) / 60000)),

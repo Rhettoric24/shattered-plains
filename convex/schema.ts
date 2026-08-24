@@ -107,6 +107,7 @@ export default defineSchema({
     neutralDefenseInitial: v.number(),
     neutralDefenseRemaining: v.number(),
     baseNeutralDefense: v.optional(v.number()),
+    neutralDefenseBalanceVersion: v.optional(v.number()),
     parshendiReclamationCount: v.optional(v.number()),
     reclamationSeasonId: v.optional(v.id("seasons")),
     heldSince: v.optional(v.number()),
@@ -117,7 +118,8 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_owner", ["ownerPlayerId"])
-    .index("by_active_siege", ["activeSiegeId"]),
+    .index("by_active_siege", ["activeSiegeId"])
+    .index("by_origin_and_balance_version", ["origin", "neutralDefenseBalanceVersion"]),
 
   sieges: defineTable({
     plateauId: v.id("plateaus"),
@@ -131,6 +133,7 @@ export default defineSchema({
     defenderPower: v.optional(v.number()),
     defenderSpeed: v.optional(v.number()),
     defenderCommittedAt: v.optional(v.number()),
+    // Legacy compatibility only; Emergency Defense is the authoritative modifier.
     fortifyPercent: v.number(),
     emergencyDefensePercent: v.optional(v.number()),
     emergencyDefenseSpheresSpent: v.optional(v.number()),

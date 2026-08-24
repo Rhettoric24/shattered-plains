@@ -5,7 +5,8 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { emptyBuildings, emptyUnits } from "./rules";
 import { createFreshSeason } from "./seasonLedger";
-import { applyHostility, resetWorldPressureForSeason } from "./worldPressure";
+import { migrateWorldBrutalityPlateauDefenses } from "./plateauHelpers";
+import { applyHostility, reconcileRetaliationSchedule, resetWorldPressureForSeason } from "./worldPressure";
 import { seededFraction, WORLD_PRESSURE_RULES } from "./worldPressureRules";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -164,8 +165,8 @@ describe("World Pressure integration", () => {
       status: "neutral",
       parshendiReclamationCount: 1,
       reclamationSeasonId: seasonId,
-      neutralDefenseInitial: 220,
-      neutralDefenseRemaining: 220,
+      neutralDefenseInitial: 240,
+      neutralDefenseRemaining: 240,
     });
     expect(plateau?.ownerPlayerId).toBeUndefined();
     expect(plateau?.heldSince).toBeUndefined();
@@ -195,5 +196,236 @@ describe("World Pressure integration", () => {
     expect(result.pressure).toMatchObject({ hostility: 0, decayIntervalsApplied: 0 });
     expect(result.pressure?.lastPlayerAggressionAt).toBeUndefined();
     expect(result.retaliation).toMatchObject({ phase: "cancelled", active: false, outcome: "cancelled" });
+  });
+
+  test("neutral siege damage persists between failed attacks", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const playerId = await addPlayer(t, "Campaigner");
+    const plateauId = await t.run(async (ctx) => await ctx.db.insert("plateaus", {
+      name: "Campaign Plateau", type: "sphere", status: "neutral", origin: "neutral",
+      highground: false, large: false, neutralDefenseInitial: 500, neutralDefenseRemaining: 500,
+      baseNeutralDefense: 500, parshendiReclamationCount: 0, createdAt: now, updatedAt: now,
+    }));
+    const siegeId = await t.run(async (ctx) => await ctx.db.insert("sieges", {
+      plateauId, attackerId: playerId, targetType: "neutral",
+      attackerUnits: emptyUnits(), attackerPower: 100, attackerSpeed: 1,
+      fortifyPercent: 0, departAt: now, resolveAt: now, status: "pending",
+    }));
+    await t.mutation(internal.plateaus.resolveSiege, { siegeId });
+    expect(await t.run(async (ctx) => (await ctx.db.get(plateauId))?.neutralDefenseRemaining)).toBe(400);
+  });
+
+  test("existing neutral plateaus migrate by class while preserving campaign progress", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const ids = await t.run(async (ctx) => ({
+      normal: await ctx.db.insert("plateaus", {
+        name: "Normal", type: "sphere", status: "neutral", origin: "neutral", highground: false, large: false,
+        neutralDefenseInitial: 200, neutralDefenseRemaining: 100, baseNeutralDefense: 200,
+        parshendiReclamationCount: 1, createdAt: now, updatedAt: now,
+      }),
+      large: await ctx.db.insert("plateaus", {
+        name: "Large", type: "sphere", status: "neutral", origin: "neutral", highground: false, large: true,
+        neutralDefenseInitial: 200, neutralDefenseRemaining: 200, baseNeutralDefense: 200,
+        parshendiReclamationCount: 0, createdAt: now, updatedAt: now,
+      }),
+      gemheart: await ctx.db.insert("plateaus", {
+        name: "Gemheart", type: "gemheart", status: "neutral", origin: "neutral", highground: false, large: true,
+        neutralDefenseInitial: 200, neutralDefenseRemaining: 200, baseNeutralDefense: 200,
+        parshendiReclamationCount: 0, createdAt: now, updatedAt: now,
+      }),
+    }));
+    expect(await t.run((ctx) => migrateWorldBrutalityPlateauDefenses(ctx, now + 1))).toMatchObject({ migrated: 3 });
+    const result = await t.run(async (ctx) => ({
+      normal: await ctx.db.get(ids.normal), large: await ctx.db.get(ids.large), gemheart: await ctx.db.get(ids.gemheart),
+    }));
+    expect(result.normal).toMatchObject({ baseNeutralDefense: 500, neutralDefenseInitial: 600, neutralDefenseRemaining: 300, neutralDefenseBalanceVersion: 1 });
+    expect(result.large).toMatchObject({ baseNeutralDefense: 650, neutralDefenseInitial: 650, neutralDefenseRemaining: 650 });
+    expect(result.gemheart).toMatchObject({ baseNeutralDefense: 750, neutralDefenseInitial: 750, neutralDefenseRemaining: 750 });
+  });
+
+  test("raid intelligence narrows the stored defense without exposing the hidden value", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "scout@example.com" }));
+    const playerId = await addPlayer(t, "Scout");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(playerId, { authUserId: String(userId) });
+      await ctx.db.insert("raids", {
+        attackerId: playerId, targetType: "parshendi_spheres", units: emptyUnits(), power: 100, speed: 1,
+        defensePower: 163, rewardSpheres: 300, hostilityAtLaunch: 0,
+        departAt: now, arriveAt: now + 1000, status: "pending",
+      });
+    });
+    const asPlayer = t.withIdentity({ subject: String(userId) });
+    const rumor = (await asPlayer.query(api.raids.listVisibleRaids, {}))[0] as any;
+    expect(rumor.defensePower).toBeUndefined();
+    expect(rumor.defenseIntel).toMatchObject({ mode: "range", min: 100, max: 200 });
+    await t.run(async (ctx) => {
+      const player = (await ctx.db.get(playerId))!;
+      await ctx.db.patch(playerId, { buildings: { ...player.buildings, watchtower: 2 } });
+    });
+    const assessed = (await asPlayer.query(api.raids.listVisibleRaids, {}))[0] as any;
+    expect(assessed.defenseIntel).toMatchObject({ mode: "estimate", min: 143, max: 183 });
+    await t.run(async (ctx) => {
+      const player = (await ctx.db.get(playerId))!;
+      await ctx.db.patch(playerId, { buildings: { ...player.buildings, watchtower: 5 } });
+    });
+    const exact = (await asPlayer.query(api.raids.listVisibleRaids, {}))[0] as any;
+    expect(exact.defenseIntel).toMatchObject({ mode: "exact", value: 163 });
+  });
+
+  test("formation clears stranded schedules when targets, players, or seasons disappear", async () => {
+    for (const missing of ["target", "player", "season"] as const) {
+      const t = convexTest(schema, modules);
+      const now = Date.now();
+      const playerId = await addPlayer(t, `Missing ${missing}`);
+      if (missing !== "season") await t.run((ctx) => createFreshSeason(ctx, 1, now));
+      if (missing !== "target") await t.run(async (ctx) => {
+        await ctx.db.insert("plateaus", {
+          name: "Eligible", type: "sphere", status: "owned", origin: "neutral", ownerPlayerId: playerId,
+          highground: false, neutralDefenseInitial: 500, neutralDefenseRemaining: 0,
+          heldSince: now, createdAt: now, updatedAt: now,
+        });
+      });
+      const token = `token-${missing}`;
+      await t.run(async (ctx) => {
+        await ctx.db.insert("kingdomWorldPressure", {
+          playerId, hostility: 50, decayIntervalsApplied: 0,
+          nextRetaliationAt: now + 1000, retaliationScheduleToken: token, updatedAt: now,
+        });
+        if (missing === "player") await ctx.db.delete(playerId);
+      });
+      await t.mutation(internal.worldPressure.beginRetaliationFormation, { playerId, scheduleToken: token });
+      const row = await t.run(async (ctx) => await ctx.db.query("kingdomWorldPressure").withIndex("by_playerId", (q) => q.eq("playerId", playerId)).unique());
+      expect(row?.retaliationScheduleToken).toBeUndefined();
+      expect(row?.nextRetaliationAt).toBeUndefined();
+    }
+  });
+
+  test("cancelled retaliation reschedules when territory becomes eligible without duplicates", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const playerId = await addPlayer(t, "Recovery");
+    const doomedPlateauId = await t.run(async (ctx) => await ctx.db.insert("plateaus", {
+      name: "Doomed", type: "sphere", status: "owned", origin: "neutral", ownerPlayerId: playerId,
+      highground: false, neutralDefenseInitial: 500, neutralDefenseRemaining: 0,
+      heldSince: now, createdAt: now, updatedAt: now,
+    }));
+    const retaliationId = await t.run(async (ctx) => {
+      await ctx.db.insert("kingdomWorldPressure", { playerId, hostility: 50, decayIntervalsApplied: 0, updatedAt: now });
+      const id = await ctx.db.insert("parshendiRetaliations", {
+        playerId, targetPlateauId: doomedPlateauId, phase: "forming", active: true,
+        hostilityAtFormation: 50, militaryCapacity: 10, seasonDay: 1, power: 100,
+        formationAt: now, launchAt: now, createdAt: now, updatedAt: now,
+      });
+      await ctx.db.delete(doomedPlateauId);
+      return id;
+    });
+    await t.mutation(internal.worldPressure.launchRetaliation, { retaliationId });
+    expect(await t.run(async (ctx) => (await ctx.db.get(retaliationId))?.active)).toBe(false);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("plateaus", {
+        name: "New Holding", type: "sphere", status: "owned", origin: "neutral", ownerPlayerId: playerId,
+        highground: false, neutralDefenseInitial: 500, neutralDefenseRemaining: 0,
+        heldSince: now, createdAt: now, updatedAt: now,
+      });
+      await reconcileRetaliationSchedule(ctx, playerId, now + 1);
+      await reconcileRetaliationSchedule(ctx, playerId, now + 2);
+    });
+    const state = await t.run(async (ctx) => ({
+      row: await ctx.db.query("kingdomWorldPressure").withIndex("by_playerId", (q) => q.eq("playerId", playerId)).unique(),
+      active: await ctx.db.query("parshendiRetaliations").withIndex("by_playerId_and_active", (q) => q.eq("playerId", playerId).eq("active", true)).collect(),
+    }));
+    expect(state.row?.retaliationScheduleToken).toBeTruthy();
+    expect(state.active).toHaveLength(0);
+  });
+
+  test("malformed retaliation resolution cannot strand the active record", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const playerId = await addPlayer(t, "Malformed");
+    const plateauId = await t.run(async (ctx) => await ctx.db.insert("plateaus", {
+      name: "Vanishing", type: "sphere", status: "owned", origin: "neutral", ownerPlayerId: playerId,
+      highground: false, neutralDefenseInitial: 500, neutralDefenseRemaining: 0,
+      createdAt: now, updatedAt: now,
+    }));
+    const { retaliationId, siegeId } = await t.run(async (ctx) => {
+      const retaliationId = await ctx.db.insert("parshendiRetaliations", {
+        playerId, targetPlateauId: plateauId, phase: "launched", active: true,
+        hostilityAtFormation: 50, militaryCapacity: 10, seasonDay: 1, power: 100,
+        formationAt: now, launchAt: now, createdAt: now, updatedAt: now,
+      });
+      const siegeId = await ctx.db.insert("sieges", {
+        plateauId, defenderId: playerId, targetType: "parshendi_retaliation",
+        attackerUnits: emptyUnits(), attackerPower: 100, attackerSpeed: 0,
+        fortifyPercent: 0, retaliationId, departAt: now, resolveAt: now, status: "pending",
+      });
+      await ctx.db.patch(retaliationId, { siegeId });
+      await ctx.db.delete(plateauId);
+      return { retaliationId, siegeId };
+    });
+    await t.mutation(internal.plateaus.resolveSiege, { siegeId });
+    const result = await t.run(async (ctx) => ({ siege: await ctx.db.get(siegeId), retaliation: await ctx.db.get(retaliationId) }));
+    expect(result.siege).toMatchObject({ status: "resolved" });
+    expect(result.retaliation).toMatchObject({ active: false, phase: "cancelled", outcome: "cancelled" });
+  });
+
+  test("missing defender and siege linkage still reconcile the matching retaliation", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const playerId = await addPlayer(t, "Missing Defender");
+    const plateauId = await t.run(async (ctx) => await ctx.db.insert("plateaus", {
+      name: "Orphaned", type: "sphere", status: "owned", origin: "neutral", ownerPlayerId: playerId,
+      highground: false, neutralDefenseInitial: 500, neutralDefenseRemaining: 0,
+      activeSiegeId: undefined, createdAt: now, updatedAt: now,
+    }));
+    const { retaliationId, siegeId } = await t.run(async (ctx) => {
+      const retaliationId = await ctx.db.insert("parshendiRetaliations", {
+        playerId, targetPlateauId: plateauId, phase: "launched", active: true,
+        hostilityAtFormation: 50, militaryCapacity: 10, seasonDay: 1, power: 100,
+        formationAt: now, launchAt: now, createdAt: now, updatedAt: now,
+      });
+      const siegeId = await ctx.db.insert("sieges", {
+        plateauId, defenderId: playerId, targetType: "parshendi_retaliation",
+        attackerUnits: emptyUnits(), attackerPower: 100, attackerSpeed: 0,
+        fortifyPercent: 0, departAt: now, resolveAt: now, status: "pending",
+      });
+      await ctx.db.patch(plateauId, { activeSiegeId: siegeId });
+      await ctx.db.patch(retaliationId, { siegeId });
+      await ctx.db.delete(playerId);
+      return { retaliationId, siegeId };
+    });
+    await t.mutation(internal.plateaus.resolveSiege, { siegeId });
+    const result = await t.run(async (ctx) => ({ plateau: await ctx.db.get(plateauId), retaliation: await ctx.db.get(retaliationId) }));
+    expect(result.plateau?.activeSiegeId).toBeUndefined();
+    expect(result.retaliation).toMatchObject({ active: false, phase: "cancelled" });
+  });
+
+  test("malformed duplicate active rows do not create another retaliation or throw", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const playerId = await addPlayer(t, "Duplicate");
+    const plateauId = await t.run(async (ctx) => await ctx.db.insert("plateaus", {
+      name: "Held", type: "sphere", status: "owned", origin: "neutral", ownerPlayerId: playerId,
+      highground: false, neutralDefenseInitial: 500, neutralDefenseRemaining: 0,
+      createdAt: now, updatedAt: now,
+    }));
+    await t.run(async (ctx) => {
+      await ctx.db.insert("kingdomWorldPressure", { playerId, hostility: 50, decayIntervalsApplied: 0, updatedAt: now });
+      for (let index = 0; index < 2; index += 1) await ctx.db.insert("parshendiRetaliations", {
+        playerId, targetPlateauId: plateauId, phase: "forming", active: true,
+        hostilityAtFormation: 50, militaryCapacity: 10, seasonDay: 1, power: 100,
+        formationAt: now + index, launchAt: now + 1000, createdAt: now + index, updatedAt: now,
+      });
+      await reconcileRetaliationSchedule(ctx, playerId, now);
+    });
+    const state = await t.run(async (ctx) => ({
+      row: await ctx.db.query("kingdomWorldPressure").withIndex("by_playerId", (q) => q.eq("playerId", playerId)).unique(),
+      active: await ctx.db.query("parshendiRetaliations").withIndex("by_playerId_and_active", (q) => q.eq("playerId", playerId).eq("active", true)).collect(),
+    }));
+    expect(state.active).toHaveLength(2);
+    expect(state.row?.retaliationScheduleToken).toBeUndefined();
   });
 });
