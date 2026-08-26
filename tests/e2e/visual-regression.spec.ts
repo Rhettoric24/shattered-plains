@@ -19,6 +19,7 @@ type PixelRect = { x: number; y: number; width: number; height: number };
 const maskColor = "#25364a";
 const globalDynamicMasks = ["#game-date", ".resource-strip strong", "#inbox-badge", "#notification-badge", ".nav-state-dot"];
 const runtimeProblems = new WeakMap<Page, string[]>();
+const intelligenceUiModuleSource = fs.readFileSync("outputs/intelligence-ui-state.js", "utf8");
 
 const destinations: Destination[] = [
   {
@@ -406,6 +407,41 @@ test("the first Spanreed open survives an immediate inbox rerender", async ({ pa
   await expect(readable).toHaveAttribute("open", "");
   await page.locator('[data-inbox-filter="all"]').click();
   await expect(page.locator(`#inbox-list details[data-message-id="${messageId}"]`)).toHaveAttribute("open", "");
+});
+
+test("earned Watchtower intelligence is visible in military decision surfaces", async ({ page }) => {
+  await page.getByRole("button", { name: /^Plains/ }).click();
+  await expect(page.locator("#sphere-raid-preview")).toContainText(/Possible enemy Power:\s*\d[\d,]*–\d[\d,]*/);
+
+  await page.locator("#space-subnav").getByRole("button", { name: "Sieges", exact: true }).click();
+  const neutralOptions = page.locator("#neutral-plateau-target option");
+  await expect(neutralOptions.first()).not.toHaveText(/Unsurveyed Plateau/);
+  await expect(neutralOptions.first()).toHaveText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau/);
+  await expect(page.locator("#neutral-siege-preview")).toContainText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau/);
+  await expect(page.locator("#neutral-siege-preview")).toContainText(/Parshendi resistance:/);
+
+  await page.addScriptTag({
+    type: "module",
+    content: intelligenceUiModuleSource + `
+      const testRaid = document.createElement("section");
+      testRaid.id = "watchtower-existing-raid-test";
+      testRaid.innerHTML = [
+        { level: 0, mode: "range", min: 100, max: 200 },
+        { level: 1, mode: "estimate", min: 128, max: 198 },
+        { level: 2, mode: "estimate", min: 143, max: 183 },
+        { level: 3, mode: "estimate", min: 153, max: 173 },
+        { level: 5, mode: "exact", value: 163 },
+      ].map(raidDefenseMarkup).join("");
+      document.body.append(testRaid);
+    `,
+  });
+  const existingRaidDisclosures = page.locator("#watchtower-existing-raid-test [data-raid-defense-intel]");
+  await expect(existingRaidDisclosures).toHaveCount(5);
+  await expect(existingRaidDisclosures.nth(0)).toContainText("Estimated enemy Power100–200");
+  await expect(existingRaidDisclosures.nth(1)).toContainText("128–198");
+  await expect(existingRaidDisclosures.nth(2)).toContainText("143–183");
+  await expect(existingRaidDisclosures.nth(3)).toContainText("153–173");
+  await expect(existingRaidDisclosures.nth(4)).toContainText("Enemy Power163");
 });
 
 test("primary navigation reaches every representative view", async ({ page }) => {

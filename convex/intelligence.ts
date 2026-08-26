@@ -44,7 +44,7 @@ export const listDossiers = query({
         );
       return {
         plateauId: plateau?._id ?? report.plateauId ?? null,
-        targetName: plateau?.name ?? "Unknown plateau",
+        targetName: level >= 1 ? plateau?.name ?? "Unknown plateau" : "Unsurveyed Plateau",
         source: report.source,
         observedAt: report.observedAt,
         effectiveLevel: level,

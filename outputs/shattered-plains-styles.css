@@ -201,6 +201,9 @@ h3 { font-size: 1rem; color: var(--accent); }
 .list-item small { display: block; color: var(--muted); margin-top: 4px; }
 .raid-item.incoming { border-color: rgba(127, 183, 255, 0.48); box-shadow: 0 0 18px rgba(127, 183, 255, 0.12); }
 .raid-item.outgoing { border-color: rgba(216, 229, 245, 0.28); }
+.raid-defense-intel { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 8px; border-radius: 5px; background: rgba(127, 183, 255, 0.09); padding: 8px 10px; }
+.raid-defense-intel span { margin: 0; color: var(--muted); font-size: .78rem; font-weight: 800; }
+.raid-defense-intel strong { white-space: nowrap; }
 .siege-card { display: grid; gap: 10px; }
 .siege-defense-panel {
   display: grid;

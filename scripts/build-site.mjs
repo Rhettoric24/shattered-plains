@@ -79,6 +79,9 @@ await esbuild.build({
         build.onResolve({ filter: /^\.\/data-loading-state\.js$/ }, () => ({
           path: path.join(root, "outputs", "data-loading-state.js"),
         }));
+        build.onResolve({ filter: /^\.\/intelligence-ui-state\.js$/ }, () => ({
+          path: path.join(root, "outputs", "intelligence-ui-state.js"),
+        }));
         build.onResolve({ filter: /^\.\.?\// }, (args) => {
           const importer = args.importer.replace(/\\/g, "/");
           if (!importer.includes("node_modules/convex/")) {

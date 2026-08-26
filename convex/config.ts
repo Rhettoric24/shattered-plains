@@ -8,6 +8,7 @@ import {
   PLATEAU_RULES,
   PLATEAU_RUN_RULES,
   PLATEAU_RUN_SCHEDULE,
+  MILITARY_RESISTANCE_BANDS,
   STARTING_RULES,
   TIME_RULES,
   RESEARCH_RULES,
@@ -44,6 +45,7 @@ export const getGameConfig = query({
       buildings: BUILDING_RULES,
       plateauRuns: PLATEAU_RUN_RULES,
       plateauRunSchedule: PLATEAU_RUN_SCHEDULE,
+      militaryResistanceBands: MILITARY_RESISTANCE_BANDS,
       worldPressure: {
         rules: WORLD_PRESSURE_RULES,
         states: HOSTILITY_STATES,

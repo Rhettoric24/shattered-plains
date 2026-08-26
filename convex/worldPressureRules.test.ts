@@ -56,6 +56,7 @@ describe("World Pressure rules", () => {
     expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 1, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ mode: "estimate", min: 128, max: 198 });
     expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 2, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ min: 143, max: 183 });
     expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 3, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ min: 153, max: 173 });
+    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 4, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ min: 153, max: 173 });
     expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 5, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ mode: "exact", value: 163 });
   });
 
@@ -73,6 +74,9 @@ describe("World Pressure rules", () => {
       "Vulnerable", "Guarded", "Guarded", "Defended", "Defended", "Fortified", "Fortified", "Impregnable", "Impregnable",
     ]);
     expect(presentIntelNumber(500, 0)).toMatchObject({ mode: "label", label: "Fortified" });
+    expect(presentIntelNumber(500, 1)).toMatchObject({ mode: "range", label: "Fortified", min: 401, max: 600 });
+    expect(presentIntelNumber(500, 2)).toMatchObject({ mode: "estimate", min: 450, max: 550 });
+    expect(presentIntelNumber(500, 3)).toMatchObject({ mode: "exact", value: 500 });
     expect(presentIntelNumber(650, 0)).toMatchObject({ mode: "label", label: "Impregnable" });
   });
 

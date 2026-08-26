@@ -71,4 +71,74 @@ describe("scoped plateau queries", () => {
     expect(board.rivals[0]).not.toHaveProperty("type");
     expect(board.rivals[0].name).toBe("Rival holding");
   });
+
+  test("the same plateau progressively reveals its identity, traits, and resistance without changing its name", async () => {
+    const t = convexTest(schema, modules);
+    const subject = "watchtower-territory-viewer";
+    const viewerId = await addPlayer(t, subject, "Viewer", 0);
+    const plateauId = await addPlateau(t, "The Broken Crown", "neutral");
+    await t.run((ctx) => ctx.db.patch(plateauId, { origin: "neutral", baseNeutralDefense: 321, parshendiReclamationCount: 2 }));
+    const player = t.withIdentity({ subject });
+
+    const boards = [];
+    for (const watchtower of [0, 1, 2, 3]) {
+      await t.run(async (ctx) => {
+        const viewer = (await ctx.db.get(viewerId))!;
+        await ctx.db.patch(viewerId, { buildings: { ...viewer.buildings, watchtower } });
+      });
+      boards.push(await player.query(api.plateaus.getSiegeBoard, {}));
+      expect((await t.run((ctx) => ctx.db.get(plateauId)))?.name).toBe("The Broken Crown");
+    }
+
+    expect(boards[0].neutral[0]).toMatchObject({ _id: plateauId, name: "Unsurveyed Plateau", resistance: { mode: "label", label: "Defended" } });
+    expect(boards[0].neutral[0]).not.toHaveProperty("type");
+    expect(boards[0].neutral[0]).not.toHaveProperty("highground");
+    expect(boards[0].neutral[0]).not.toHaveProperty("large");
+
+    expect(boards[1].neutral[0]).toMatchObject({
+      _id: plateauId, name: "The Broken Crown", type: "sphere", highground: true, large: true,
+      resistance: { mode: "range", label: "Defended", min: 241, max: 400 },
+    });
+    expect(boards[2].neutral[0]).toMatchObject({
+      _id: plateauId, name: "The Broken Crown", type: "sphere", highground: true, large: true,
+      resistance: { mode: "estimate", label: "Defended", min: 258, max: 316 },
+      baseNeutralDefense: 321, parshendiReclamationCount: 2,
+    });
+    expect(boards[3].neutral[0]).toEqual(boards[2].neutral[0]);
+  });
+
+  test("territory dossiers do not leak a plateau name or traits before level one", async () => {
+    const t = convexTest(schema, modules);
+    const subject = "territory-dossier-viewer";
+    const viewerId = await addPlayer(t, subject, "Viewer", 0);
+    const plateauId = await addPlateau(t, "Windscar", "neutral");
+    await t.run((ctx) => ctx.db.insert("intelligenceReports", {
+      viewerPlayerId: viewerId,
+      targetType: "territory",
+      plateauId,
+      source: "neutral_expedition",
+      level: 0,
+      observedAt: Date.now(),
+      resistance: 287,
+      plateauType: "sphere",
+      highground: true,
+      large: true,
+    }));
+    const player = t.withIdentity({ subject });
+    const hidden = await player.query(api.intelligence.listDossiers, {});
+    expect(hidden.territories[0]).toMatchObject({
+      targetName: "Unsurveyed Plateau", plateauType: null, highground: false, large: false,
+      resistance: { mode: "label", label: "Defended" },
+    });
+
+    await t.run(async (ctx) => {
+      const viewer = (await ctx.db.get(viewerId))!;
+      await ctx.db.patch(viewerId, { buildings: { ...viewer.buildings, watchtower: 1 } });
+    });
+    const revealed = await player.query(api.intelligence.listDossiers, {});
+    expect(revealed.territories[0]).toMatchObject({
+      targetName: "Windscar", plateauType: "sphere", highground: true, large: true,
+      resistance: { mode: "range", label: "Defended", min: 241, max: 400 },
+    });
+  });
 });

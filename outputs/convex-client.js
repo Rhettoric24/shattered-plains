@@ -2,6 +2,7 @@ import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { syncEspionageControlLock } from "./espionage-ui-state.js";
 import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
 import { createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, routeNeedsPlateauBoard, routeNeedsTerritoryIntelligence, runMutationAction } from "./data-loading-state.js";
+import { formatDisclosedPower, plateauIdentityPresentation, raidDefenseMarkup } from "./intelligence-ui-state.js";
 
 const CONVEX_URL =
   window.SHATTERED_PLAINS_CONFIG?.convexUrl ||
@@ -957,9 +958,9 @@ function buildingEffectValues(key, level) {
   if (key === "watchtower") {
     const effects = [
       "No passive territory survey",
-      "Reveals neutral plateau types and attributes",
-      "Adds broad resistance ranges",
-      "Adds narrow resistance estimates and +1 Counter-Intelligence",
+      "Reveals plateau names, types, attributes, and broad resistance ranges",
+      "Adds narrow resistance estimates",
+      "Maintains narrow estimates and adds +1 Counter-Intelligence",
     ];
     return {
       current: effects[Math.min(3, level)],
@@ -1344,7 +1345,9 @@ function renderSelects() {
   }
   if ($("neutral-plateau-target")) {
     $("neutral-plateau-target").innerHTML = state.plateaus.neutral.map((plateau) => {
-      return '<option value="' + plateau.id + '">' + escapeHtml(plateau.label) + '</option>';
+      const identity = plateauIdentityPresentation(plateau);
+      const gameplayIdentity = identity.known ? " · " + identity.type + (identity.traits.length ? " · " + identity.traits.join(" • ") : "") : "";
+      return '<option value="' + plateau.id + '">' + escapeHtml(plateau.name + gameplayIdentity + " · " + formatIntelValue(plateau.resistance)) + '</option>';
     }).join("");
     if (lastSelections.neutralPlateau && state.plateaus.neutral.some((plateau) => plateau.id === lastSelections.neutralPlateau)) $("neutral-plateau-target").value = lastSelections.neutralPlateau;
   }
@@ -1612,9 +1615,11 @@ function survivabilityBreakdown(units, stats) {
 function sphereTargetPreview() {
   const hostility = Number(state.worldPressure?.hostility || 0) / 100;
   const rules = state.config.worldPressure?.rules?.neutralRaid || {};
-  const averageDefense = (configValue("parshendiSphereRaidMinDefense", 1) + configValue("parshendiSphereRaidMaxDefense", 4)) / 2 * (1 + hostility * Number(rules.difficultyHostilityFactor || 1));
+  const defenseFactor = 1 + hostility * Number(rules.difficultyHostilityFactor || 1);
+  const minimumDefense = Math.round(configValue("parshendiSphereRaidMinDefense", 1) * defenseFactor);
+  const maximumDefense = Math.round(configValue("parshendiSphereRaidMaxDefense", 4) * defenseFactor);
   const averageReward = (configValue("parshendiSphereRaidMinReward", 250) + configValue("parshendiSphereRaidMaxReward", 650)) / 2 * (1 + hostility * Number(rules.rewardHostilityFactor || 0.6));
-  return "Estimated resistance: " + neutralDefenseLabel(averageDefense) + "\nEstimated reward: " + plateauRunLootLabel(averageReward);
+  return "Possible enemy Power: " + minimumDefense + "–" + maximumDefense + "\nEstimated reward: " + plateauRunLootLabel(averageReward);
 }
 
 function plateauTargetPreview(stats) {
@@ -1629,8 +1634,12 @@ function plateauTargetPreview(stats) {
 function neutralSiegePreview(stats) {
   const target = state.plateaus.neutral.find((plateau) => plateau.id === $("neutral-plateau-target").value);
   if (!target) return "Choose a neutral plateau";
+  const identity = plateauIdentityPresentation(target);
+  const identityText = identity.known
+    ? target.name + "\n" + identity.type + (identity.traits.length ? " · " + identity.traits.join(" • ") : " · Standard terrain")
+    : target.name + "\nPlateau type and traits unknown";
   const history = target.parshendiReclamationCount > 0 ? "\nParshendi Reclamations: " + number(target.parshendiReclamationCount) + " · Neutral Defense +" + number(target.parshendiReclamationCount * 10) + "%" : "";
-  return "Parshendi resistance: " + formatIntelValue(target.resistance) + history + "\nYour Power: " + formatStat(stats.power);
+  return identityText + "\nParshendi resistance: " + formatIntelValue(target.resistance) + history + "\nYour Power: " + formatStat(stats.power);
 }
 
 function playerSiegePreview(stats) {
@@ -1850,10 +1859,11 @@ function raidListMarkup(raids, emptyText) {
       ? escapeHtml(raid.unitSummary) + ' for ' + prize
       : 'Force appears ' + operationPowerLabel(raid.power) + ' with ' + operationSpeedLabel(raid.speed) + ' pace';
     const details = isMine
-      ? 'Power ' + formatStat(raid.power) + ', Speed ' + formatStat(raid.speed) + externalDefenseText(raid) + ', travel ' + formatDuration(raid.travelMinutes) + '.'
-      : 'Estimated strength ' + operationPowerLabel(raid.power) + externalDefenseText(raid) + ', travel ' + formatDuration(raid.travelMinutes) + '.';
+      ? 'Power ' + formatStat(raid.power) + ', Speed ' + formatStat(raid.speed) + ', travel ' + formatDuration(raid.travelMinutes) + '.'
+      : 'Estimated strength ' + operationPowerLabel(raid.power) + ', travel ' + formatDuration(raid.travelMinutes) + '.';
+    const defenseMarkup = raidDefenseMarkup(raid.defenseIntel);
     const activityLabel = direction === "Outgoing" ? "My Raid" : "World Raid";
-    return '<article class="list-item raid-item ' + direction.toLowerCase() + '"><strong>' + activityLabel + ':</strong> ' + escapeHtml(raid.attackerName) + ' to <strong>' + escapeHtml(raid.targetName) + '</strong><span>' + force + '</span><small>' + details + ' Resolves ' + arrival + ' (<span data-local-countdown-at="' + Number(raid.arrivalAt) + '">' + formatDuration(remaining) + '</span> left).</small></article>';
+    return '<article class="list-item raid-item ' + direction.toLowerCase() + '"><strong>' + activityLabel + ':</strong> ' + escapeHtml(raid.attackerName) + ' to <strong>' + escapeHtml(raid.targetName) + '</strong><span>' + force + '</span>' + defenseMarkup + '<small>' + details + ' Resolves ' + arrival + ' (<span data-local-countdown-at="' + Number(raid.arrivalAt) + '">' + formatDuration(remaining) + '</span> left).</small></article>';
   }).join("") : '<div class="empty">' + emptyText + '</div>';
 }
 
@@ -2272,11 +2282,8 @@ function plateauBonusLabel(plateau) {
 }
 
 function neutralDefenseLabel(power) {
-  if (power <= 50) return "Vulnerable";
-  if (power <= 100) return "Guarded";
-  if (power <= 150) return "Defended";
-  if (power <= 220) return "Fortified";
-  return "Impregnable";
+  const bands = state.config.militaryResistanceBands || [];
+  return bands.find((band) => power >= band.min && (band.max === null || power <= band.max))?.label || "Impregnable";
 }
 
 function operationPowerLabel(power) {
@@ -2293,11 +2300,10 @@ function operationSpeedLabel(speed) {
 
 function formatIntelValue(presentation) {
   if (!presentation) return "Unknown";
-  if (presentation.mode === "label") return presentation.label;
-  if (presentation.mode === "range") return presentation.min + "–" + (presentation.max === null ? presentation.min + "+" : presentation.max);
-  if (presentation.mode === "estimate") return "about " + presentation.min + "–" + presentation.max;
-  if (presentation.mode === "exact") return number(presentation.value) + " (snapshot)";
-  return "Unknown";
+  const value = formatDisclosedPower(presentation);
+  if (presentation.mode === "estimate") return "about " + value;
+  if (presentation.mode === "exact") return value + " (snapshot)";
+  return value;
 }
 
 function intelLevelName(level) {
@@ -2467,7 +2473,7 @@ function renderIntelligence() {
   const watchtower = state.intelligence?.watchtower || { level: 0, territoryLevel: 0, counterIntelligence: 0 };
   const watchtowerStatus = $("watchtower-intelligence-status");
   if (watchtowerStatus) {
-    const coverage = ["No passive surveys", "Plateau identities revealed", "Broad resistance ranges", "Narrow resistance estimates"][Math.min(3, watchtower.level)] || "No passive surveys";
+    const coverage = ["No passive surveys", "Identities, traits, and broad ranges", "Narrow resistance estimates", "Narrow estimates and Counter-Intelligence"][Math.min(3, watchtower.level)] || "No passive surveys";
     watchtowerStatus.innerHTML = pulseItem("Watchtower", "Level " + watchtower.level) + pulseItem("Territory coverage", coverage) + pulseItem("Counter-Intelligence", watchtower.counterIntelligence ? "+" + watchtower.counterIntelligence : "None");
   }
 
@@ -2511,11 +2517,6 @@ function openPlateauTarget(plateauId) {
     select.value = plateauId;
     select.focus();
   }
-}
-
-function externalDefenseText(raid) {
-  if (!raid.defenseIntel) return "";
-  return ", opposition " + formatIntelValue(raid.defenseIntel);
 }
 
 function plateauRunDifficultyLabel(power) {
