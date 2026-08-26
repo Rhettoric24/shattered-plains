@@ -1,12 +1,8 @@
+import { MILITARY_RESISTANCE_BANDS } from "./rules";
+
 export const INTELLIGENCE_DECAY_STEP_MS = 6 * 60 * 60 * 1000;
 
-export const RESISTANCE_BANDS = [
-  { min: 0, max: 50, label: "Vulnerable" },
-  { min: 51, max: 100, label: "Guarded" },
-  { min: 101, max: 150, label: "Defended" },
-  { min: 151, max: 220, label: "Fortified" },
-  { min: 221, max: null, label: "Impregnable" },
-] as const;
+export const RESISTANCE_BANDS = MILITARY_RESISTANCE_BANDS;
 
 export function effectiveIntelLevel(level: number, observedAt: number, now: number) {
   const steps = Math.floor(Math.max(0, now - observedAt) / INTELLIGENCE_DECAY_STEP_MS);

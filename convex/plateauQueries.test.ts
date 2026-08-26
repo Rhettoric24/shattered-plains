@@ -53,6 +53,7 @@ describe("scoped plateau queries", () => {
     });
     const summary = await t.withIdentity({ subject }).query(api.plateaus.getMyPlateauState, {});
     expect(summary.sieges).toHaveLength(1);
+    expect(summary.sieges[0].plateauName).toBe("Mine");
     expect(summary.sieges[0]).not.toHaveProperty("attackerPower");
     expect(summary.sieges[0]).not.toHaveProperty("attackerUnits");
   });

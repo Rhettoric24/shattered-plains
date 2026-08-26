@@ -23,6 +23,8 @@ import {
   normalizeUnits,
   missionRiskLabel,
   PLATEAU_RUN_RULES,
+  plateauRunFinalSpeed,
+  plateauRunJoinSpeedBonus,
   PLATEAU_RUN_SCHEDULE,
   totalUnits,
   unitPlunder,
@@ -189,12 +191,12 @@ export const getCurrent = query({
         .sort((a, b) => a.committedAt - b.committedAt)
         .map((commitment, index) => {
         const player = players.find((entry) => entry._id === commitment.playerId);
-        const joinOrderSpeedBonus = (PLATEAU_RUN_RULES.joinOrderSpeedBonuses[index] ?? 0) * (commitment.doctrineJoinSpeedMultiplier ?? 1);
+        const joinOrderSpeedBonus = plateauRunJoinSpeedBonus(index, commitment.doctrineJoinSpeedMultiplier ?? 1);
         return {
           ...commitment,
           joinOrder: index + 1,
           joinOrderSpeedBonus,
-          speedScore: commitment.speed * (1 + joinOrderSpeedBonus),
+          speedScore: plateauRunFinalSpeed(commitment.speed, index, commitment.doctrineJoinSpeedMultiplier ?? 1),
           playerName: player?.name ?? "Unknown",
         };
       }),
@@ -389,12 +391,12 @@ export const resolvePlateauRun = internalMutation({
 
     const sorted = [...commitments].sort((a, b) => a.committedAt - b.committedAt);
     const entries = sorted.map((commitment, index) => {
-      const joinOrderSpeedBonus = (PLATEAU_RUN_RULES.joinOrderSpeedBonuses[index] ?? 0) * (commitment.doctrineJoinSpeedMultiplier ?? 1);
+      const joinOrderSpeedBonus = plateauRunJoinSpeedBonus(index, commitment.doctrineJoinSpeedMultiplier ?? 1);
       return {
         ...commitment,
         joinOrder: index + 1,
         joinOrderSpeedBonus,
-        speedScore: commitment.speed * (1 + joinOrderSpeedBonus),
+        speedScore: plateauRunFinalSpeed(commitment.speed, index, commitment.doctrineJoinSpeedMultiplier ?? 1),
         effectivePower: commitment.power,
       };
     });
@@ -465,9 +467,11 @@ export const resolvePlateauRun = internalMutation({
       return { resolved: true, won: false, combinedPower };
     }
 
+    // Join order breaks an exact final-Speed tie deterministically because
+    // finalEntries retains committedAt order.
     let winner = finalEntries[0];
     for (const entry of finalEntries) {
-      if (entry.effectivePower > winner.effectivePower) winner = entry;
+      if (entry.speedScore > winner.speedScore) winner = entry;
     }
     const nonWinnerPower = finalEntries
       .filter((entry) => entry._id !== winner._id)

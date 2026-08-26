@@ -184,12 +184,18 @@ export const COMBAT_RULES = {
   parshendiSphereRaidMaxReward: 650,
 } as const;
 
+export const MILITARY_RESISTANCE_BANDS = [
+  { min: 0, max: 120, label: "Vulnerable" },
+  { min: 121, max: 240, label: "Guarded" },
+  { min: 241, max: 400, label: "Defended" },
+  { min: 401, max: 600, label: "Fortified" },
+  { min: 601, max: null, label: "Impregnable" },
+] as const;
+
 export function resistanceLabel(power: number) {
-  if (power <= 50) return "Vulnerable";
-  if (power <= 100) return "Guarded";
-  if (power <= 150) return "Defended";
-  if (power <= 220) return "Fortified";
-  return "Impregnable";
+  return MILITARY_RESISTANCE_BANDS.find(
+    (band) => power >= band.min && (band.max === null || power <= band.max),
+  )?.label ?? "Impregnable";
 }
 
 export function missionRiskLabel(power: number) {
@@ -220,6 +226,14 @@ export const PLATEAU_RUN_RULES = {
   fastestPowerBonus: 0.1,
   joinOrderSpeedBonuses: [0.1, 0.07, 0.05],
 } as const;
+
+export function plateauRunJoinSpeedBonus(joinIndex: number, multiplier = 1) {
+  return (PLATEAU_RUN_RULES.joinOrderSpeedBonuses[joinIndex] ?? 0) * multiplier;
+}
+
+export function plateauRunFinalSpeed(speed: number, joinIndex: number, multiplier = 1) {
+  return speed * (1 + plateauRunJoinSpeedBonus(joinIndex, multiplier));
+}
 
 export const PLATEAU_RUN_SCHEDULE = [
   { hour: 9, minute: 0, label: "9 AM" },

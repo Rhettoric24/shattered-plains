@@ -26,6 +26,47 @@ async function addPlayer(t: ReturnType<typeof convexTest>, name: string) {
 }
 
 describe("World Pressure integration", () => {
+  test("the same raid disclosure narrows as Watchtower level improves without exposing or changing true defense", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run((ctx) => ctx.db.insert("users", { email: "watchtower@example.com" }));
+    const playerId = await addPlayer(t, "Watchtower Tester");
+    const raidId = await t.run(async (ctx) => {
+      await ctx.db.patch(playerId, { authUserId: String(userId) });
+      return await ctx.db.insert("raids", {
+        attackerId: playerId,
+        targetType: "parshendi_spheres",
+        units: emptyUnits(),
+        power: 1,
+        speed: 1,
+        defensePower: 163,
+        rewardSpheres: 250,
+        hostilityAtLaunch: 0,
+        departAt: 1,
+        arriveAt: Date.now() + 60_000,
+        status: "pending",
+      });
+    });
+    const player = t.withIdentity({ subject: String(userId) });
+    const disclosures = [];
+    for (const watchtower of [0, 1, 2, 3, 5]) {
+      await t.run(async (ctx) => {
+        const row = await ctx.db.get(playerId);
+        if (row) await ctx.db.patch(playerId, { buildings: { ...row.buildings, watchtower } });
+      });
+      const visible = await player.query(api.raids.listVisibleRaids, {});
+      expect(visible[0]).not.toHaveProperty("defensePower");
+      disclosures.push(visible[0].defenseIntel);
+      expect((await t.run((ctx) => ctx.db.get(raidId)))?.defensePower).toBe(163);
+    }
+    expect(disclosures).toEqual([
+      { level: 0, mode: "range", min: 100, max: 200 },
+      { level: 1, mode: "estimate", min: 128, max: 198 },
+      { level: 2, mode: "estimate", min: 143, max: 183 },
+      { level: 3, mode: "estimate", min: 153, max: 173 },
+      { level: 5, mode: "exact", value: 163 },
+    ]);
+  });
+
   test("player aggression resets peace while retaliation gains do not", async () => {
     const t = convexTest(schema, modules);
     const playerId = await addPlayer(t, "Alethi");

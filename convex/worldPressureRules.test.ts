@@ -14,7 +14,8 @@ import {
   WORLD_PRESSURE_RULES,
 } from "./worldPressureRules";
 import { neutralPlateauBaseDefense } from "./plateauHelpers";
-import { COMBAT_RULES } from "./rules";
+import { COMBAT_RULES, resistanceLabel } from "./rules";
+import { presentIntelNumber } from "./intelligenceRules";
 
 describe("World Pressure rules", () => {
   test("clamps Hostility and maps every qualitative boundary", () => {
@@ -65,6 +66,14 @@ describe("World Pressure rules", () => {
     expect(neutralPlateauBaseDefense("gemheart", true)).toBe(750);
     expect(COMBAT_RULES.parshendiSphereRaidMinDefense).toBe(100);
     expect(COMBAT_RULES.parshendiSphereRaidMaxDefense).toBe(200);
+  });
+
+  test("keeps broad military labels useful on the World Brutality scale", () => {
+    expect([120, 121, 240, 241, 400, 401, 600, 601, 750].map(resistanceLabel)).toEqual([
+      "Vulnerable", "Guarded", "Guarded", "Defended", "Defended", "Fortified", "Fortified", "Impregnable", "Impregnable",
+    ]);
+    expect(presentIntelNumber(500, 0)).toMatchObject({ mode: "label", label: "Fortified" });
+    expect(presentIntelNumber(650, 0)).toMatchObject({ mode: "label", label: "Impregnable" });
   });
 
   test("uses supplied retaliation formula with a weak-kingdom safety ceiling", () => {

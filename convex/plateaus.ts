@@ -162,6 +162,10 @@ export const getMyPlateauState = query({
       ctx.db.query("sieges").withIndex("by_defender_and_status", (q) => q.eq("defenderId", viewer._id).eq("status", "pending")).take(100),
     ]);
     const sieges = [...new Map([...attacking, ...defending].map((siege) => [String(siege._id), siege])).values()];
+    const siegePlateaus = (await Promise.all(
+      [...new Set(sieges.map((siege) => String(siege.plateauId)))].map((id) => ctx.db.get(id as Id<"plateaus">)),
+    )).filter((plateau) => plateau !== null);
+    const siegePlateauNames = new Map(siegePlateaus.map((plateau) => [String(plateau._id), plateau.name]));
     const playerIds = new Set<Id<"players">>();
     for (const siege of sieges) {
       if (siege.attackerId) playerIds.add(siege.attackerId);
@@ -184,6 +188,7 @@ export const getMyPlateauState = query({
         return {
           _id: siege._id,
           plateauId: siege.plateauId,
+          plateauName: siegePlateauNames.get(String(siege.plateauId)) ?? "Unknown plateau",
           ...(siege.attackerId ? { attackerId: siege.attackerId } : {}),
           ...(siege.defenderId ? { defenderId: siege.defenderId } : {}),
           targetType: siege.targetType,
@@ -437,6 +442,7 @@ export const getSiegeBoard = query({
         return {
           _id: siege._id,
           plateauId: siege.plateauId,
+          plateauName: plateauById.get(String(siege.plateauId))?.name ?? "Unknown plateau",
           ...(siege.attackerId ? { attackerId: siege.attackerId } : {}),
           ...(siege.defenderId ? { defenderId: siege.defenderId } : {}),
           targetType: siege.targetType,
@@ -1033,7 +1039,7 @@ export const resolveSiege = internalMutation({
           playerInitiated: false,
           now,
         });
-        resultText = `${attacker.name} claimed ${plateauTypeName(plateau.type)} against ${resistanceLabel(plateau.neutralDefenseRemaining).toLowerCase()} resistance. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
+        resultText = `${attacker.name} claimed ${plateau.name} (${plateauTypeName(plateau.type)}) against ${resistanceLabel(plateau.neutralDefenseRemaining).toLowerCase()} resistance. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
       } else {
         await ctx.db.patch(plateau._id, {
           neutralDefenseRemaining: Math.max(
@@ -1043,7 +1049,7 @@ export const resolveSiege = internalMutation({
           activeSiegeId: undefined,
           updatedAt: now,
         });
-        resultText = `${attacker.name} weakened ${resistanceLabel(plateau.neutralDefenseRemaining).toLowerCase()} Parshendi resistance on a neutral plateau. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
+        resultText = `${attacker.name} weakened ${resistanceLabel(plateau.neutralDefenseRemaining).toLowerCase()} Parshendi resistance on ${plateau.name}. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
       }
 
       await ctx.db.patch(attacker._id, {

@@ -105,8 +105,6 @@ let inboxFilter = "all";
 let holdingsExpanded = false;
 let latestLoadRequest = 0;
 let loadedPlateauCommitmentId = null;
-let notificationBaselineReady = false;
-let knownNotificationIds = new Set();
 let deferredInstallPrompt = null;
 let quantityIncrement = [1, 10, 50, 100].includes(Number(localStorage.getItem("sp-quantity-increment"))) ? Number(localStorage.getItem("sp-quantity-increment")) : 10;
 const sessionQueries = createSessionQueryCache();
@@ -423,7 +421,6 @@ function applyReactiveBatch(batch, expectedSessionGeneration) {
     if (!rawStateData.intelligence) rawStateData.intelligence = { kingdoms: [], territories: [], watchtower: rawStateData.plateaus.watchtower };
     if (expectedSessionGeneration !== authSessionGeneration) return;
     state = buildState(rawStateData);
-    processNewNotificationRows(state.notifications);
     render();
     ensureReactiveSubscriptions(rawStateData);
   }).catch((error) => console.error("Reactive state update failed; the safety reconciliation will recover it.", error));
@@ -534,7 +531,6 @@ async function load(options = {}) {
       adminStatus,
     };
     state = buildState(rawStateData);
-    processNewNotificationRows(state.notifications);
     render();
     ensureReactiveSubscriptions(rawStateData);
   } catch (error) {
@@ -1751,6 +1747,7 @@ function plateauCard(plateau) {
 
 function siegeCard(siege) {
   const plateau = state.plateaus.byId[siege.plateauId];
+  const plateauName = plateau?.name || siege.plateauName || "Unknown plateau";
   const remaining = Math.max(0, Math.ceil((siege.resolveAt - Date.now()) / 60000));
   const isAttacker = siege.attackerId === state.me.id;
   const isDefender = siege.defenderId === state.me.id;
@@ -1776,7 +1773,7 @@ function siegeCard(siege) {
       : "Parshendi hold " + neutralDefenseLabel(plateau?.neutralDefenseRemaining || 0);
   const defenderPanel = isDefender && (siege.targetType === "player" || siege.targetType === "parshendi_retaliation") ? siegeDefenderPanel(siege, plateau) : "";
   const conclaveText = isAttacker && siege.ardentiaConclave ? ' Ardentia Scout Conclave attached.' : '';
-  return '<article class="list-item raid-item siege-card" data-entity-id="' + escapeHtml(siege.id) + '"><strong>' + title + '</strong><span>' + escapeHtml(plateau?.name || "Unknown plateau") + '</span><small>' + attackerText + '. ' + committedText + '. ' + defenseText + '.' + conclaveText + ' Resolves in <span data-local-countdown-at="' + Number(siege.resolveAt) + '">' + formatDuration(remaining) + '</span>.</small>' + defenderPanel + '</article>';
+  return '<article class="list-item raid-item siege-card" data-entity-id="' + escapeHtml(siege.id) + '"><strong>' + title + '</strong><span>' + escapeHtml(plateauName) + '</span><small>' + attackerText + '. ' + committedText + '. ' + defenseText + '.' + conclaveText + ' Resolves in <span data-local-countdown-at="' + Number(siege.resolveAt) + '">' + formatDuration(remaining) + '</span>.</small>' + defenderPanel + '</article>';
 }
 
 function siegeDefenderPanel(siege, plateau) {
@@ -1976,6 +1973,9 @@ function routeForMessage(message) {
 function renderInbox() {
   const list = $("inbox-list");
   if (!list) return;
+  const expandedMessageIds = new Set(
+    [...list.querySelectorAll("details[open][data-message-id]")].map((details) => details.dataset.messageId),
+  );
   const inbox = (state.inbox || []).filter((message) => inboxFilter === "all" || (inboxFilter === "players" ? message.kind === "player" : message.kind !== "player")).sort((a, b) => Number(a.read) - Number(b.read) || b.at - a.at);
   $("toggle-compose").classList.toggle("secondary", inboxFilter !== "players");
   list.innerHTML = inbox.length ? inbox.map((message) => {
@@ -1987,6 +1987,9 @@ function renderInbox() {
     const action = route ? '<button type="button" class="message-action" data-message-action="' + message.id + '">Open where this happened</button>' : '';
     return '<details class="list-item message-item ' + readClass + '" data-message-id="' + message.id + '"' + (message.read ? '' : ' data-unread="true"') + '><summary><div><span class="event-kind">' + category + '</span><strong>' + escapeHtml(message.subject) + '</strong><small>' + escapeHtml(preview) + '</small></div><time>' + relativeTime(message.at) + '</time></summary><div class="message-body"><p>' + escapeHtml(message.text) + '</p><small>From ' + escapeHtml(from) + ' · ' + new Date(message.at).toLocaleString() + '</small>' + action + '</div></details>';
   }).join("") : '<div class="empty">No messages yet.</div>';
+  list.querySelectorAll("details[data-message-id]").forEach((details) => {
+    if (expandedMessageIds.has(details.dataset.messageId)) details.open = true;
+  });
   list.querySelectorAll("[data-message-action]").forEach((button) => button.addEventListener("click", (event) => {
     event.preventDefault();
     const message = state.inbox.find((entry) => String(entry.id) === button.dataset.messageAction);
@@ -2021,26 +2024,6 @@ function renderInbox() {
       alert(friendlyError(error));
     }
   }, { once: true }));
-}
-
-function processNewNotificationRows(rows) {
-  const ids = new Set(rows.map((entry) => String(entry._id)));
-  if (notificationBaselineReady) {
-    rows.slice().reverse().forEach((entry) => {
-      if (!knownNotificationIds.has(String(entry._id))) showNotificationToast(entry.title, entry.body);
-    });
-  } else notificationBaselineReady = true;
-  knownNotificationIds = ids;
-}
-
-function showNotificationToast(title, body) {
-  const container = $("notification-toasts");
-  if (!container) return;
-  const toast = document.createElement("article");
-  toast.className = "notification-toast";
-  toast.innerHTML = `<strong>${escapeHtml(title || "Shattered Plains")}</strong><span>${escapeHtml(body || "Your warcamp has news.")}</span>`;
-  container.appendChild(toast);
-  setTimeout(() => toast.remove(), 7000);
 }
 
 function notificationRelativeTime(at) {
@@ -2150,7 +2133,7 @@ function renderOverview() {
   const operations = [];
   if (state.research?.active) operations.push({ label: "Active Research", detail: state.research.active.kind === "project" ? (state.research.rules?.projects?.[state.research.active.project]?.name || "Research") : (state.research.doctrines?.[state.research.active.doctrine]?.name || "Doctrine"), at: state.research.active.projectedCompletionAt || Date.now(), view: "research" });
   state.raids.filter((raid) => raid.attackerId === state.me.id).forEach((raid) => operations.push({ label: "Sphere raid", detail: raid.targetName, at: raid.arrivalAt, view: "raids" }));
-  state.plateaus.sieges.filter((siege) => siege.attackerId === state.me.id || siege.defenderId === state.me.id).forEach((siege) => operations.push({ label: siege.defenderId === state.me.id ? "Defending siege" : "Plateau siege", detail: state.plateaus.byId[siege.plateauId]?.name || "Plateau", at: siege.resolveAt, view: "plateaus" }));
+  state.plateaus.sieges.filter((siege) => siege.attackerId === state.me.id || siege.defenderId === state.me.id).forEach((siege) => operations.push({ label: siege.defenderId === state.me.id ? "Defending siege" : "Plateau siege", detail: state.plateaus.byId[siege.plateauId]?.name || siege.plateauName || "Plateau", at: siege.resolveAt, view: "plateaus" }));
   (state.espionage?.missions || []).filter((mission) => mission.status === "pending").forEach((mission) => operations.push({ label: "Espionage investigation", detail: mission.targetName + " · " + mission.category, at: mission.resolveAt, view: "intelligence" }));
   if (state.plateauRun?.participants.some((entry) => entry.playerId === state.me.id)) operations.push({ label: "Plateau Run", detail: "Warcamp committed", at: state.plateauRun.joinUntil, view: "plateau" });
   operations.sort((a, b) => a.at - b.at);
@@ -2681,6 +2664,7 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
       return {
         id: siege._id,
         plateauId: siege.plateauId,
+        plateauName: siege.plateauName || null,
         attackerId: siege.attackerId,
         defenderId: siege.defenderId || null,
         targetType: siege.targetType,
@@ -3186,11 +3170,19 @@ $("auto-read-inbox").checked = localStorage.getItem("sp-auto-read-inbox") === "t
 $("auto-read-inbox").addEventListener("change", () => localStorage.setItem("sp-auto-read-inbox", String($("auto-read-inbox").checked)));
 
 function setNotificationPanelOpen(open) {
+  placeNotificationPanelForLayout();
   $("notification-panel").classList.toggle("hidden", !open);
   $("notification-backdrop").classList.toggle("hidden", !open);
   $("notification-bell").setAttribute("aria-expanded", String(open));
   document.body.classList.toggle("notification-modal-open", open && isMobileLayout());
   if (open && isMobileLayout()) $("close-notifications").focus();
+}
+
+const notificationShell = $("notification-bell").closest(".notification-shell");
+function placeNotificationPanelForLayout() {
+  const parent = window.matchMedia("(max-width: 720px)").matches ? document.body : notificationShell;
+  if (!parent || $("notification-panel").parentElement === parent) return;
+  parent.append($("notification-backdrop"), $("notification-panel"));
 }
 
 $("notification-bell").addEventListener("click", (event) => {
@@ -3364,6 +3356,7 @@ $("close-tap-tooltip")?.addEventListener("click", hideTapTooltip);
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") hideTapTooltip(); });
 window.addEventListener("resize", () => {
   const notificationsOpen = !$("notification-panel")?.classList.contains("hidden");
+  if (notificationsOpen) placeNotificationPanelForLayout();
   document.body.classList.toggle("notification-modal-open", Boolean(notificationsOpen && isMobileLayout()));
   syncGlobalShellHeight();
 });
@@ -3387,10 +3380,6 @@ window.addEventListener("beforeinstallprompt", (event) => {
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("service-worker.js").catch((error) => console.warn("Service worker registration failed.", error));
   navigator.serviceWorker.addEventListener("message", (event) => {
-    if (event.data?.type === "push-notification") {
-      showNotificationToast(event.data.notification?.title, event.data.notification?.body);
-      if (event.data.notification?.id) knownNotificationIds.add(String(event.data.notification.id));
-    }
     if (event.data?.type === "open-route" && state) showRoute(event.data.route || { view: "home" });
     if (event.data?.type === "open-view" && state) showView(event.data.view || "home");
   });

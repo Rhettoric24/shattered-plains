@@ -114,6 +114,17 @@ async function expectContained(locator: Locator) {
   expect(box.x + box.width, "content should not escape the right edge").toBeLessThanOrEqual(viewportWidth + 1);
 }
 
+async function expectInside(child: Locator, parent: Locator) {
+  const [childBox, parentBox] = await Promise.all([child.boundingBox(), parent.boundingBox()]);
+  expect(childBox).not.toBeNull();
+  expect(parentBox).not.toBeNull();
+  if (!childBox || !parentBox) return;
+  expect(childBox.x).toBeGreaterThanOrEqual(parentBox.x - 1);
+  expect(childBox.y).toBeGreaterThanOrEqual(parentBox.y - 1);
+  expect(childBox.x + childBox.width).toBeLessThanOrEqual(parentBox.x + parentBox.width + 1);
+  expect(childBox.y + childBox.height).toBeLessThanOrEqual(parentBox.y + parentBox.height + 1);
+}
+
 async function expectShellLayout(page: Page) {
   const header = page.locator(".dashboard-header");
   await expect(header).toBeVisible();
@@ -227,7 +238,10 @@ async function strictShellScreenshot(page: Page, testInfo: TestInfo, baselineNam
   }
   for (const [name, locator] of [
     ["brand-home", page.locator("#home-brand")],
-    ["global-header", page.locator(".dashboard-header")],
+    // Keep pixel checks on the stable route context. The full header also contains
+    // the authenticated kingdom name, which is intentionally dynamic and covered
+    // by behavioral visibility assertions below.
+    ["header-context", page.locator(".header-context")],
     ["resource-strip", page.locator(".resource-strip")],
     ["context-subnav", page.locator("#space-subnav:not(.hidden)")],
   ] as const) {
@@ -300,6 +314,23 @@ async function expectEspionageLayouts(page: Page) {
   await expect(composer).toBeVisible();
   await expectContained(card);
   await expectContained(composer);
+  const cards = page.locator(".operative-card");
+  for (let index = 0; index < await cards.count(); index += 1) {
+    const current = cards.nth(index);
+    const quantity = current.locator(".operative-recruit .quantity-control");
+    const recruit = current.locator(".operative-recruit > button");
+    await expectInside(quantity, current);
+    await expectInside(recruit, current);
+    const [quantityBox, recruitBox] = await Promise.all([quantity.boundingBox(), recruit.boundingBox()]);
+    if (quantityBox && recruitBox) expect(recruitBox.y).toBeGreaterThanOrEqual(quantityBox.y + quantityBox.height - 1);
+  }
+  for (const form of [page.locator("#espionage-defense-form"), composer]) {
+    const controls = form.locator(".operative-input, select, input, button");
+    for (let index = 0; index < await controls.count(); index += 1) {
+      if (await controls.nth(index).isVisible()) await expectInside(controls.nth(index), form);
+    }
+  }
+  await expectNoMajorHorizontalOverflow(page);
 
   const cardMasks = [card.locator(".status-badge"), card.locator(".operative-state-line")];
   const composerMasks = [composer.locator("select"), composer.locator(".mission-unit-heading small"), composer.locator("#espionage-mission-preview")];
@@ -346,6 +377,7 @@ test("friend-test identity, build, and alerts diagnostics are accessible", async
   await expect(page.locator("#settings-player-name")).toBeVisible();
   await expect(page.locator("#settings-player-name")).toHaveText(headerName!);
   await expect(page.locator("#build-identifier")).toHaveText(/^(?:[0-9a-f]{7}|dev)$/);
+  await expect(page.locator(".notification-toast")).toHaveCount(0);
 
   await page.locator("#notification-bell").click();
   const panel = page.locator("#notification-panel");
@@ -354,8 +386,26 @@ test("friend-test identity, build, and alerts diagnostics are accessible", async
   expect(panelBox).not.toBeNull();
   if (panelBox && viewport) {
     if (viewport.width > 900) expect(panelBox.width).toBeGreaterThanOrEqual(540);
-    else expect(panelBox.width).toBeGreaterThanOrEqual(viewport.width - 60);
+    else {
+      expect(panelBox.width).toBeGreaterThanOrEqual(viewport.width - 60);
+      expect(panelBox.height).toBeGreaterThanOrEqual(viewport.height * 0.75);
+      expect(panelBox.y).toBeGreaterThanOrEqual(0);
+      expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(viewport.height + 1);
+    }
   }
+});
+
+test("the first Spanreed open survives an immediate inbox rerender", async ({ page }) => {
+  await page.locator("#spanreed-button").click();
+  await expect(page.locator("#view-inbox")).toBeVisible();
+  const readable = page.locator("#inbox-list details:not([data-unread])").first();
+  await expect(readable, "the developed test kingdom should have a read report available").toBeAttached();
+  const messageId = await readable.getAttribute("data-message-id");
+  expect(messageId).toBeTruthy();
+  await readable.locator("summary").click();
+  await expect(readable).toHaveAttribute("open", "");
+  await page.locator('[data-inbox-filter="all"]').click();
+  await expect(page.locator(`#inbox-list details[data-message-id="${messageId}"]`)).toHaveAttribute("open", "");
 });
 
 test("primary navigation reaches every representative view", async ({ page }) => {
@@ -415,5 +465,11 @@ for (const destination of destinations) {
     }
     if (destination.name === "home") await expectNotificationSurfaceAccessible(page);
     if (destination.name === "intelligence") await expectEspionageLayouts(page);
+    if (destination.name === "plains-sieges") {
+      const siegeNames = page.locator(".siege-card > span:first-of-type");
+      for (let index = 0; index < await siegeNames.count(); index += 1) {
+        await expect(siegeNames.nth(index)).not.toHaveText(/^(?:Unknown plateau|Plateau)$/i);
+      }
+    }
   });
 }
