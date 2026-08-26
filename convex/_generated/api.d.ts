@@ -33,6 +33,8 @@ import type * as notificationPush from "../notificationPush.js";
 import type * as notifications from "../notifications.js";
 import type * as ownership from "../ownership.js";
 import type * as plateauHelpers from "../plateauHelpers.js";
+import type * as plateauNameMigrations from "../plateauNameMigrations.js";
+import type * as plateauNaming from "../plateauNaming.js";
 import type * as plateauRuns from "../plateauRuns.js";
 import type * as plateaus from "../plateaus.js";
 import type * as players from "../players.js";
@@ -80,6 +82,8 @@ declare const fullApi: ApiFromModules<{
   notifications: typeof notifications;
   ownership: typeof ownership;
   plateauHelpers: typeof plateauHelpers;
+  plateauNameMigrations: typeof plateauNameMigrations;
+  plateauNaming: typeof plateauNaming;
   plateauRuns: typeof plateauRuns;
   plateaus: typeof plateaus;
   players: typeof players;

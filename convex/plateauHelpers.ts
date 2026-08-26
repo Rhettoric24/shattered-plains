@@ -16,6 +16,7 @@ import {
   doctrineFromResearch,
 } from "./rules";
 import { reclamationDefense } from "./worldPressureRules";
+import { reservePlateauNames } from "./plateauNaming";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -49,10 +50,6 @@ function neutralType(seed: string, allowGemheart: boolean) {
   if (roll <= 45) return "sphere";
   if (roll <= 72) return "bridged";
   return "ancient";
-}
-
-function neutralName(type: PlateauType, sequence: number) {
-  return `${TYPE_NAMES[identityPlateauType(type)]} ${sequence}`;
 }
 
 export function plateauTypeName(type: PlateauType) {
@@ -105,11 +102,12 @@ export async function createStarterPlateaus(
   const existing = await ownedPlateaus(ctx, playerId);
   if (existing.length > 0) return 0;
   const homePackage = packageTypes ?? randomHomePlateauPackage(`${playerId}:${now}`);
+  const names = await reservePlateauNames(ctx, homePackage.length);
 
   for (let index = 0; index < homePackage.length; index += 1) {
     const type = identityPlateauType(homePackage[index]);
     const plateauId = await ctx.db.insert("plateaus", {
-      name: `Home ${plateauTypeName(type)} ${index + 1}`,
+      name: names[index],
       type,
       status: "owned",
       ownerPlayerId: playerId,
@@ -198,6 +196,7 @@ export async function createNeutralPlateaus(
   const existing = await neutralPlateaus(ctx);
   const start = existing.length + 1;
   const allowGemheart = options.allowGemheart ?? false;
+  const names = await reservePlateauNames(ctx, count);
 
   for (let index = 0; index < count; index += 1) {
     const sequence = start + index;
@@ -212,7 +211,7 @@ export async function createNeutralPlateaus(
     const defense = neutralPlateauBaseDefense(type, large);
 
     await ctx.db.insert("plateaus", {
-      name: neutralName(type, sequence),
+      name: names[index],
       type,
       status: "neutral",
       origin: "neutral",
@@ -236,6 +235,7 @@ async function createSpecificNeutralPlateau(
   type: PlateauType,
   sequence: number,
   now: number,
+  name: string,
 ) {
   const seed = `${now}:neutral:${sequence}:${type}`;
   const highground =
@@ -247,7 +247,7 @@ async function createSpecificNeutralPlateau(
   const defense = neutralPlateauBaseDefense(type, large);
 
   await ctx.db.insert("plateaus", {
-    name: neutralName(type, sequence),
+    name,
     type,
     status: "neutral",
     origin: "neutral",
@@ -275,9 +275,10 @@ export async function createSeasonNeutralPlateaus(
   );
   const existing = await neutralPlateaus(ctx);
   const start = existing.length + 1;
+  const gemheartNames = await reservePlateauNames(ctx, gemhearts);
 
   for (let index = 0; index < gemhearts; index += 1) {
-    await createSpecificNeutralPlateau(ctx, "gemheart", start + index, now);
+    await createSpecificNeutralPlateau(ctx, "gemheart", start + index, now, gemheartNames[index]);
   }
 
   const nonGemheartCreated = await createNeutralPlateaus(

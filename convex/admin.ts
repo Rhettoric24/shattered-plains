@@ -157,6 +157,7 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
   const worldId = await ctx.db.insert("gameState", {
     key: WORLD_KEY,
     openAcres: players.length * STARTING_RULES.openAcresPerNewPlayer,
+    nextPlateauNameOrdinal: 0,
     createdAt: now,
     updatedAt: now,
   });

@@ -359,6 +359,7 @@ export default defineSchema({
   gameState: defineTable({
     key: v.string(),
     openAcres: v.number(),
+    nextPlateauNameOrdinal: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),

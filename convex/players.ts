@@ -81,6 +81,7 @@ async function createPlayerForAuth(
     const worldId = await ctx.db.insert("gameState", {
       key: WORLD_KEY,
       openAcres: 0,
+      nextPlateauNameOrdinal: 0,
       createdAt: now,
       updatedAt: now,
     });
