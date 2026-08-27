@@ -141,4 +141,31 @@ describe("scoped plateau queries", () => {
       resistance: { mode: "range", label: "Defended", min: 241, max: 400 },
     });
   });
+
+  test("Siege and Territory Intelligence share the same best valid resistance report", async () => {
+    const t = convexTest(schema, modules);
+    const subject = "shared-territory-disclosure";
+    const viewerId = await addPlayer(t, subject, "Viewer", 0);
+    const plateauId = await addPlateau(t, "Lasting Integrity", "neutral");
+    await t.run((ctx) => ctx.db.insert("intelligenceReports", {
+      viewerPlayerId: viewerId,
+      targetType: "territory",
+      plateauId,
+      source: "neutral_expedition",
+      level: 3,
+      observedAt: Date.now(),
+      resistance: 527,
+      plateauType: "sphere",
+      highground: true,
+      large: true,
+    }));
+
+    const player = t.withIdentity({ subject });
+    const [board, dossiers] = await Promise.all([
+      player.query(api.plateaus.getSiegeBoard, {}),
+      player.query(api.intelligence.listDossiers, {}),
+    ]);
+    expect(board.neutral.find((plateau) => plateau._id === plateauId)?.resistance).toEqual({ mode: "exact", label: "Fortified", value: 527 });
+    expect(dossiers.territories.find((report) => report.plateauId === plateauId)?.resistance).toEqual({ mode: "exact", label: "Fortified", value: 527 });
+  });
 });

@@ -308,6 +308,12 @@ async function expectNotificationSurfaceAccessible(page: Page) {
 }
 
 async function expectEspionageLayouts(page: Page) {
+  const ownLedgerRow = page.locator("#kingdom-intelligence-table tr.own-row");
+  await expect(ownLedgerRow).toBeVisible();
+  const ownCategoryCells = ownLedgerRow.locator("td .intel-cell:has(.score-quality)");
+  await expect(ownCategoryCells).toHaveCount(4);
+  const rivalScoreLabels = page.locator("#kingdom-intelligence-table tbody tr:not(.own-row) .score-quality");
+  await expect(rivalScoreLabels).toHaveCount(0);
   await page.locator("#space-subnav").getByRole("button", { name: "Operations", exact: true }).click();
   await expect(page.locator("#view-intelligence-operations")).toBeVisible();
   const card = page.locator(".operative-card").first();
@@ -323,6 +329,26 @@ async function expectEspionageLayouts(page: Page) {
   await expect(composer.locator("#launch-espionage-mission")).toHaveText("Launch 2-hour Sphere Heist");
   await expect(composer.locator("#espionage-mission-preview")).toContainText("Target treasuryHidden");
   await expect(composer.locator("#espionage-mission-preview")).not.toContainText(/Target treasury\s*\d/);
+  const expectReadableOutlookCards = async () => {
+    const preview = composer.locator("#espionage-mission-preview");
+    const previewBox = await preview.boundingBox();
+    const cards = preview.locator(".outlook-cell");
+    expect(await cards.count()).toBeGreaterThanOrEqual(4);
+    for (let index = 0; index < await cards.count(); index += 1) {
+      const box = await cards.nth(index).boundingBox();
+      expect(box, "outlook card should have a layout box").not.toBeNull();
+      expect(box!.width, "outlook cards should retain a readable minimum width").toBeGreaterThanOrEqual(178);
+      if (previewBox) {
+        expect(box!.x).toBeGreaterThanOrEqual(previewBox.x - 1);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(previewBox.x + previewBox.width + 1);
+      }
+    }
+  };
+  await expectReadableOutlookCards();
+  await operation.selectOption("investigation");
+  await expect(composer.locator("#espionage-mission-preview")).toContainText("Operation outlook");
+  await expectReadableOutlookCards();
+  await operation.selectOption("sphere_heist");
   await page.addScriptTag({
     type: "module",
     content: espionageUiModuleSource + `
@@ -357,6 +383,7 @@ async function expectEspionageLayouts(page: Page) {
 
   const cardMasks = [card.locator(".status-badge"), card.locator(".operative-state-line")];
   const composerMasks = [composer.locator("select"), composer.locator(".mission-unit-heading small"), composer.locator("#espionage-mission-preview")];
+  await page.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : undefined));
   await page.waitForTimeout(750);
   await card.screenshot({ animations: "disabled", caret: "hide", mask: cardMasks, maskColor });
   await composer.screenshot({ animations: "disabled", caret: "hide", mask: composerMasks, maskColor });
@@ -382,6 +409,10 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#game-screen")).toBeVisible({ timeout: 30_000 });
   await page.addStyleTag({ content: "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } .nav-state-dot { display: none !important; }" });
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
 });
 
 test.afterEach(async ({ page }) => {

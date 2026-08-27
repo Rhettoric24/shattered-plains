@@ -256,11 +256,12 @@ export const getKingdomLedger = query({
         const targetEconomyIntel = economyIntelAmount(resourceMap.get(String(target._id)), category === "economy" ? report : null, now);
         const currentLevel = own ? 2 : category === "economy" ? Math.min(reportLevel, economyIntelDisclosureLevel(targetEconomyIntel)) : reportLevel;
         const observed = own ? actual[category] : report?.observedScore ?? actual[category];
+        const broadLabel = qualitativeScore(category, actual[category]);
         const presentation = currentLevel === 2
-          ? { mode: "exact" as const, value: observed, display: observed.toLocaleString() }
+          ? { mode: "exact" as const, value: observed, display: observed.toLocaleString(), ...(own ? { label: broadLabel } : {}) }
           : currentLevel === 1
             ? { mode: "range" as const, ...estimateScore(observed), display: `${estimateScore(observed).min.toLocaleString()}–${estimateScore(observed).max.toLocaleString()}` }
-            : { mode: "qualitative" as const, label: qualitativeScore(category, actual[category]), display: qualitativeScore(category, actual[category]) };
+            : { mode: "qualitative" as const, label: broadLabel, display: broadLabel };
         return [category, {
           category, categoryName: SEASON_CATEGORIES[category].name, currentLevel, bestLevel: own ? 2 : report?.bestLevel ?? 0,
           presentation, observedAt: own ? now : report?.observedAt ?? null,

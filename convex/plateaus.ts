@@ -27,6 +27,7 @@ import {
   effectiveIntelLevel,
   intelligenceFreshness,
   presentIntelNumber,
+  territoryResistanceDisclosure,
   watchtowerCounterIntelligence,
   watchtowerTerritoryLevel,
 } from "./intelligenceRules";
@@ -336,7 +337,13 @@ export const getSiegeBoard = query({
     const plateauById = new Map([...neutral, ...allOwned].map((plateau) => [String(plateau._id), plateau]));
     const dossierTerritories = territoryReports.map((report) => {
       const plateau = report.plateauId ? plateauById.get(String(report.plateauId)) : undefined;
-      const level = Math.max(passiveTerritoryLevel, effectiveIntelLevel(report.level, report.observedAt, now));
+      const disclosure = territoryResistanceDisclosure({
+        currentResistance: plateau?.neutralDefenseRemaining,
+        report,
+        passiveLevel: passiveTerritoryLevel,
+        now,
+      });
+      const level = disclosure.level;
       return {
         plateauId: plateau?._id ?? report.plateauId ?? null,
         targetName: level >= 1 ? plateau?.name ?? "Unknown plateau" : "Unsurveyed Plateau",
@@ -344,7 +351,7 @@ export const getSiegeBoard = query({
         observedAt: report.observedAt,
         effectiveLevel: level,
         freshness: intelligenceFreshness(report.observedAt, now),
-        resistance: presentIntelNumber(report.resistance, level),
+        resistance: disclosure.resistance,
         plateauType: level >= 1 ? report.plateauType ?? null : null,
         highground: level >= 1 ? report.highground ?? false : false,
         large: level >= 1 ? report.large ?? false : false,
@@ -353,19 +360,27 @@ export const getSiegeBoard = query({
     });
     if (watchtowerLevel > 0) {
       const known = new Set(territoryReports.map((report) => String(report.plateauId)));
-      for (const plateau of neutral) if (!known.has(String(plateau._id))) dossierTerritories.push({
-        plateauId: plateau._id,
-        targetName: plateau.name,
-        source: "watchtower",
-        observedAt: now,
-        effectiveLevel: passiveTerritoryLevel,
-        freshness: "fresh",
-        resistance: presentIntelNumber(plateau.neutralDefenseRemaining, passiveTerritoryLevel),
-        plateauType: plateau.type,
-        highground: plateau.highground,
-        large: plateau.large ?? false,
-        bonusFactText: null,
-      });
+      for (const plateau of neutral) if (!known.has(String(plateau._id))) {
+        const disclosure = territoryResistanceDisclosure({
+          currentResistance: plateau.neutralDefenseRemaining,
+          report: null,
+          passiveLevel: passiveTerritoryLevel,
+          now,
+        });
+        dossierTerritories.push({
+          plateauId: plateau._id,
+          targetName: plateau.name,
+          source: "watchtower",
+          observedAt: now,
+          effectiveLevel: disclosure.level,
+          freshness: "fresh",
+          resistance: disclosure.resistance,
+          plateauType: plateau.type,
+          highground: plateau.highground,
+          large: plateau.large ?? false,
+          bonusFactText: null,
+        });
+      }
     }
 
     return {
@@ -377,17 +392,20 @@ export const getSiegeBoard = query({
       mine: mine.map((plateau) => decoratePlateauForOwner(plateau, now, gemheartIntervalForPlayer(viewer._id))),
       neutral: neutral.filter((plateau) => !plateau.activeSiegeId).map((plateau) => {
         const report = reportsByPlateau.get(String(plateau._id));
-        const reportLevel = report
-          ? effectiveIntelLevel(report.level, report.observedAt, now)
-          : 0;
-        const intelligenceLevel = Math.max(passiveTerritoryLevel, reportLevel);
+        const disclosure = territoryResistanceDisclosure({
+          currentResistance: plateau.neutralDefenseRemaining,
+          report,
+          passiveLevel: passiveTerritoryLevel,
+          now,
+        });
+        const intelligenceLevel = disclosure.level;
         const identityKnown = intelligenceLevel >= 1;
         return {
           _id: plateau._id,
           name: identityKnown ? plateau.name : "Unsurveyed Plateau",
           status: plateau.status,
           intelligenceLevel,
-          resistance: presentIntelNumber(plateau.neutralDefenseRemaining, intelligenceLevel),
+          resistance: disclosure.resistance,
           ...(intelligenceLevel >= 2 ? {
             parshendiReclamationCount: plateau.parshendiReclamationCount ?? 0,
             baseNeutralDefense: plateau.baseNeutralDefense ?? plateau.neutralDefenseInitial,

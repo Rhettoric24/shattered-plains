@@ -2361,7 +2361,7 @@ function renderKingdomIntelligence() {
   container.innerHTML = '<table class="kingdom-intelligence-table"><thead><tr><th>Kingdom</th>' + categoryKeys.map((category) => '<th>' + escapeHtml(category[0].toUpperCase() + category.slice(1)) + '</th>').join("") + '<th>Total</th></tr></thead><tbody>' + rows.map((row) => {
     const cells = categoryKeys.map((category) => {
       const cell = row.cells[category];
-      const body = '<strong>' + escapeHtml(cell.presentation.display) + '</strong>' + (cell.presentation.label ? '<small class="score-quality">' + escapeHtml(cell.presentation.label) + '</small>' : '') + intelMarkers(cell.currentLevel);
+      const body = '<strong>' + escapeHtml(cell.presentation.display) + '</strong>' + (row.own && cell.presentation.label ? '<small class="score-quality">' + escapeHtml(cell.presentation.label) + '</small>' : '') + intelMarkers(cell.currentLevel);
       return '<td>' + (row.own ? '<div class="intel-cell own">' + body + '</div>' : '<button type="button" class="intel-cell" data-kingdom-intel-player="' + escapeHtml(row.playerId) + '" data-kingdom-intel-category="' + category + '">' + body + '</button>') + '</td>';
     }).join("");
     const totalBody = '<strong>' + escapeHtml(row.total.display) + '</strong>' + intelMarkers(row.total.currentLevel);

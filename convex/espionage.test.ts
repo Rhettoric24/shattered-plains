@@ -164,8 +164,11 @@ describe("espionage backend", () => {
     expect(after.available).toEqual({ informant: 1, spy: 0, ghostblood: 1 });
     expect(after.targets[0].intel).toBe(17);
     const ledger = await asAttacker.query(api.espionage.getKingdomLedger, {});
+    const ownRow = ledger.rows.find((row) => row.playerId === attackerId)!;
     const defender = ledger.rows.find((row) => row.playerId === defenderId)!;
+    expect(ownRow.cells.military.presentation).toMatchObject({ mode: "exact", display: "0", label: "Unblooded" });
     expect(defender.cells.military.currentLevel).toBe(2);
+    expect(defender.cells.military.presentation).not.toHaveProperty("label");
     expect(["economy", "research", "territory"].filter((category) => (defender.cells as any)[category].currentLevel === 1)).toHaveLength(1);
     expect(defender.total.mode).toBe("incomplete");
     const unchangedScore = await t.run(async (ctx) => await ctx.db.query("seasonScores").withIndex("by_seasonId_and_playerId", (q) => q.eq("seasonId", seasonId).eq("playerId", defenderId)).unique());
@@ -259,31 +262,30 @@ describe("espionage backend", () => {
       const seasonId = await createFreshSeason(ctx, 1, 1);
       await ctx.db.insert("seasonScores", { seasonId, playerId: targetId, total: 40, categoryTotals: { military: 0, economy: 40, research: 0, territory: 0 }, updatedAt: 1 });
       await ctx.db.insert("kingdomIntelligence", { viewerPlayerId: attackerId, targetPlayerId: targetId, category: "economy", achievedLevel: 2, bestLevel: 2, observedScore: 40, observedAt: Date.now(), source: "Economy Investigation" });
-      await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attackerId, targetPlayerId: targetId, amount: 7, economyAmount: 72, updatedAt: 1 });
+      await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attackerId, targetPlayerId: targetId, amount: 7, economyAmount: 100, updatedAt: 1 });
       await ctx.db.delete(deletedTargetId);
     });
     const asAttacker = t.withIdentity({ subject: String(userId) });
     let ledger = await asAttacker.query(api.espionage.getKingdomLedger, {});
-    expect(ledger.rows.find((row) => row.playerId === targetId)?.cells.economy).toMatchObject({ currentLevel: 1, economyIntel: 72 });
+    expect(ledger.rows.find((row) => row.playerId === targetId)?.cells.economy).toMatchObject({ currentLevel: 2, economyIntel: 100, presentation: { mode: "exact", display: "40" } });
     const first = await asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } });
-    expect(first).toMatchObject({ economyIntelSpent: 50, economyIntelRemaining: 22 });
+    expect(first).toMatchObject({ economyIntelSpent: 50, economyIntelRemaining: 50 });
     let status = await asAttacker.query(api.espionage.getStatus, {});
-    expect(status.targets.find((target) => target.playerId === targetId)?.economyIntel).toBe(22);
+    expect(status.targets.find((target) => target.playerId === targetId)?.economyIntel).toBe(50);
     expect(status.targets.find((target) => target.playerId === targetId)).not.toHaveProperty("spheres");
     ledger = await asAttacker.query(api.espionage.getKingdomLedger, {});
-    expect(ledger.rows.find((row) => row.playerId === targetId)?.cells.economy).toMatchObject({ currentLevel: 0, bestLevel: 2, economyIntel: 22 });
+    expect(ledger.rows.find((row) => row.playerId === targetId)?.cells.economy).toMatchObject({ currentLevel: 1, bestLevel: 2, economyIntel: 50, presentation: { mode: "range" } });
+    expect(ledger.rows.find((row) => row.playerId === targetId)?.cells.economy.presentation.mode).not.toBe("exact");
+    const second = await asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } });
+    expect(second).toMatchObject({ economyIntelSpent: 50, economyIntelRemaining: 0 });
+    status = await asAttacker.query(api.espionage.getStatus, {});
+    expect(status.targets.find((target) => target.playerId === targetId)?.economyIntel).toBe(0);
+    ledger = await asAttacker.query(api.espionage.getKingdomLedger, {});
+    expect(ledger.rows.find((row) => row.playerId === targetId)?.cells.economy).toMatchObject({ currentLevel: 0, bestLevel: 2, economyIntel: 0, presentation: { mode: "qualitative" } });
     await expect(asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } })).rejects.toThrow("requires 50 Economy Intel");
     await expect(asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: attackerId, operatives: { informant: 1, spy: 0, ghostblood: 0 } })).rejects.toThrow("Choose a rival kingdom");
     await expect(asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: deletedTargetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } })).rejects.toThrow("Target kingdom not found");
 
-    await t.run(async (ctx) => {
-      const resource = await ctx.db.query("kingdomIntelResources").withIndex("by_viewerPlayerId_and_targetPlayerId", (q) => q.eq("viewerPlayerId", attackerId).eq("targetPlayerId", targetId)).unique();
-      await ctx.db.patch(resource!._id, { economyAmount: 50 });
-    });
-    const exact = await asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } });
-    expect(exact.economyIntelRemaining).toBe(0);
-    status = await asAttacker.query(api.espionage.getStatus, {});
-    expect(status.targets.find((target) => target.playerId === targetId)?.economyIntel).toBe(0);
   });
 
   test("legacy Economy reports provide a safe one-time authoritative Economy Intel fallback", async () => {

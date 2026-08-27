@@ -35,6 +35,22 @@ export function presentIntelNumber(value: number | undefined, level: number) {
   return { mode: "exact" as const, label: band.label, value };
 }
 
+export function territoryResistanceDisclosure(args: {
+  currentResistance: number | undefined;
+  report: { level: number; observedAt: number; resistance?: number } | null | undefined;
+  passiveLevel: number;
+  now: number;
+}) {
+  const reportLevel = args.report
+    ? effectiveIntelLevel(args.report.level, args.report.observedAt, args.now)
+    : 0;
+  const level = Math.max(args.passiveLevel, reportLevel);
+  return {
+    level,
+    resistance: presentIntelNumber(args.report?.resistance ?? args.currentResistance, level),
+  };
+}
+
 export function watchtowerTerritoryLevel(buildingLevel: number) {
   if (buildingLevel >= 2) return 2;
   if (buildingLevel >= 1) return 1;

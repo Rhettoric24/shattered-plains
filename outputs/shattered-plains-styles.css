@@ -340,6 +340,7 @@ h3 { font-size: 1rem; color: var(--accent); }
 .attack-planner { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; max-width: 900px; }
 .attack-planner > button[type="submit"] { grid-column: 1 / -1; }
 .outlook-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.operation-outlook .outlook-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
 .plateau-groups { display: grid; gap: 18px; }
 .plateau-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .inbox-controls { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; }

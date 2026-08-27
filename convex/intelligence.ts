@@ -5,7 +5,7 @@ import {
   effectiveIntelLevel,
   intelligenceFreshness,
   INTELLIGENCE_DECAY_STEP_MS,
-  presentIntelNumber,
+  territoryResistanceDisclosure,
   watchtowerCounterIntelligence,
   watchtowerTerritoryLevel,
 } from "./intelligenceRules";
@@ -38,18 +38,21 @@ export const listDossiers = query({
 
     const territories = await Promise.all(territoryReports.map(async (report) => {
       const plateau = report.plateauId ? await ctx.db.get(report.plateauId) : null;
-        const level = Math.max(
-          passiveTerritoryLevel,
-          effectiveIntelLevel(report.level, report.observedAt, now),
-        );
+      const disclosure = territoryResistanceDisclosure({
+        currentResistance: plateau?.neutralDefenseRemaining,
+        report,
+        passiveLevel: passiveTerritoryLevel,
+        now,
+      });
+      const level = disclosure.level;
       return {
         plateauId: plateau?._id ?? report.plateauId ?? null,
         targetName: level >= 1 ? plateau?.name ?? "Unknown plateau" : "Unsurveyed Plateau",
         source: report.source,
         observedAt: report.observedAt,
         effectiveLevel: level,
-          freshness: intelligenceFreshness(report.observedAt, now),
-          resistance: presentIntelNumber(report.resistance, level),
+        freshness: intelligenceFreshness(report.observedAt, now),
+        resistance: disclosure.resistance,
         plateauType: level >= 1 ? report.plateauType ?? null : null,
         highground: level >= 1 ? report.highground ?? false : false,
         large: level >= 1 ? report.large ?? false : false,
@@ -65,14 +68,20 @@ export const listDossiers = query({
         .take(100);
       for (const plateau of neutral) {
         if (knownPlateauIds.has(String(plateau._id))) continue;
+        const disclosure = territoryResistanceDisclosure({
+          currentResistance: plateau.neutralDefenseRemaining,
+          report: null,
+          passiveLevel: passiveTerritoryLevel,
+          now,
+        });
         territories.push({
           plateauId: plateau._id,
           targetName: plateau.name,
           source: "watchtower" as const,
           observedAt: now,
-          effectiveLevel: passiveTerritoryLevel,
+          effectiveLevel: disclosure.level,
           freshness: "fresh" as const,
-          resistance: presentIntelNumber(plateau.neutralDefenseRemaining, passiveTerritoryLevel),
+          resistance: disclosure.resistance,
           plateauType: plateau.type,
           highground: plateau.highground,
           large: plateau.large ?? false,
