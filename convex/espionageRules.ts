@@ -24,6 +24,17 @@ export const ESPIONAGE_RULES = {
   missionDurationMs: 2 * 60 * 60 * 1000,
   thresholdsPercent: { partial: 75, success: 100, overwhelm: 150 },
   intelRewards: { failure: 0, partial: 5, success: 10, overwhelm: 15 },
+  sphereHeist: {
+    economyIntelCap: 100,
+    economyIntelCost: 50,
+    disclosure: { estimateAt: 25, exactAt: 75 },
+    treasuryPercent: 0.05,
+    minimumHaul: 1000,
+    maximumHaul: 10000,
+    payoutMultipliers: { failure: 0, partial: 0, success: 0.5, overwhelm: 1 },
+    casualtyRates: { failure: 0.2, partial: 0.1, success: 0, overwhelm: 0 },
+    identityExposed: { failure: true, partial: false, success: true, overwhelm: false },
+  },
   decayStepMs: 6 * 60 * 60 * 1000,
   estimate: { radiusPercent: 0.1, minimumRadius: 5, rounding: 5 },
   qualitativeBands: {
@@ -105,6 +116,48 @@ export function resolveEspionageOutcome(finalPower: number, counterIntelligence:
   if (scaledPower < defense * ESPIONAGE_RULES.thresholdsPercent.success) return "partial";
   if (scaledPower < defense * ESPIONAGE_RULES.thresholdsPercent.overwhelm) return "success";
   return "overwhelm";
+}
+
+export function economyIntelDisclosureLevel(amount: number) {
+  const value = Math.max(0, Math.min(ESPIONAGE_RULES.sphereHeist.economyIntelCap, Math.floor(amount)));
+  if (value >= ESPIONAGE_RULES.sphereHeist.disclosure.exactAt) return 2;
+  if (value >= ESPIONAGE_RULES.sphereHeist.disclosure.estimateAt) return 1;
+  return 0;
+}
+
+export function legacyEconomyIntelAmount(level: number) {
+  const normalized = Math.max(0, Math.min(2, Math.floor(level)));
+  if (normalized === 2) return ESPIONAGE_RULES.sphereHeist.economyIntelCap;
+  if (normalized === 1) return ESPIONAGE_RULES.sphereHeist.economyIntelCost;
+  return 0;
+}
+
+export function sphereHeistAvailableHaul(targetSpheres: number) {
+  const treasury = Math.max(0, targetSpheres);
+  const raw = treasury * ESPIONAGE_RULES.sphereHeist.treasuryPercent;
+  const clamped = Math.max(ESPIONAGE_RULES.sphereHeist.minimumHaul, Math.min(ESPIONAGE_RULES.sphereHeist.maximumHaul, raw));
+  return Math.round(Math.min(treasury, clamped) * 1000) / 1000;
+}
+
+export function sphereHeistPayout(targetSpheres: number, outcome: EspionageOutcome) {
+  const payout = sphereHeistAvailableHaul(targetSpheres) * ESPIONAGE_RULES.sphereHeist.payoutMultipliers[outcome];
+  return Math.round(Math.min(Math.max(0, targetSpheres), payout) * 1000) / 1000;
+}
+
+export function sphereHeistCasualties(committed: Partial<OperativeCounts>, outcome: EspionageOutcome) {
+  const commitment = normalizeOperatives(committed);
+  const total = operativeCount(commitment);
+  const rate = ESPIONAGE_RULES.sphereHeist.casualtyRates[outcome];
+  let remainingLosses = rate > 0 && total > 0 ? Math.min(total, Math.max(1, Math.ceil(total * rate))) : 0;
+  const casualties = emptyOperatives();
+  const survivors = normalizeOperatives(commitment);
+  for (const tier of OPERATIVE_TIERS) {
+    const lost = Math.min(survivors[tier], remainingLosses);
+    casualties[tier] = lost;
+    survivors[tier] -= lost;
+    remainingLosses -= lost;
+  }
+  return { casualties, survivors, lost: operativeCount(casualties) };
 }
 
 export function effectiveLedgerIntelLevel(level: number, observedAt: number, now: number) {

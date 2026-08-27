@@ -20,6 +20,7 @@ const maskColor = "#25364a";
 const globalDynamicMasks = ["#game-date", ".resource-strip strong", "#inbox-badge", "#notification-badge", ".nav-state-dot"];
 const runtimeProblems = new WeakMap<Page, string[]>();
 const intelligenceUiModuleSource = fs.readFileSync("outputs/intelligence-ui-state.js", "utf8");
+const espionageUiModuleSource = fs.readFileSync("outputs/espionage-ui-state.js", "utf8");
 
 const destinations: Destination[] = [
   {
@@ -313,6 +314,27 @@ async function expectEspionageLayouts(page: Page) {
   const composer = page.locator("#espionage-mission-form");
   await expect(card).toBeVisible();
   await expect(composer).toBeVisible();
+  const operation = composer.locator("#espionage-operation");
+  await expect(operation.locator('option[value="sphere_heist"]')).toHaveText("Sphere Heist");
+  await operation.selectOption("sphere_heist");
+  const heistRequirement = composer.locator("#sphere-heist-requirement");
+  await expect(heistRequirement).toBeVisible();
+  await expect(heistRequirement).toContainText(/(?:Requires|Ready:) 50 Economy Intel/);
+  await expect(composer.locator("#launch-espionage-mission")).toHaveText("Launch 2-hour Sphere Heist");
+  await expect(composer.locator("#espionage-mission-preview")).toContainText("Target treasuryHidden");
+  await expect(composer.locator("#espionage-mission-preview")).not.toContainText(/Target treasury\s*\d/);
+  await page.addScriptTag({
+    type: "module",
+    content: espionageUiModuleSource + `
+      const fixture = sphereHeistAvailability(49, 50);
+      const testSurface = document.createElement("section");
+      testSurface.id = "heist-below-threshold-test";
+      testSurface.innerHTML = '<strong>Requires ' + fixture.requiredIntel + ' Economy Intel</strong><button' + (fixture.available ? '' : ' disabled') + '>Launch Sphere Heist</button>';
+      document.body.append(testSurface);
+    `,
+  });
+  await expect(page.locator("#heist-below-threshold-test")).toContainText("Requires 50 Economy Intel");
+  await expect(page.locator("#heist-below-threshold-test button")).toBeDisabled();
   await expectContained(card);
   await expectContained(composer);
   const cards = page.locator(".operative-card");

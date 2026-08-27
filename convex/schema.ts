@@ -403,6 +403,7 @@ export default defineSchema({
     attackerId: v.id("players"),
     targetPlayerId: v.id("players"),
     seasonId: v.id("seasons"),
+    operation: v.optional(v.union(v.literal("investigation"), v.literal("sphere_heist"))),
     category: espionageCategory,
     operatives: operativeCounts,
     baseSpyPower: v.number(),
@@ -415,6 +416,11 @@ export default defineSchema({
     outcome: v.optional(v.union(v.literal("failure"), v.literal("partial"), v.literal("success"), v.literal("overwhelm"))),
     incidentalCategory: v.optional(espionageCategory),
     bonusDiscoveryId: v.optional(v.id("espionageBonusDiscoveries")),
+    economyIntelSpent: v.optional(v.number()),
+    economyIntelRemaining: v.optional(v.number()),
+    spheresStolen: v.optional(v.number()),
+    casualties: v.optional(operativeCounts),
+    identityExposed: v.optional(v.boolean()),
   })
     .index("by_status_and_resolveAt", ["status", "resolveAt"])
     .index("by_attackerId_and_status_and_resolveAt", ["attackerId", "status", "resolveAt"])
@@ -430,12 +436,15 @@ export default defineSchema({
     observedAt: v.number(),
     source: v.string(),
     missionId: v.optional(v.id("espionageMissions")),
-  }).index("by_viewerPlayerId_and_targetPlayerId_and_category", ["viewerPlayerId", "targetPlayerId", "category"]),
+  })
+    .index("by_viewerPlayerId_and_targetPlayerId_and_category", ["viewerPlayerId", "targetPlayerId", "category"])
+    .index("by_viewerPlayerId_and_category_and_targetPlayerId", ["viewerPlayerId", "category", "targetPlayerId"]),
 
   kingdomIntelResources: defineTable({
     viewerPlayerId: v.id("players"),
     targetPlayerId: v.id("players"),
     amount: v.number(),
+    economyAmount: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_viewerPlayerId_and_targetPlayerId", ["viewerPlayerId", "targetPlayerId"]),
 

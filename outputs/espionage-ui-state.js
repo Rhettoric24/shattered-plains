@@ -5,3 +5,14 @@ export function syncEspionageControlLock(controls, networkLocked) {
     control.disabled = networkLocked;
   });
 }
+
+export function sphereHeistAvailability(economyIntel, cost = 50) {
+  const availableIntel = Math.max(0, Math.floor(Number(economyIntel) || 0));
+  const requiredIntel = Math.max(0, Math.floor(Number(cost) || 0));
+  return {
+    available: availableIntel >= requiredIntel,
+    availableIntel,
+    requiredIntel,
+    remainingIntel: Math.max(0, availableIntel - requiredIntel),
+  };
+}

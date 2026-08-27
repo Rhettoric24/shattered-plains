@@ -1,5 +1,5 @@
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
-import { syncEspionageControlLock } from "./espionage-ui-state.js";
+import { sphereHeistAvailability, syncEspionageControlLock } from "./espionage-ui-state.js";
 import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
 import { createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, routeNeedsPlateauBoard, routeNeedsTerritoryIntelligence, runMutationAction } from "./data-loading-state.js";
 import { formatDisclosedPower, plateauIdentityPresentation, raidDefenseMarkup } from "./intelligence-ui-state.js";
@@ -32,6 +32,14 @@ const ESPIONAGE_UI_DEFAULTS = {
     maxLevel: 3,
     currentIntelCap: 0,
     currentMissionIntelSpendCap: 0,
+  },
+  sphereHeist: {
+    economyIntelCap: 100,
+    economyIntelCost: 50,
+    disclosure: { estimateAt: 25, exactAt: 75 },
+    treasuryPercent: 0.05,
+    minimumHaul: 1000,
+    maximumHaul: 10000,
   },
 };
 
@@ -99,7 +107,7 @@ function routeFromLocation() {
 }
 
 let currentRoute = routeFromLocation();
-let lastSelections = { trainUnit: "", target: "", attackUnits: {}, recruitment: {}, espionageMission: {}, espionageDefense: {} };
+let lastSelections = { trainUnit: "", target: "", attackUnits: {}, recruitment: {}, espionageMission: {}, espionageDefense: {}, espionageOperation: "investigation" };
 let previewListenersReady = false;
 let activePopoverAnchor = null;
 let inboxFilter = "all";
@@ -214,6 +222,7 @@ const refs = {
   recruitOperatives: "espionage:recruitOperatives",
   setEspionageDefense: "espionage:setDefense",
   launchInvestigation: "espionage:launchInvestigation",
+  launchSphereHeist: "espionage:launchSphereHeist",
 };
 
 async function createAccount() {
@@ -653,6 +662,7 @@ function buildState(data) {
         ...(data.espionage?.rules || {}),
         operatives: { ...ESPIONAGE_UI_DEFAULTS.operatives, ...(data.espionage?.rules?.operatives || {}) },
         network: { ...ESPIONAGE_UI_DEFAULTS.network, ...(data.espionage?.rules?.network || {}) },
+        sphereHeist: { ...ESPIONAGE_UI_DEFAULTS.sphereHeist, ...(data.espionage?.rules?.sphereHeist || {}) },
       },
     },
     kingdomLedger: data.kingdomLedger || { season: null, rows: [], generatedAt: Date.now() },
@@ -1125,6 +1135,7 @@ function renderConclaveControls() {
     select.disabled = readyConclaves.length < 1;
   });
   if ($("espionage-target")) lastSelections.espionageTarget = $("espionage-target").value;
+  if ($("espionage-operation")) lastSelections.espionageOperation = $("espionage-operation").value;
   if ($("espionage-category")) lastSelections.espionageCategory = $("espionage-category").value;
   if ($("espionage-intel-spend")) lastSelections.espionageIntelSpend = $("espionage-intel-spend").value;
   document.querySelectorAll("[data-espionage-mission-tier]").forEach((input) => { lastSelections.espionageMission[input.dataset.espionageMissionTier] = input.value; });
@@ -2144,7 +2155,7 @@ function renderOverview() {
   if (state.research?.active) operations.push({ label: "Active Research", detail: state.research.active.kind === "project" ? (state.research.rules?.projects?.[state.research.active.project]?.name || "Research") : (state.research.doctrines?.[state.research.active.doctrine]?.name || "Doctrine"), at: state.research.active.projectedCompletionAt || Date.now(), view: "research" });
   state.raids.filter((raid) => raid.attackerId === state.me.id).forEach((raid) => operations.push({ label: "Sphere raid", detail: raid.targetName, at: raid.arrivalAt, view: "raids" }));
   state.plateaus.sieges.filter((siege) => siege.attackerId === state.me.id || siege.defenderId === state.me.id).forEach((siege) => operations.push({ label: siege.defenderId === state.me.id ? "Defending siege" : "Plateau siege", detail: state.plateaus.byId[siege.plateauId]?.name || siege.plateauName || "Plateau", at: siege.resolveAt, view: "plateaus" }));
-  (state.espionage?.missions || []).filter((mission) => mission.status === "pending").forEach((mission) => operations.push({ label: "Espionage investigation", detail: mission.targetName + " · " + mission.category, at: mission.resolveAt, view: "intelligence" }));
+  (state.espionage?.missions || []).filter((mission) => mission.status === "pending").forEach((mission) => operations.push({ label: mission.operation === "sphere_heist" ? "Sphere Heist" : "Espionage investigation", detail: mission.targetName + " · " + mission.category, at: mission.resolveAt, view: "intelligence" }));
   if (state.plateauRun?.participants.some((entry) => entry.playerId === state.me.id)) operations.push({ label: "Plateau Run", detail: "Warcamp committed", at: state.plateauRun.joinUntil, view: "plateau" });
   operations.sort((a, b) => a.at - b.at);
   $("overview-operations").innerHTML = operations.length ? operations.map((item) => '<button type="button" class="operation-row" data-operation-view="' + item.view + '"><span><strong>' + escapeHtml(item.label) + '</strong><small>' + escapeHtml(item.detail) + '</small></span><b data-local-countdown-at="' + Number(item.at) + '">' + formatDuration(Math.max(0, Math.ceil((item.at - Date.now()) / 60000))) + '</b></button>').join("") : '<div class="empty">No armies are currently committed. Your next move is yours.</div>';
@@ -2374,7 +2385,8 @@ function openKingdomIntelDetail(playerId, category) {
     const observed = cell.observedAt ? intelligenceReportAge(cell.observedAt) : "Never investigated";
     const discoveries = (cell.discoveries || []).map((fact) => '<article class="bonus-discovery"><strong>Bonus Discovery</strong><p>' + escapeHtml(fact.text) + '</p><small>Observed ' + escapeHtml(new Date(fact.observedAt).toLocaleString()) + '</small></article>').join("");
     $("kingdom-intel-dialog-title").textContent = row.kingdomName + " — " + cell.categoryName + " Intelligence";
-    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid"><span>Current Intel</span><strong>Level ' + cell.currentLevel + ' / 2</strong><span>Best achieved</span><strong>Level ' + cell.bestLevel + ' / 2</strong><span>Current information</span><strong>' + escapeHtml(cell.presentation.display) + '</strong><span>Freshness</span><strong>' + escapeHtml(cell.freshness || "unknown") + '</strong><span>Updated</span><strong>' + escapeHtml(observed) + '</strong><span>Next decay</span><strong>' + escapeHtml(next) + '</strong><span>Source</span><strong>' + escapeHtml(cell.source) + '</strong></div>' + discoveries + (row.own ? '' : '<button type="button" class="investigate-category" data-investigate-kingdom="' + escapeHtml(row.playerId) + '" data-investigate-category="' + escapeHtml(category) + '">Investigate this category</button>');
+    const economyResource = category === "economy" && !row.own ? '<span>Economy Intel</span><strong>' + number(cell.economyIntel || 0) + '/' + number(cell.economyIntelCap || 100) + '</strong>' : '';
+    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid"><span>Current Intel</span><strong>Level ' + cell.currentLevel + ' / 2</strong><span>Best achieved</span><strong>Level ' + cell.bestLevel + ' / 2</strong>' + economyResource + '<span>Current information</span><strong>' + escapeHtml(cell.presentation.display) + '</strong><span>Freshness</span><strong>' + escapeHtml(cell.freshness || "unknown") + '</strong><span>Updated</span><strong>' + escapeHtml(observed) + '</strong><span>Next decay</span><strong>' + escapeHtml(next) + '</strong><span>Source</span><strong>' + escapeHtml(cell.source) + '</strong></div>' + discoveries + (row.own ? '' : '<button type="button" class="investigate-category" data-investigate-kingdom="' + escapeHtml(row.playerId) + '" data-investigate-category="' + escapeHtml(category) + '">Investigate this category</button>');
     $("kingdom-intel-dialog-content").querySelector("[data-investigate-kingdom]")?.addEventListener("click", (event) => {
       dialog.close();
       showRoute({ view: "intelligence", tab: "operations", kingdom: event.currentTarget.dataset.investigateKingdom, category: event.currentTarget.dataset.investigateCategory });
@@ -2401,8 +2413,21 @@ function updateEspionagePreview() {
   const counts = selectedEspionageOperatives();
   const base = Object.entries(counts).reduce((sum, [tier, count]) => sum + count * Number(rules.operatives?.[tier]?.spyPower || 0), 0);
   const target = (state.espionage?.targets || []).find((entry) => entry.playerId === $("espionage-target")?.value);
-  const boost = Math.max(0, Math.floor(Number($("espionage-intel-spend")?.value) || 0));
+  const operation = $("espionage-operation")?.value || "investigation";
+  const boost = operation === "sphere_heist" ? 0 : Math.max(0, Math.floor(Number($("espionage-intel-spend")?.value) || 0));
   const selected = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  if (operation === "sphere_heist") {
+    const heistRules = rules.sphereHeist || ESPIONAGE_UI_DEFAULTS.sphereHeist;
+    const availability = sphereHeistAvailability(target?.economyIntel, heistRules.economyIntelCost);
+    preview.innerHTML = '<div class="outlook-heading"><span>Sphere Heist outlook</span><strong>' + escapeHtml(target?.name || "Choose a rival") + '</strong></div><div class="outlook-grid">' +
+      outlookCell("Selected", number(selected) + " operatives", Object.entries(counts).map(([tier, count]) => number(count) + " " + (rules.operatives?.[tier]?.name || tier)).join("\n")) +
+      outlookCell("Spy Power", number(base), "Compared with hidden target Counter-Intelligence at resolution") +
+      outlookCell("Economy Intel", number(availability.availableIntel) + " → " + number(availability.remainingIntel), number(availability.requiredIntel) + " is consumed at launch") +
+      outlookCell("Potential haul", number(heistRules.minimumHaul) + "–" + number(heistRules.maximumHaul), "5% of the target's current treasury, bounded at resolution") +
+      outlookCell("Target treasury", "Hidden", "Sphere Heist does not reveal an unauthorized exact balance") +
+      '</div>';
+    return;
+  }
   preview.innerHTML = '<div class="outlook-heading"><span>Operation outlook</span><strong>' + escapeHtml(target?.name || "Choose a rival") + '</strong></div><div class="outlook-grid">' +
     outlookCell("Selected", number(selected) + " operatives", Object.entries(counts).map(([tier, count]) => number(count) + " " + (rules.operatives?.[tier]?.name || tier)).join("\n")) +
     outlookCell("Spy Power", number(base + boost), number(base) + " from operatives\n+" + number(boost) + " from Intel") +
@@ -2414,6 +2439,7 @@ function updateEspionagePreview() {
 function renderEspionage() {
   const espionage = state.espionage || {};
   const rules = espionage.rules || { operatives: {}, network: {} };
+  const heistRules = rules.sphereHeist || ESPIONAGE_UI_DEFAULTS.sphereHeist;
   const networkLocked = Number(espionage.networkLevel || 0) < 1;
   const status = $("espionage-network-status");
   if (status) status.innerHTML = pulseItem("Ghostblood Network", "Level " + Number(espionage.networkLevel || 0)) + pulseItem("Counter-Intelligence", number(espionage.counterIntelligence || 0)) + pulseItem("Intel capacity", number(rules.network?.currentIntelCap || 0) + " per rival") + pulseItem("Mission boost cap", "+" + number(rules.network?.currentMissionIntelSpendCap || 0));
@@ -2441,27 +2467,50 @@ function renderEspionage() {
   bindQuantityControls(missionInputs);
   const targetSelect = $("espionage-target");
   if (targetSelect) {
-    targetSelect.innerHTML = (espionage.targets || []).map((target) => '<option value="' + escapeHtml(target.playerId) + '">' + escapeHtml(target.name) + ' · Intel ' + number(target.intel) + '/' + number(target.intelCap) + '</option>').join("") || '<option value="">No rival kingdoms</option>';
+    targetSelect.innerHTML = (espionage.targets || []).map((target) => '<option value="' + escapeHtml(target.playerId) + '">' + escapeHtml(target.name) + ' · Economy ' + number(target.economyIntel || 0) + '/' + number(target.economyIntelCap || heistRules.economyIntelCap) + ' · Intel ' + number(target.intel) + '/' + number(target.intelCap) + '</option>').join("") || '<option value="">No rival kingdoms</option>';
     if ((espionage.targets || []).some((target) => target.playerId === lastSelections.espionageTarget)) targetSelect.value = lastSelections.espionageTarget;
   }
+  const operationSelect = $("espionage-operation");
+  if (operationSelect) operationSelect.value = lastSelections.espionageOperation === "sphere_heist" ? "sphere_heist" : "investigation";
+  const operation = operationSelect?.value || "investigation";
+  const isHeist = operation === "sphere_heist";
   if ($("espionage-category") && lastSelections.espionageCategory) $("espionage-category").value = lastSelections.espionageCategory;
   const selectedTarget = (espionage.targets || []).find((target) => target.playerId === targetSelect?.value);
   if ($("espionage-intel-spend")) {
     $("espionage-intel-spend").max = String(Math.min(Number(selectedTarget?.intel || 0), Number(rules.network?.currentMissionIntelSpendCap || 0)));
     $("espionage-intel-spend").value = String(Math.min(Number($("espionage-intel-spend").max), Math.max(0, Math.floor(Number(lastSelections.espionageIntelSpend) || 0))));
   }
+  $("espionage-category-field")?.classList.toggle("hidden", isHeist);
+  $("espionage-intel-boost-field")?.classList.toggle("hidden", isHeist);
+  if ($("espionage-operation-heading")) $("espionage-operation-heading").textContent = isHeist ? "Launch Sphere Heist" : "Launch investigation";
+  if ($("espionage-operation-hint")) $("espionage-operation-hint").textContent = isHeist ? "Spend Economy Intel to attempt an authoritative Sphere transfer. Failure can kill committed operatives." : "Investigations gather seasonal knowledge and rival-specific Intel.";
+  const heistAvailability = sphereHeistAvailability(selectedTarget?.economyIntel, heistRules.economyIntelCost);
+  const heistRequirement = $("sphere-heist-requirement");
+  if (heistRequirement) {
+    heistRequirement.classList.toggle("hidden", !isHeist);
+    heistRequirement.innerHTML = heistAvailability.available
+      ? '<strong>Ready: ' + number(heistAvailability.requiredIntel) + ' Economy Intel</strong><span>' + number(heistAvailability.availableIntel) + '/' + number(heistRules.economyIntelCap) + ' available against ' + escapeHtml(selectedTarget?.name || "this rival") + '; ' + number(heistAvailability.remainingIntel) + ' will remain after launch.</span>'
+      : '<strong>Requires ' + number(heistAvailability.requiredIntel) + ' Economy Intel</strong><span>' + number(heistAvailability.availableIntel) + '/' + number(heistRules.economyIntelCap) + ' available against ' + escapeHtml(selectedTarget?.name || "this rival") + '. Economy investigations can improve this access.</span>';
+  }
   document.querySelectorAll("[data-espionage-mission-tier], #espionage-intel-spend").forEach((input) => input.addEventListener("input", updateEspionagePreview));
-  targetSelect?.addEventListener("change", () => { captureSelections(); lastSelections.espionageTarget = targetSelect.value; lastSelections.espionageIntelSpend = "0"; renderEspionage(); });
+  if (targetSelect) targetSelect.onchange = () => { captureSelections(); lastSelections.espionageTarget = targetSelect.value; lastSelections.espionageIntelSpend = "0"; renderEspionage(); };
+  if (operationSelect) operationSelect.onchange = () => { captureSelections(); lastSelections.espionageOperation = operationSelect.value; lastSelections.espionageIntelSpend = "0"; renderEspionage(); };
   updateEspionagePreview();
   const missions = $("espionage-missions");
   if (missions) missions.innerHTML = (espionage.missions || []).map((mission) => {
     const pending = mission.status === "pending";
     const time = pending ? 'Resolves in <span data-local-countdown-at="' + Number(mission.resolveAt) + '">' + formatDuration(Math.max(0, Math.ceil((mission.resolveAt - Date.now()) / 60000))) + '</span>' : 'Resolved ' + escapeHtml(intelligenceReportAge(mission.resolvedAt));
-    const result = pending ? number(mission.finalSpyPower) + ' Spy Power committed' : (mission.outcome || 'resolved').replace(/^./, (letter) => letter.toUpperCase()) + (mission.incidentalCategory ? ' · Incidental ' + mission.incidentalCategory : '') + (mission.bonusDiscoveryId ? ' · Bonus Discovery' : '');
-    return '<article class="list-item espionage-mission-row"><strong>' + escapeHtml(mission.targetName) + ' — ' + escapeHtml(mission.category[0].toUpperCase() + mission.category.slice(1)) + '</strong><span>' + escapeHtml(result) + '</span><small>' + time + '</small></article>';
-  }).join("") || '<div class="empty">No investigations launched yet.</div>';
+    const casualties = Object.values(mission.casualties || {}).reduce((sum, count) => sum + Number(count || 0), 0);
+    const result = pending ? number(mission.finalSpyPower) + ' Spy Power committed' : mission.operation === "sphere_heist"
+      ? (mission.outcome || "resolved").replace(/^./, (letter) => letter.toUpperCase()) + ' · ' + number(mission.spheresStolen || 0) + ' Spheres stolen · ' + number(casualties) + ' lost · Identity ' + (mission.identityExposed ? 'exposed' : 'hidden')
+      : (mission.outcome || 'resolved').replace(/^./, (letter) => letter.toUpperCase()) + (mission.incidentalCategory ? ' · Incidental ' + mission.incidentalCategory : '') + (mission.bonusDiscoveryId ? ' · Bonus Discovery' : '');
+    const missionName = mission.operation === "sphere_heist" ? "Sphere Heist" : mission.category[0].toUpperCase() + mission.category.slice(1) + " Investigation";
+    return '<article class="list-item espionage-mission-row"><strong>' + escapeHtml(mission.targetName) + ' — ' + escapeHtml(missionName) + '</strong><span>' + escapeHtml(result) + '</span><small>' + time + '</small></article>';
+  }).join("") || '<div class="empty">No espionage missions launched yet.</div>';
   const controls = $("espionage-controls");
   syncEspionageControlLock(controls, networkLocked);
+  if (!networkLocked && isHeist && $("launch-espionage-mission")) $("launch-espionage-mission").disabled = !heistAvailability.available;
+  if ($("launch-espionage-mission")) $("launch-espionage-mission").textContent = isHeist ? "Launch 2-hour Sphere Heist" : "Launch 2-hour investigation";
 }
 
 function renderIntelligence() {
@@ -3124,10 +3173,21 @@ $("launch-espionage-mission")?.addEventListener("click", async () => {
   const targetPlayerId = $("espionage-target").value;
   if (!targetPlayerId) return alert("Choose a rival kingdom.");
   const operatives = selectedEspionageOperatives();
+  const operation = $("espionage-operation")?.value || "investigation";
   const intelSpend = Math.max(0, Math.floor(Number($("espionage-intel-spend").value) || 0));
   const category = $("espionage-category").value;
-  const power = Object.entries(operatives).reduce((sum, [tier, count]) => sum + count * Number(state.espionage?.rules?.operatives?.[tier]?.spyPower || 0), 0) + intelSpend;
+  const basePower = Object.entries(operatives).reduce((sum, [tier, count]) => sum + count * Number(state.espionage?.rules?.operatives?.[tier]?.spyPower || 0), 0);
+  const power = basePower + (operation === "sphere_heist" ? 0 : intelSpend);
   const target = (state.espionage?.targets || []).find((entry) => entry.playerId === targetPlayerId);
+  if (operation === "sphere_heist") {
+    const heistRules = state.espionage?.rules?.sphereHeist || ESPIONAGE_UI_DEFAULTS.sphereHeist;
+    const availability = sphereHeistAvailability(target?.economyIntel, heistRules.economyIntelCost);
+    if (!availability.available) return alert(`Sphere Heist requires ${availability.requiredIntel} Economy Intel against this rival.`);
+    if (!await confirmConsequentialMission({ title: "Launch Sphere Heist?", html: '<strong>' + escapeHtml(target?.name || "Rival kingdom") + '</strong><span>' + number(power) + ' Spy Power will contest hidden Counter-Intelligence.</span><span>' + number(availability.requiredIntel) + ' Economy Intel will be consumed immediately.</span><span>Failure can permanently kill committed operatives.</span>' })) return;
+    lastSelections.espionageMission = {};
+    action(() => client.mutation(refs.launchSphereHeist, { targetPlayerId, operatives }));
+    return;
+  }
   if (!await confirmConsequentialMission({ title: "Launch investigation?", html: '<strong>' + escapeHtml(target?.name || "Rival kingdom") + ' · ' + escapeHtml(category) + '</strong><span>' + number(power) + ' final Spy Power</span><span>' + number(intelSpend) + ' Intel will be consumed immediately.</span>' })) return;
   lastSelections.espionageMission = {};
   lastSelections.espionageIntelSpend = "0";

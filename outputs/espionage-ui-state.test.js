@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { syncEspionageControlLock } from "./espionage-ui-state.js";
+import { sphereHeistAvailability, syncEspionageControlLock } from "./espionage-ui-state.js";
 
 function controlHarness(initiallyDisabled) {
   const controls = [{ disabled: initiallyDisabled }, { disabled: initiallyDisabled }, { disabled: initiallyDisabled }];
@@ -27,5 +27,11 @@ describe("espionage UI state", () => {
     syncEspionageControlLock(harness.container, true);
     expect(harness.isLocked()).toBe(true);
     expect(harness.controls.every((control) => control.disabled === true)).toBe(true);
+  });
+
+  test("communicates the fixed Economy Intel requirement without target treasury data", () => {
+    expect(sphereHeistAvailability(49, 50)).toEqual({ available: false, availableIntel: 49, requiredIntel: 50, remainingIntel: 0 });
+    expect(sphereHeistAvailability(50, 50)).toEqual({ available: true, availableIntel: 50, requiredIntel: 50, remainingIntel: 0 });
+    expect(sphereHeistAvailability(72, 50)).toEqual({ available: true, availableIntel: 72, requiredIntel: 50, remainingIntel: 22 });
   });
 });

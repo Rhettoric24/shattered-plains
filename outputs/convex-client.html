@@ -266,16 +266,18 @@
                   <button type="submit">Assign defenders</button>
                 </form>
                 <form id="espionage-mission-form" class="contained-form espionage-form">
-                  <div class="form-wide"><h3>Launch investigation</h3><p class="hint">Intel is rival-specific and is consumed when the mission launches.</p></div>
+                  <div class="form-wide"><h3 id="espionage-operation-heading">Launch operation</h3><p id="espionage-operation-hint" class="hint">Investigations gather seasonal knowledge and rival-specific Intel.</p></div>
+                  <label>Operation<select id="espionage-operation"><option value="investigation">Ledger Investigation</option><option value="sphere_heist">Sphere Heist</option></select></label>
                   <label>Rival kingdom<select id="espionage-target"></select></label>
-                  <label>Ledger category<select id="espionage-category"><option value="military">Military</option><option value="economy">Economy</option><option value="research">Research</option><option value="territory">Territory</option></select></label>
+                  <label id="espionage-category-field">Ledger category<select id="espionage-category"><option value="military">Military</option><option value="economy">Economy</option><option value="research">Research</option><option value="territory">Territory</option></select></label>
                   <div id="espionage-mission-operatives" class="operative-input-grid form-wide"></div>
-                  <label>Intel boost<input id="espionage-intel-spend" type="number" min="0" value="0" inputmode="numeric"></label>
+                  <label id="espionage-intel-boost-field">Intel boost<input id="espionage-intel-spend" type="number" min="0" value="0" inputmode="numeric"></label>
+                  <div id="sphere-heist-requirement" class="rule-callout form-wide hidden"></div>
                   <div id="espionage-mission-preview" class="mission-summary"></div>
                   <button id="launch-espionage-mission" data-mission-launch type="button">Launch 2-hour investigation</button>
                 </form>
               </div>
-              <div class="section-heading espionage-mission-heading"><p class="eyebrow">Operations</p><h3>Active and recent investigations</h3></div>
+              <div class="section-heading espionage-mission-heading"><p class="eyebrow">Operations</p><h3>Active and recent missions</h3></div>
               <div id="espionage-missions" class="list"></div>
             </section>
           </section>

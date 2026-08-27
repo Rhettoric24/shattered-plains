@@ -6,11 +6,15 @@ import schema from "./schema";
 import { createFreshSeason } from "./seasonLedger";
 import {
   ESPIONAGE_RULES,
+  economyIntelDisclosureLevel,
   effectiveLedgerIntelLevel,
   estimateScore,
   operativeProvisions,
   resolveEspionageOutcome,
   secondaryCategory,
+  sphereHeistAvailableHaul,
+  sphereHeistCasualties,
+  sphereHeistPayout,
   spyPower,
 } from "./espionageRules";
 
@@ -68,6 +72,26 @@ describe("espionage rules", () => {
     expect(estimate.min).toBeLessThanOrEqual(824);
     expect(estimate.max).toBeGreaterThanOrEqual(824);
     expect(secondaryCategory("military", "stable-seed")).not.toBe("military");
+  });
+
+  test("Sphere Heist reuses outcome bands, bounds haul, and removes low tiers first", () => {
+    expect(economyIntelDisclosureLevel(24)).toBe(0);
+    expect(economyIntelDisclosureLevel(25)).toBe(1);
+    expect(economyIntelDisclosureLevel(74)).toBe(1);
+    expect(economyIntelDisclosureLevel(75)).toBe(2);
+    expect(sphereHeistAvailableHaul(8_000)).toBe(1_000);
+    expect(sphereHeistAvailableHaul(100_000)).toBe(5_000);
+    expect(sphereHeistAvailableHaul(300_000)).toBe(10_000);
+    expect(sphereHeistAvailableHaul(500)).toBe(500);
+    expect(sphereHeistPayout(100_000, "success")).toBe(2_500);
+    expect(sphereHeistPayout(100_000, "overwhelm")).toBe(5_000);
+    expect(sphereHeistPayout(100_000, "failure")).toBe(0);
+    const catastrophic = sphereHeistCasualties({ informant: 1, spy: 1, ghostblood: 8 }, "failure");
+    expect(catastrophic.lost).toBe(2);
+    expect(catastrophic.casualties).toEqual({ informant: 1, spy: 1, ghostblood: 0 });
+    expect(sphereHeistCasualties({ informant: 10, spy: 0, ghostblood: 0 }, "partial").lost).toBe(1);
+    expect(sphereHeistCasualties({ informant: 10, spy: 0, ghostblood: 0 }, "success").lost).toBe(0);
+    expect(ESPIONAGE_RULES.sphereHeist.identityExposed).toEqual({ failure: true, partial: false, success: true, overwhelm: false });
   });
 });
 
@@ -173,7 +197,8 @@ describe("espionage backend", () => {
     expect(overwhelmResult.bonusDiscoveryId).toBeTruthy();
     ledger = await asAttacker.query(api.espionage.getKingdomLedger, {});
     row = ledger.rows.find((entry) => entry.playerId === openTarget)!;
-    expect(row.cells.economy.currentLevel).toBe(2);
+    expect(row.cells.economy.currentLevel).toBe(0);
+    expect(row.cells.economy.economyIntel).toBe(15);
     expect(row.cells.economy.discoveries).toHaveLength(1);
   });
 
@@ -222,5 +247,138 @@ describe("espionage backend", () => {
     const status = await asAttacker.query(api.espionage.getStatus, {});
     expect(status.targets.find((target) => target.playerId === openTarget)?.intel).toBe(50);
     expect(status.targets.find((target) => target.playerId === otherId)?.intel).toBe(7);
+  });
+
+  test("Sphere Heist requires and authoritatively spends Economy Intel, lowering disclosure", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "heist-gate@example.com" }));
+    const attackerId = await addPlayer(t, "Heist Gate", String(userId), { operatives: { informant: 3, spy: 0, ghostblood: 0 } });
+    const targetId = await addPlayer(t, "Ledger Target");
+    const deletedTargetId = await addPlayer(t, "Stale Target");
+    await t.run(async (ctx) => {
+      const seasonId = await createFreshSeason(ctx, 1, 1);
+      await ctx.db.insert("seasonScores", { seasonId, playerId: targetId, total: 40, categoryTotals: { military: 0, economy: 40, research: 0, territory: 0 }, updatedAt: 1 });
+      await ctx.db.insert("kingdomIntelligence", { viewerPlayerId: attackerId, targetPlayerId: targetId, category: "economy", achievedLevel: 2, bestLevel: 2, observedScore: 40, observedAt: Date.now(), source: "Economy Investigation" });
+      await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attackerId, targetPlayerId: targetId, amount: 7, economyAmount: 72, updatedAt: 1 });
+      await ctx.db.delete(deletedTargetId);
+    });
+    const asAttacker = t.withIdentity({ subject: String(userId) });
+    let ledger = await asAttacker.query(api.espionage.getKingdomLedger, {});
+    expect(ledger.rows.find((row) => row.playerId === targetId)?.cells.economy).toMatchObject({ currentLevel: 1, economyIntel: 72 });
+    const first = await asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } });
+    expect(first).toMatchObject({ economyIntelSpent: 50, economyIntelRemaining: 22 });
+    let status = await asAttacker.query(api.espionage.getStatus, {});
+    expect(status.targets.find((target) => target.playerId === targetId)?.economyIntel).toBe(22);
+    expect(status.targets.find((target) => target.playerId === targetId)).not.toHaveProperty("spheres");
+    ledger = await asAttacker.query(api.espionage.getKingdomLedger, {});
+    expect(ledger.rows.find((row) => row.playerId === targetId)?.cells.economy).toMatchObject({ currentLevel: 0, bestLevel: 2, economyIntel: 22 });
+    await expect(asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } })).rejects.toThrow("requires 50 Economy Intel");
+    await expect(asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: attackerId, operatives: { informant: 1, spy: 0, ghostblood: 0 } })).rejects.toThrow("Choose a rival kingdom");
+    await expect(asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: deletedTargetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } })).rejects.toThrow("Target kingdom not found");
+
+    await t.run(async (ctx) => {
+      const resource = await ctx.db.query("kingdomIntelResources").withIndex("by_viewerPlayerId_and_targetPlayerId", (q) => q.eq("viewerPlayerId", attackerId).eq("targetPlayerId", targetId)).unique();
+      await ctx.db.patch(resource!._id, { economyAmount: 50 });
+    });
+    const exact = await asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } });
+    expect(exact.economyIntelRemaining).toBe(0);
+    status = await asAttacker.query(api.espionage.getStatus, {});
+    expect(status.targets.find((target) => target.playerId === targetId)?.economyIntel).toBe(0);
+  });
+
+  test("legacy Economy reports provide a safe one-time authoritative Economy Intel fallback", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "legacy-economy@example.com" }));
+    const attackerId = await addPlayer(t, "Legacy Economy", String(userId), { operatives: { informant: 1, spy: 0, ghostblood: 0 } });
+    const targetId = await addPlayer(t, "Legacy Target");
+    await t.run(async (ctx) => {
+      await createFreshSeason(ctx, 1, 1);
+      await ctx.db.insert("kingdomIntelligence", { viewerPlayerId: attackerId, targetPlayerId: targetId, category: "economy", achievedLevel: 1, bestLevel: 1, observedScore: 10, observedAt: Date.now(), source: "Legacy Economy Investigation" });
+      await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attackerId, targetPlayerId: targetId, amount: 12, updatedAt: 1 });
+    });
+    const asAttacker = t.withIdentity({ subject: String(userId) });
+    expect((await asAttacker.query(api.espionage.getStatus, {})).targets.find((target) => target.playerId === targetId)?.economyIntel).toBe(50);
+    await asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } });
+    const resource = await t.run(async (ctx) => await ctx.db.query("kingdomIntelResources").withIndex("by_viewerPlayerId_and_targetPlayerId", (q) => q.eq("viewerPlayerId", attackerId).eq("targetPlayerId", targetId)).unique());
+    expect(resource).toMatchObject({ amount: 12, economyAmount: 0 });
+  });
+
+  test("Economy investigations cap Economy Intel at 100 without changing other rival Intel", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "economy-cap@example.com" }));
+    const attackerId = await addPlayer(t, "Economy Cap", String(userId), { operatives: { informant: 0, spy: 0, ghostblood: 1 } });
+    const targetId = await addPlayer(t, "Open Treasury", undefined, { defending: emptyOps });
+    await t.run(async (ctx) => {
+      const seasonId = await createFreshSeason(ctx, 1, 1);
+      await ctx.db.insert("seasonScores", { seasonId, playerId: targetId, total: 10, categoryTotals: { military: 0, economy: 10, research: 0, territory: 0 }, updatedAt: 1 });
+      await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attackerId, targetPlayerId: targetId, amount: 13, economyAmount: 95, updatedAt: 1 });
+    });
+    const asAttacker = t.withIdentity({ subject: String(userId) });
+    const mission = await asAttacker.mutation(api.espionage.launchInvestigation, { targetPlayerId: targetId, category: "economy", operatives: { informant: 0, spy: 0, ghostblood: 1 }, intelSpend: 0 });
+    await t.mutation(internal.espionage.resolveInvestigation, { missionId: mission.missionId });
+    const targetStatus = (await asAttacker.query(api.espionage.getStatus, {})).targets.find((target) => target.playerId === targetId);
+    expect(targetStatus).toMatchObject({ intel: 13, economyIntel: 100, economyIntelCap: 100 });
+  });
+
+  test("all four existing outcome bands map to Heist payout, casualties, exposure, and persistent reports", async () => {
+    const cases = [
+      { outcome: "failure", commitment: { informant: 1, spy: 0, ghostblood: 0 }, defending: { informant: 0, spy: 0, ghostblood: 1 }, stolen: 0, lost: 1, exposed: true },
+      { outcome: "partial", commitment: { informant: 5, spy: 0, ghostblood: 0 }, defending: { informant: 0, spy: 0, ghostblood: 1 }, stolen: 0, lost: 1, exposed: false },
+      { outcome: "success", commitment: { informant: 0, spy: 0, ghostblood: 1 }, defending: { informant: 0, spy: 0, ghostblood: 1 }, stolen: 2_500, lost: 0, exposed: true },
+      { outcome: "overwhelm", commitment: { informant: 0, spy: 3, ghostblood: 0 }, defending: { informant: 0, spy: 0, ghostblood: 1 }, stolen: 5_000, lost: 0, exposed: false },
+    ] as const;
+    for (const entry of cases) {
+      const t = convexTest(schema, modules);
+      const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: `${entry.outcome}@example.com` }));
+      const attackerId = await addPlayer(t, `Attacker ${entry.outcome}`, String(userId), { operatives: entry.commitment, spheres: 10_000 });
+      const targetId = await addPlayer(t, `Victim ${entry.outcome}`, undefined, { defending: entry.defending, spheres: 100_000 });
+      await t.run(async (ctx) => {
+        await createFreshSeason(ctx, 1, 1);
+        await ctx.db.patch(attackerId, { lastEconomyAt: Date.now() + 1_000_000_000 });
+        await ctx.db.patch(targetId, { lastEconomyAt: Date.now() + 1_000_000_000 });
+        await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attackerId, targetPlayerId: targetId, amount: 4, economyAmount: 50, updatedAt: 1 });
+      });
+      const asAttacker = t.withIdentity({ subject: String(userId) });
+      const launched = await asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: entry.commitment });
+      expect((await asAttacker.query(api.espionage.getStatus, {})).targets.find((target) => target.playerId === targetId)?.economyIntel).toBe(0);
+      const result = await t.mutation(internal.espionage.resolveInvestigation, { missionId: launched.missionId });
+      expect(result).toMatchObject({ outcome: entry.outcome, spheresStolen: entry.stolen, operativesLost: entry.lost, identityExposed: entry.exposed });
+      const state = await t.run(async (ctx) => ({
+        attacker: await ctx.db.get(attackerId), target: await ctx.db.get(targetId),
+        victimNotifications: await ctx.db.query("notifications").withIndex("by_playerId_and_createdAt", (q) => q.eq("playerId", targetId)).take(10),
+        attackerMessages: await ctx.db.query("messages").withIndex("by_to_player", (q) => q.eq("toPlayerId", attackerId)).take(10),
+      }));
+      expect(state.target?.spheres).toBe(100_000 - entry.stolen);
+      expect(state.attacker?.spheres).toBe(10_000 + entry.stolen);
+      expect(Object.values(state.attacker?.operatives ?? {}).reduce((sum, count) => sum + count, 0)).toBe(Object.values(entry.commitment).reduce((sum, count) => sum + count, 0) - entry.lost);
+      const victimBody = state.victimNotifications.map((notification) => notification.body).join(" ");
+      expect(victimBody.includes(`Attacker ${entry.outcome}`)).toBe(entry.exposed);
+      expect(state.attackerMessages.map((message) => message.body).join(" ")).toContain(`Spheres stolen: ${entry.stolen.toLocaleString()}`);
+      expect(state.attackerMessages.map((message) => message.body).join(" ")).toContain(`Operatives lost: ${entry.lost}`);
+    }
+  });
+
+  test("Heist resolution uses the current treasury and duplicate resolution cannot transfer twice", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "heist-race@example.com" }));
+    const attackerId = await addPlayer(t, "Race Attacker", String(userId), { operatives: { informant: 1, spy: 0, ghostblood: 0 }, spheres: 2_000 });
+    const targetId = await addPlayer(t, "Race Victim", undefined, { defending: emptyOps, spheres: 300_000 });
+    await t.run(async (ctx) => {
+      await createFreshSeason(ctx, 1, 1);
+      await ctx.db.patch(attackerId, { lastEconomyAt: Date.now() + 1_000_000_000 });
+      await ctx.db.patch(targetId, { lastEconomyAt: Date.now() + 1_000_000_000 });
+      await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attackerId, targetPlayerId: targetId, amount: 0, economyAmount: 50, updatedAt: 1 });
+    });
+    const launched = await t.withIdentity({ subject: String(userId) }).mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } });
+    await t.run(async (ctx) => await ctx.db.patch(targetId, { spheres: 12_000 }));
+    const first = await t.mutation(internal.espionage.resolveInvestigation, { missionId: launched.missionId });
+    expect(first).toMatchObject({ outcome: "overwhelm", spheresStolen: 1_000 });
+    const afterFirst = await t.run(async (ctx) => ({ attacker: await ctx.db.get(attackerId), target: await ctx.db.get(targetId) }));
+    expect(afterFirst.attacker?.spheres).toBe(3_000);
+    expect(afterFirst.target?.spheres).toBe(11_000);
+    const duplicate = await t.mutation(internal.espionage.resolveInvestigation, { missionId: launched.missionId });
+    expect(duplicate).toEqual({ resolved: false });
+    const afterDuplicate = await t.run(async (ctx) => ({ attacker: await ctx.db.get(attackerId), target: await ctx.db.get(targetId) }));
+    expect(afterDuplicate).toEqual(afterFirst);
   });
 });
