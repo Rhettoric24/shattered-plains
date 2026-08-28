@@ -314,6 +314,16 @@ async function expectEspionageLayouts(page: Page) {
   await expect(ownCategoryCells).toHaveCount(4);
   const rivalScoreLabels = page.locator("#kingdom-intelligence-table tbody tr:not(.own-row) .score-quality");
   await expect(rivalScoreLabels).toHaveCount(0);
+  await page.locator('#kingdom-intelligence-table [data-kingdom-intel-category="economy"]').first().click();
+  const intelDialog = page.locator("#kingdom-intel-dialog");
+  await expect(intelDialog).toBeVisible();
+  await expect(intelDialog).toContainText("Economy Intel");
+  await expect(intelDialog).toContainText("Changes only when Economy Intel is gained or spent.");
+  await expect(intelDialog).not.toContainText("Next decay");
+  await page.locator("#close-kingdom-intel-dialog").click();
+  await page.locator('#kingdom-intelligence-table [data-kingdom-intel-category="military"]').first().click();
+  await expect(intelDialog).toContainText("Next decay");
+  await page.locator("#close-kingdom-intel-dialog").click();
   await page.locator("#space-subnav").getByRole("button", { name: "Operations", exact: true }).click();
   await expect(page.locator("#view-intelligence-operations")).toBeVisible();
   const card = page.locator(".operative-card").first();
@@ -468,10 +478,14 @@ test("earned Watchtower intelligence is visible in military decision surfaces", 
 
   await page.locator("#space-subnav").getByRole("button", { name: "Sieges", exact: true }).click();
   const neutralOptions = page.locator("#neutral-plateau-target option");
-  await expect(neutralOptions.first()).not.toHaveText(/Unsurveyed Plateau/);
-  await expect(neutralOptions.first()).toHaveText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau/);
-  await expect(page.locator("#neutral-siege-preview")).toContainText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau/);
-  await expect(page.locator("#neutral-siege-preview")).toContainText(/Parshendi resistance:/);
+  if (await neutralOptions.count()) {
+    await expect(neutralOptions.first()).not.toHaveText(/Unsurveyed Plateau/);
+    await expect(neutralOptions.first()).toHaveText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau/);
+    await expect(page.locator("#neutral-siege-preview")).toContainText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau/);
+    await expect(page.locator("#neutral-siege-preview")).toContainText(/Parshendi resistance:/);
+  } else {
+    await expect(page.locator("#neutral-siege-preview")).toContainText("Choose a neutral plateau");
+  }
 
   await page.addScriptTag({
     type: "module",

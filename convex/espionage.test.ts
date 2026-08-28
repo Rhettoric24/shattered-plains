@@ -96,6 +96,29 @@ describe("espionage rules", () => {
 });
 
 describe("espionage backend", () => {
+  test("Economy disclosure persists with its resource while other Ledger intelligence decays", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "persistent-economy@example.com" }));
+    const viewerId = await addPlayer(t, "Persistent Economy", String(userId));
+    const targetId = await addPlayer(t, "Aged Reports");
+    const observedAt = Date.now() - ESPIONAGE_RULES.decayStepMs - 1_000;
+    await t.run(async (ctx) => {
+      const seasonId = await createFreshSeason(ctx, 1, 1);
+      await ctx.db.insert("seasonScores", { seasonId, playerId: targetId, total: 80, categoryTotals: { military: 40, economy: 40, research: 0, territory: 0 }, updatedAt: 1 });
+      for (const category of ["military", "economy"] as const) {
+        await ctx.db.insert("kingdomIntelligence", { viewerPlayerId: viewerId, targetPlayerId: targetId, category, achievedLevel: 2, bestLevel: 2, observedScore: 40, observedAt, source: `${category} investigation` });
+      }
+      await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: viewerId, targetPlayerId: targetId, amount: 0, economyAmount: 100, updatedAt: 1 });
+    });
+
+    const ledger = await t.withIdentity({ subject: String(userId) }).query(api.espionage.getKingdomLedger, {});
+    const cells = ledger.rows.find((row) => row.playerId === targetId)!.cells;
+    expect(cells.economy).toMatchObject({ currentLevel: 2, economyIntel: 100, nextDecayAt: null, presentation: { mode: "exact", display: "40" } });
+    expect(cells.military.currentLevel).toBe(1);
+    expect(cells.military.presentation.mode).toBe("range");
+    expect(cells.military.nextDecayAt).toEqual(expect.any(Number));
+  });
+
   test("legacy kingdoms receive a season and visible locked espionage defaults without a reset", async () => {
     const t = convexTest(schema, modules);
     const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "legacy@example.com" }));

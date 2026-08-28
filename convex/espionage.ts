@@ -59,11 +59,11 @@ function safeRules(level: number) {
   };
 }
 
-function economyIntelAmount(resource: Doc<"kingdomIntelResources"> | null | undefined, report: Doc<"kingdomIntelligence"> | null | undefined, now: number) {
+function economyIntelAmount(resource: Doc<"kingdomIntelResources"> | null | undefined, report: Doc<"kingdomIntelligence"> | null | undefined) {
   if (resource?.economyAmount !== undefined) {
     return Math.max(0, Math.min(ESPIONAGE_RULES.sphereHeist.economyIntelCap, Math.floor(resource.economyAmount)));
   }
-  const legacyLevel = report ? effectiveLedgerIntelLevel(report.achievedLevel, report.observedAt, now) : 0;
+  const legacyLevel = report?.achievedLevel ?? 0;
   return legacyEconomyIntelAmount(legacyLevel);
 }
 
@@ -81,7 +81,7 @@ async function applyIntelReward(ctx: MutationCtx, attacker: Doc<"players">, targ
         q.eq("viewerPlayerId", attacker._id).eq("targetPlayerId", targetPlayerId).eq("category", "economy"))
       .unique();
     const cap = ESPIONAGE_RULES.sphereHeist.economyIntelCap;
-    const amount = Math.min(cap, economyIntelAmount(row, report, now) + reward);
+    const amount = Math.min(cap, economyIntelAmount(row, report) + reward);
     if (row) await ctx.db.patch(row._id, { economyAmount: amount, updatedAt: now });
     else await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attacker._id, targetPlayerId, amount: 0, economyAmount: amount, updatedAt: now });
     return { amount, cap, resource: "economy" as const };
@@ -200,7 +200,7 @@ export const getStatus = query({
       targets: targets.filter((target) => target._id !== player._id).map((target) => ({
         playerId: target._id, name: target.name,
         intel: resourcesByTarget.get(String(target._id))?.amount ?? 0, intelCap: cap,
-        economyIntel: economyIntelAmount(resourcesByTarget.get(String(target._id)), economyReportsByTarget.get(String(target._id)), now),
+        economyIntel: economyIntelAmount(resourcesByTarget.get(String(target._id)), economyReportsByTarget.get(String(target._id))),
         economyIntelCap: ESPIONAGE_RULES.sphereHeist.economyIntelCap,
       })),
       missions: recent.map((mission) => ({
@@ -253,8 +253,12 @@ export const getKingdomLedger = query({
       const cells = Object.fromEntries(ESPIONAGE_CATEGORIES.map((category) => {
         const report = reportMap.get(`${target._id}:${category}`);
         const reportLevel = report ? effectiveLedgerIntelLevel(report.achievedLevel, report.observedAt, now) : 0;
-        const targetEconomyIntel = economyIntelAmount(resourceMap.get(String(target._id)), category === "economy" ? report : null, now);
-        const currentLevel = own ? 2 : category === "economy" ? Math.min(reportLevel, economyIntelDisclosureLevel(targetEconomyIntel)) : reportLevel;
+        const targetEconomyIntel = economyIntelAmount(resourceMap.get(String(target._id)), category === "economy" ? report : null);
+        const currentLevel = own
+          ? 2
+          : category === "economy"
+            ? report ? economyIntelDisclosureLevel(targetEconomyIntel) : 0
+            : reportLevel;
         const observed = own ? actual[category] : report?.observedScore ?? actual[category];
         const broadLabel = qualitativeScore(category, actual[category]);
         const presentation = currentLevel === 2
@@ -265,7 +269,7 @@ export const getKingdomLedger = query({
         return [category, {
           category, categoryName: SEASON_CATEGORIES[category].name, currentLevel, bestLevel: own ? 2 : report?.bestLevel ?? 0,
           presentation, observedAt: own ? now : report?.observedAt ?? null,
-          nextDecayAt: own || !report ? null : nextDecayAt(report.achievedLevel, report.observedAt, now),
+          nextDecayAt: own || !report || category === "economy" ? null : nextDecayAt(report.achievedLevel, report.observedAt, now),
           source: own ? "Your Season Ledger" : report?.source ?? "General reputation",
           ...(category === "economy" && !own ? { economyIntel: targetEconomyIntel, economyIntelCap: ESPIONAGE_RULES.sphereHeist.economyIntelCap } : {}),
           discoveries: (discoveryMap.get(`${target._id}:${category}`) ?? []).map((entry) => ({ id: entry._id, kind: entry.factKind, text: entry.text, observedAt: entry.observedAt })),
@@ -388,7 +392,7 @@ export const launchSphereHeist = mutation({
       .withIndex("by_viewerPlayerId_and_targetPlayerId_and_category", (q) =>
         q.eq("viewerPlayerId", attacker._id).eq("targetPlayerId", target._id).eq("category", "economy"))
       .unique();
-    const economyIntel = economyIntelAmount(resource, economyReport, now);
+    const economyIntel = economyIntelAmount(resource, economyReport);
     const cost = ESPIONAGE_RULES.sphereHeist.economyIntelCost;
     if (economyIntel < cost) throw new Error(`Sphere Heist requires ${cost} Economy Intel against this rival.`);
     const economyIntelRemaining = economyIntel - cost;

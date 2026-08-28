@@ -2,7 +2,7 @@ import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { sphereHeistAvailability, syncEspionageControlLock } from "./espionage-ui-state.js";
 import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
 import { createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, routeNeedsPlateauBoard, routeNeedsTerritoryIntelligence, runMutationAction } from "./data-loading-state.js";
-import { formatDisclosedPower, plateauIdentityPresentation, raidDefenseMarkup } from "./intelligence-ui-state.js";
+import { formatDisclosedPower, kingdomIntelTimingRows, plateauIdentityPresentation, raidDefenseMarkup } from "./intelligence-ui-state.js";
 
 const CONVEX_URL =
   window.SHATTERED_PLAINS_CONFIG?.convexUrl ||
@@ -2385,10 +2385,13 @@ function openKingdomIntelDetail(playerId, category) {
     if (!cell) return;
     const next = cell.nextDecayAt ? formatDuration(Math.max(0, Math.ceil((cell.nextDecayAt - Date.now()) / 60000))) : "No further decay scheduled";
     const observed = cell.observedAt ? intelligenceReportAge(cell.observedAt) : "Never investigated";
+    const timingRows = kingdomIntelTimingRows(category, { freshness: cell.freshness || "Unknown", updated: observed, next })
+      .map((entry) => '<span>' + escapeHtml(entry.label) + '</span><strong>' + escapeHtml(entry.value) + '</strong>')
+      .join("");
     const discoveries = (cell.discoveries || []).map((fact) => '<article class="bonus-discovery"><strong>Bonus Discovery</strong><p>' + escapeHtml(fact.text) + '</p><small>Observed ' + escapeHtml(new Date(fact.observedAt).toLocaleString()) + '</small></article>').join("");
     $("kingdom-intel-dialog-title").textContent = row.kingdomName + " — " + cell.categoryName + " Intelligence";
     const economyResource = category === "economy" && !row.own ? '<span>Economy Intel</span><strong>' + number(cell.economyIntel || 0) + '/' + number(cell.economyIntelCap || 100) + '</strong>' : '';
-    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid"><span>Current Intel</span><strong>Level ' + cell.currentLevel + ' / 2</strong><span>Best achieved</span><strong>Level ' + cell.bestLevel + ' / 2</strong>' + economyResource + '<span>Current information</span><strong>' + escapeHtml(cell.presentation.display) + '</strong><span>Freshness</span><strong>' + escapeHtml(cell.freshness || "unknown") + '</strong><span>Updated</span><strong>' + escapeHtml(observed) + '</strong><span>Next decay</span><strong>' + escapeHtml(next) + '</strong><span>Source</span><strong>' + escapeHtml(cell.source) + '</strong></div>' + discoveries + (row.own ? '' : '<button type="button" class="investigate-category" data-investigate-kingdom="' + escapeHtml(row.playerId) + '" data-investigate-category="' + escapeHtml(category) + '">Investigate this category</button>');
+    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid"><span>Current Intel</span><strong>Level ' + cell.currentLevel + ' / 2</strong><span>Best achieved</span><strong>Level ' + cell.bestLevel + ' / 2</strong>' + economyResource + '<span>Current information</span><strong>' + escapeHtml(cell.presentation.display) + '</strong>' + timingRows + '<span>Source</span><strong>' + escapeHtml(cell.source) + '</strong></div>' + discoveries + (row.own ? '' : '<button type="button" class="investigate-category" data-investigate-kingdom="' + escapeHtml(row.playerId) + '" data-investigate-category="' + escapeHtml(category) + '">Investigate this category</button>');
     $("kingdom-intel-dialog-content").querySelector("[data-investigate-kingdom]")?.addEventListener("click", (event) => {
       dialog.close();
       showRoute({ view: "intelligence", tab: "operations", kingdom: event.currentTarget.dataset.investigateKingdom, category: event.currentTarget.dataset.investigateCategory });

@@ -30,3 +30,17 @@ export function plateauIdentityPresentation(plateau) {
     traits: [plateau.large ? "Large" : "", plateau.highground ? "Highground" : ""].filter(Boolean),
   };
 }
+
+export function kingdomIntelTimingRows(category, { freshness = "Unknown", updated = "Never investigated", next = "No further decay scheduled" } = {}) {
+  if (category === "economy") {
+    return [
+      { label: "Updated", value: updated },
+      { label: "Persistence", value: "Changes only when Economy Intel is gained or spent." },
+    ];
+  }
+  return [
+    { label: "Freshness", value: freshness },
+    { label: "Updated", value: updated },
+    { label: "Next decay", value: next },
+  ];
+}

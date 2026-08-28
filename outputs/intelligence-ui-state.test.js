@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { formatDisclosedPower, plateauIdentityPresentation, raidDefenseMarkup, raidDefensePresentation } from "./intelligence-ui-state.js";
+import { formatDisclosedPower, kingdomIntelTimingRows, plateauIdentityPresentation, raidDefenseMarkup, raidDefensePresentation } from "./intelligence-ui-state.js";
 
 describe("intelligence UI presentation", () => {
   test("renders every earned raid disclosure numerically", () => {
@@ -29,5 +29,20 @@ describe("intelligence UI presentation", () => {
       .toEqual({ known: false, type: "Unknown plateau type", traits: [] });
     expect(plateauIdentityPresentation({ name: "The Broken Crown", type: "sphere", typeName: "Sphere Plateau", highground: true, large: true }))
       .toEqual({ known: true, type: "Sphere Plateau", traits: ["Large", "Highground"] });
+  });
+
+  test("presents Economy Intel as persistent while preserving other category decay", () => {
+    const economyRows = kingdomIntelTimingRows("economy", { freshness: "fresh", updated: "43m ago", next: "2h 17m" });
+    expect(economyRows).toEqual([
+      { label: "Updated", value: "43m ago" },
+      { label: "Persistence", value: "Changes only when Economy Intel is gained or spent." },
+    ]);
+    expect(economyRows.map((row) => row.label)).not.toContain("Next decay");
+
+    expect(kingdomIntelTimingRows("military", { freshness: "fresh", updated: "43m ago", next: "2h 17m" })).toEqual([
+      { label: "Freshness", value: "fresh" },
+      { label: "Updated", value: "43m ago" },
+      { label: "Next decay", value: "2h 17m" },
+    ]);
   });
 });
