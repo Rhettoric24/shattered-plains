@@ -180,8 +180,8 @@ export const COMBAT_RULES = {
   openDefensePerAcre: 0.18,
   parshendiSphereRaidMinDefense: 100,
   parshendiSphereRaidMaxDefense: 200,
-  parshendiSphereRaidMinReward: 250,
-  parshendiSphereRaidMaxReward: 650,
+  parshendiSphereRaidMinReward: 1200,
+  parshendiSphereRaidMaxReward: 2400,
 } as const;
 
 export const MILITARY_RESISTANCE_BANDS = [

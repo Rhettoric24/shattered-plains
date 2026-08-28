@@ -57,7 +57,7 @@ export const WORLD_PRESSURE_RULES = {
   },
   neutralRaid: {
     difficultyHostilityFactor: 1,
-    rewardHostilityFactor: 0.6,
+    rewardHostilityFactor: 1,
   },
   deepPlains: {
     unlockMinimumHostility: 68,

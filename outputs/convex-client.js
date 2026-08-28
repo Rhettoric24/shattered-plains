@@ -1629,7 +1629,7 @@ function sphereTargetPreview() {
   const defenseFactor = 1 + hostility * Number(rules.difficultyHostilityFactor || 1);
   const minimumDefense = Math.round(configValue("parshendiSphereRaidMinDefense", 1) * defenseFactor);
   const maximumDefense = Math.round(configValue("parshendiSphereRaidMaxDefense", 4) * defenseFactor);
-  const averageReward = (configValue("parshendiSphereRaidMinReward", 250) + configValue("parshendiSphereRaidMaxReward", 650)) / 2 * (1 + hostility * Number(rules.rewardHostilityFactor || 0.6));
+  const averageReward = (configValue("parshendiSphereRaidMinReward", 1200) + configValue("parshendiSphereRaidMaxReward", 2400)) / 2 * (1 + hostility * Number(rules.rewardHostilityFactor || 1));
   return "Possible enemy Power: " + minimumDefense + "–" + maximumDefense + "\nEstimated reward: " + plateauRunLootLabel(averageReward);
 }
 
@@ -1863,8 +1863,10 @@ function raidListMarkup(raids, emptyText) {
     const remaining = Math.max(0, Math.ceil((raid.arrivalAt - Date.now()) / 60000));
     const direction = raid.attackerId === state.me.id ? "Outgoing" : raid.targetId === state.me.id ? "Incoming" : "Observed";
     const isMine = raid.attackerId === state.me.id;
-    const prize = raid.targetType === "parshendi_spheres" || raid.targetType === "deep_plains"
-      ? plateauRunLootLabel(raid.rewardSpheres || 0) + " sphere loot"
+    const prize = raid.targetType === "parshendi_spheres"
+      ? (raid.rewardIntel?.label || "Estimated") + " sphere loot"
+      : raid.targetType === "deep_plains"
+        ? plateauRunLootLabel(raid.rewardSpheres || 0) + " sphere loot"
       : "land pressure";
     const force = isMine
       ? escapeHtml(raid.unitSummary) + ' for ' + prize
@@ -2655,6 +2657,7 @@ function decorateRaids(raids, players, unitsConfig) {
     acres: raid.acres || 0,
     defenseIntel: raid.defenseIntel,
     rewardSpheres: raid.rewardSpheres,
+    rewardIntel: raid.rewardIntel,
     arrivalAt: raid.arriveAt,
     travelMinutes: Math.max(1, Math.round((raid.arriveAt - raid.departAt) / 60000)),
   }));

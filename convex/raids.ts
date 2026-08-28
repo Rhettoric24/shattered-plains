@@ -294,6 +294,28 @@ export const listVisibleRaids = query({
         broadMaximum: hostilityScaledValue(baseRange[1], hostility, factor),
       });
       const { defensePower: _hiddenDefensePower, ...safeRaid } = raid;
+      if (raid.targetType === "parshendi_spheres") {
+        const minimumReward = hostilityScaledValue(
+          COMBAT_RULES.parshendiSphereRaidMinReward,
+          hostility,
+          WORLD_PRESSURE_RULES.neutralRaid.rewardHostilityFactor,
+        );
+        const maximumReward = hostilityScaledValue(
+          COMBAT_RULES.parshendiSphereRaidMaxReward,
+          hostility,
+          WORLD_PRESSURE_RULES.neutralRaid.rewardHostilityFactor,
+        );
+        const { rewardSpheres: _hiddenRewardSpheres, ...safeOrdinaryRaid } = safeRaid;
+        return {
+          ...safeOrdinaryRaid,
+          defenseIntel,
+          rewardIntel: {
+            minimum: minimumReward,
+            maximum: maximumReward,
+            label: rewardLabel((minimumReward + maximumReward) / 2),
+          },
+        };
+      }
       return { ...safeRaid, defenseIntel };
     }));
   },

@@ -55,6 +55,8 @@ describe("World Pressure integration", () => {
       });
       const visible = await player.query(api.raids.listVisibleRaids, {});
       expect(visible[0]).not.toHaveProperty("defensePower");
+      expect(visible[0]).not.toHaveProperty("rewardSpheres");
+      expect(visible[0].rewardIntel).toEqual({ minimum: 1200, maximum: 2400, label: "Rich" });
       disclosures.push(visible[0].defenseIntel);
       expect((await t.run((ctx) => ctx.db.get(raidId)))?.defensePower).toBe(163);
     }
@@ -81,6 +83,74 @@ describe("World Pressure integration", () => {
     }));
     const row = await t.run(async (ctx) => await ctx.db.query("kingdomWorldPressure").withIndex("by_playerId", (q) => q.eq("playerId", playerId)).unique());
     expect(row).toMatchObject({ hostility: 88, lastPlayerAggressionAt: anchor, decayIntervalsApplied: 1 });
+  });
+
+  test("successful ordinary raid grants its snapshotted pool once and preserves Hostility behavior", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const playerId = await addPlayer(t, "Sphere Raider");
+    const seasonId = await t.run((ctx) => createFreshSeason(ctx, 1, now));
+    const raidUnits = { ...emptyUnits(), spearman: 200, chull: 60 };
+    const raidId = await t.run(async (ctx) => await ctx.db.insert("raids", {
+      attackerId: playerId,
+      targetType: "parshendi_spheres",
+      units: raidUnits,
+      power: 200,
+      speed: -60,
+      defensePower: 150,
+      rewardSpheres: 1800,
+      hostilityAtLaunch: 0,
+      scoringSeasonId: seasonId,
+      departAt: now,
+      arriveAt: now,
+      status: "pending",
+    }));
+    await t.mutation(internal.raids.resolveRaid, { raidId });
+    await t.mutation(internal.raids.resolveRaid, { raidId });
+    const result = await t.run(async (ctx) => ({
+      raid: await ctx.db.get(raidId),
+      player: await ctx.db.get(playerId),
+      pressure: await ctx.db.query("kingdomWorldPressure").withIndex("by_playerId", (q) => q.eq("playerId", playerId)).unique(),
+      scoreEvents: await ctx.db.query("seasonScoreEvents").collect(),
+    }));
+    expect(result.raid).toMatchObject({ status: "resolved", spheresRecovered: 1800 });
+    expect(result.player?.spheres).toBe(2800);
+    expect(result.pressure).toMatchObject({ hostility: WORLD_PRESSURE_RULES.hostility.gains.neutralRaidVictory });
+    expect(result.pressure?.lastPlayerAggressionAt).toBeUndefined();
+    expect(result.scoreEvents).toHaveLength(1);
+  });
+
+  test("ordinary raid recovery remains capped by launch-army Plunder", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const playerId = await addPlayer(t, "Light Column");
+    const raidId = await t.run(async (ctx) => await ctx.db.insert("raids", {
+      attackerId: playerId,
+      targetType: "parshendi_spheres",
+      units: { ...emptyUnits(), spearman: 100, chull: 1 },
+      power: 100,
+      speed: -1,
+      defensePower: 100,
+      rewardSpheres: 2400,
+      hostilityAtLaunch: 0,
+      departAt: now,
+      arriveAt: now,
+      status: "pending",
+    }));
+    await t.mutation(internal.raids.resolveRaid, { raidId });
+    const result = await t.run(async (ctx) => ({ raid: await ctx.db.get(raidId), player: await ctx.db.get(playerId) }));
+    expect(result.raid?.spheresRecovered).toBe(80);
+    expect(result.player?.spheres).toBe(1080);
+  });
+
+  test("public raid reward estimates receive the authoritative corrected constants", async () => {
+    const t = convexTest(schema, modules);
+    const config = await t.query(api.config.getGameConfig, {});
+    expect(config).toMatchObject({
+      parshendiSphereRaidMinReward: 1200,
+      parshendiSphereRaidMaxReward: 2400,
+      worldPressure: { rules: { neutralRaid: { rewardHostilityFactor: 1 } } },
+    });
   });
 
   test("a Deep Plains success uses snapshotted rewards, adds Hostility, and rolls Gemhearts once", async () => {

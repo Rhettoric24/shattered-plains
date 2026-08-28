@@ -14,7 +14,15 @@ import {
   WORLD_PRESSURE_RULES,
 } from "./worldPressureRules";
 import { neutralPlateauBaseDefense } from "./plateauHelpers";
-import { COMBAT_RULES, resistanceLabel } from "./rules";
+import {
+  applySurvivalLosses,
+  baseCasualtyRate,
+  casualtyRateAfterSurvivability,
+  COMBAT_RULES,
+  emptyUnits,
+  resistanceLabel,
+  unitPlunder,
+} from "./rules";
 import { presentIntelNumber } from "./intelligenceRules";
 
 describe("World Pressure rules", () => {
@@ -42,13 +50,38 @@ describe("World Pressure rules", () => {
     expect(materializeHostilityDecay({ hostility: 100, lastPlayerAggressionAt: 0, decayIntervalsApplied: 2, now: interval * 3 })).toMatchObject({ hostility: 83, decayIntervalsApplied: 3, intervalsAppliedNow: 1 });
   });
 
-  test("makes raid difficulty grow faster than rewards", () => {
+  test("scales ordinary raid defense and corrected rewards continuously with Hostility", () => {
     expect([0, 25, 50, 75, 100].map((hostility) => [
       hostilityScaledValue(COMBAT_RULES.parshendiSphereRaidMinDefense, hostility, WORLD_PRESSURE_RULES.neutralRaid.difficultyHostilityFactor),
       hostilityScaledValue(COMBAT_RULES.parshendiSphereRaidMaxDefense, hostility, WORLD_PRESSURE_RULES.neutralRaid.difficultyHostilityFactor),
     ])).toEqual([[100, 200], [125, 250], [150, 300], [175, 350], [200, 400]]);
-    expect(hostilityScaledValue(500, 100, WORLD_PRESSURE_RULES.neutralRaid.rewardHostilityFactor)).toBe(800);
-    expect(2).toBeGreaterThan(1.6);
+    expect([0, 25, 50, 75, 100].map((hostility) => [
+      hostilityScaledValue(COMBAT_RULES.parshendiSphereRaidMinReward, hostility, WORLD_PRESSURE_RULES.neutralRaid.rewardHostilityFactor),
+      hostilityScaledValue(COMBAT_RULES.parshendiSphereRaidMaxReward, hostility, WORLD_PRESSURE_RULES.neutralRaid.rewardHostilityFactor),
+    ])).toEqual([[1200, 2400], [1500, 3000], [1800, 3600], [2100, 4200], [2400, 4800]]);
+  });
+
+  test("keeps casualty and Plunder mechanics unchanged", () => {
+    const units = { ...emptyUnits(), spearman: 200, chull: 60 };
+    expect(baseCasualtyRate(200, 150)).toBe(0.1875);
+    expect(casualtyRateAfterSurvivability(0.1875, 320)).toBeCloseTo(0.0446428571);
+    expect(unitPlunder(units)).toBe(1900);
+    const losses = applySurvivalLosses(units, baseCasualtyRate(200, 150), "raid-economy-regression");
+    expect(losses.finalCasualtyRate).toBeCloseTo(0.0446428571);
+    expect(Object.values(losses.casualties).reduce((sum, count) => sum + count, 0)).toBe(12);
+  });
+
+  test("leaves Deep Plains economics and difficulty unchanged", () => {
+    expect(WORLD_PRESSURE_RULES.deepPlains).toMatchObject({
+      unlockMinimumHostility: 68,
+      durationMinutes: [360, 480],
+      defensePower: [220, 320],
+      difficultyHostilityFactor: 1.25,
+      sphereReward: [3000, 5000],
+      rewardHostilityFactor: 0.4,
+      casualtyRateBonus: 0.1,
+      gemheartChance: 0.1,
+    });
   });
 
   test("narrows one true raid defense without changing it", () => {
