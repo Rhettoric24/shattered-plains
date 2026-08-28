@@ -96,27 +96,44 @@ describe("espionage rules", () => {
 });
 
 describe("espionage backend", () => {
-  test("Economy disclosure persists with its resource while other Ledger intelligence decays", async () => {
+  test("Economy disclosure follows persistent amount across elapsed time, spending, and gains", async () => {
     const t = convexTest(schema, modules);
     const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "persistent-economy@example.com" }));
-    const viewerId = await addPlayer(t, "Persistent Economy", String(userId));
+    const viewerId = await addPlayer(t, "Persistent Economy", String(userId), { operatives: { informant: 1, spy: 0, ghostblood: 1 } });
     const targetId = await addPlayer(t, "Aged Reports");
-    const observedAt = Date.now() - ESPIONAGE_RULES.decayStepMs - 1_000;
+    const longAgo = Date.now() - ESPIONAGE_RULES.decayStepMs * 10;
     await t.run(async (ctx) => {
       const seasonId = await createFreshSeason(ctx, 1, 1);
       await ctx.db.insert("seasonScores", { seasonId, playerId: targetId, total: 80, categoryTotals: { military: 40, economy: 40, research: 0, territory: 0 }, updatedAt: 1 });
-      for (const category of ["military", "economy"] as const) {
-        await ctx.db.insert("kingdomIntelligence", { viewerPlayerId: viewerId, targetPlayerId: targetId, category, achievedLevel: 2, bestLevel: 2, observedScore: 40, observedAt, source: `${category} investigation` });
-      }
-      await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: viewerId, targetPlayerId: targetId, amount: 0, economyAmount: 100, updatedAt: 1 });
+      await ctx.db.insert("kingdomIntelligence", { viewerPlayerId: viewerId, targetPlayerId: targetId, category: "military", achievedLevel: 2, bestLevel: 2, observedScore: 40, observedAt: longAgo, source: "military investigation" });
+      await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: viewerId, targetPlayerId: targetId, amount: 0, economyAmount: 45, updatedAt: longAgo });
     });
 
-    const ledger = await t.withIdentity({ subject: String(userId) }).query(api.espionage.getKingdomLedger, {});
-    const cells = ledger.rows.find((row) => row.playerId === targetId)!.cells;
-    expect(cells.economy).toMatchObject({ currentLevel: 2, economyIntel: 100, nextDecayAt: null, presentation: { mode: "exact", display: "40" } });
-    expect(cells.military.currentLevel).toBe(1);
-    expect(cells.military.presentation.mode).toBe("range");
-    expect(cells.military.nextDecayAt).toEqual(expect.any(Number));
+    const asViewer = t.withIdentity({ subject: String(userId) });
+    let ledger = await asViewer.query(api.espionage.getKingdomLedger, {});
+    let cells = ledger.rows.find((row) => row.playerId === targetId)!.cells;
+    expect(cells.economy).toMatchObject({ currentLevel: 1, economyIntel: 45, nextDecayAt: null, presentation: { mode: "range" } });
+    expect(cells.military).toMatchObject({ currentLevel: 0, bestLevel: 2, presentation: { mode: "qualitative" } });
+
+    await t.run(async (ctx) => {
+      const resource = await ctx.db.query("kingdomIntelResources")
+        .withIndex("by_viewerPlayerId_and_targetPlayerId", (q) => q.eq("viewerPlayerId", viewerId).eq("targetPlayerId", targetId)).unique();
+      await ctx.db.patch(resource!._id, { economyAmount: 50 });
+    });
+    await asViewer.mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } });
+    ledger = await asViewer.query(api.espionage.getKingdomLedger, {});
+    expect(ledger.rows.find((row) => row.playerId === targetId)!.cells.economy).toMatchObject({ currentLevel: 0, economyIntel: 0, presentation: { mode: "qualitative" } });
+
+    await t.run(async (ctx) => {
+      const resource = await ctx.db.query("kingdomIntelResources")
+        .withIndex("by_viewerPlayerId_and_targetPlayerId", (q) => q.eq("viewerPlayerId", viewerId).eq("targetPlayerId", targetId)).unique();
+      await ctx.db.patch(resource!._id, { economyAmount: 60, updatedAt: longAgo });
+    });
+    const investigation = await asViewer.mutation(api.espionage.launchInvestigation, { targetPlayerId: targetId, category: "economy", operatives: { informant: 0, spy: 0, ghostblood: 1 }, intelSpend: 0 });
+    await t.mutation(internal.espionage.resolveInvestigation, { missionId: investigation.missionId });
+    ledger = await asViewer.query(api.espionage.getKingdomLedger, {});
+    cells = ledger.rows.find((row) => row.playerId === targetId)!.cells;
+    expect(cells.economy).toMatchObject({ currentLevel: 2, economyIntel: 75, nextDecayAt: null, presentation: { mode: "exact", display: "40" } });
   });
 
   test("legacy kingdoms receive a season and visible locked espionage defaults without a reset", async () => {
@@ -239,7 +256,7 @@ describe("espionage backend", () => {
     await t.run(async (ctx) => {
       const seasonId = await createFreshSeason(ctx, 1, 1);
       await ctx.db.insert("seasonScores", { seasonId, playerId: defenderId, total: 80, categoryTotals: { military: 20, economy: 20, research: 20, territory: 20 }, updatedAt: 1 });
-      await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attackerId, targetPlayerId: defenderId, amount: 48, updatedAt: 1 });
+      await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attackerId, targetPlayerId: defenderId, amount: 48, economyAmount: 50, updatedAt: 1 });
       await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attackerId, targetPlayerId: otherId, amount: 7, updatedAt: 1 });
       await ctx.db.insert("kingdomIntelligence", { viewerPlayerId: attackerId, targetPlayerId: defenderId, category: "military", achievedLevel: 2, bestLevel: 2, observedScore: 20, observedAt, source: "military_investigation" });
     });
@@ -311,7 +328,7 @@ describe("espionage backend", () => {
 
   });
 
-  test("legacy Economy reports provide a safe one-time authoritative Economy Intel fallback", async () => {
+  test("legacy Economy reports are materialized once into persistent Economy Intel", async () => {
     const t = convexTest(schema, modules);
     const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "legacy-economy@example.com" }));
     const attackerId = await addPlayer(t, "Legacy Economy", String(userId), { operatives: { informant: 1, spy: 0, ghostblood: 0 } });
@@ -322,6 +339,8 @@ describe("espionage backend", () => {
       await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attackerId, targetPlayerId: targetId, amount: 12, updatedAt: 1 });
     });
     const asAttacker = t.withIdentity({ subject: String(userId) });
+    expect(await t.mutation(internal.espionage.materializeLegacyEconomyIntelAmounts, { reportCursor: null })).toMatchObject({ migrated: 1 });
+    expect(await t.mutation(internal.espionage.materializeLegacyEconomyIntelAmounts, { reportCursor: null })).toMatchObject({ migrated: 0 });
     expect((await asAttacker.query(api.espionage.getStatus, {})).targets.find((target) => target.playerId === targetId)?.economyIntel).toBe(50);
     await asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } });
     const resource = await t.run(async (ctx) => await ctx.db.query("kingdomIntelResources").withIndex("by_viewerPlayerId_and_targetPlayerId", (q) => q.eq("viewerPlayerId", attackerId).eq("targetPlayerId", targetId)).unique());
