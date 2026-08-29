@@ -208,6 +208,7 @@ const refs = {
   markInboxRead: "messages:markInboxRead",
   markMessageRead: "messages:markMessageRead",
   listNotifications: "notifications:list",
+  getHighstormForecast: "highstorms:getForecast",
   getPushConfiguration: "notifications:getPushConfiguration",
   markNotificationRead: "notifications:markRead",
   markAllNotificationsRead: "notifications:markAllRead",
@@ -376,6 +377,7 @@ function subscriptionSpecs(data) {
     { key: "plateauRun", query: refs.getCurrentPlateauRun },
     { key: "inbox", query: refs.listInbox },
     { key: "notifications", query: refs.listNotifications },
+    { key: "highstorm", query: refs.getHighstormForecast },
     { key: "seasonLedger", query: refs.getSeasonLedger },
     { key: "worldPressure", query: refs.getWorldPressure },
     ...(routeNeedsChronicle(currentRoute) ? [{ key: "events", query: refs.listEvents }] : []),
@@ -476,7 +478,7 @@ async function load(options = {}) {
       return;
     }
 
-    const [raids, plateauSummary, plateauBoard, territoryIntelligence, plateauRun, inbox, espionage, kingdomLedger, ardentia, research, notifications, pushConfiguration, seasonLedger, worldPressure, playerSettings] = await Promise.all([
+    const [raids, plateauSummary, plateauBoard, territoryIntelligence, plateauRun, inbox, espionage, kingdomLedger, ardentia, research, notifications, highstorm, pushConfiguration, seasonLedger, worldPressure, playerSettings] = await Promise.all([
       client.query(refs.listVisibleRaids, {}),
       client.query(refs.getMyPlateauState, {}),
       routeNeedsPlateauBoard(currentRoute) ? client.query(refs.getSiegeBoard, {}) : Promise.resolve(null),
@@ -494,6 +496,7 @@ async function load(options = {}) {
       Number(playerSummary.player.buildings?.ardentMonastery || 0) >= 1 ? client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })) : Promise.resolve({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10, conclaves: [] }),
       Number(playerSummary.player.buildings?.ardentMonastery || 0) >= 1 ? client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })) : Promise.resolve({ unlocked: false, completedLevels: playerAccounting.completedResearch || {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } }),
       client.query(refs.listNotifications, {}).catch(() => ({ notifications: [], unreadCount: 0, preferences: { combat: true, missions: true, research: true, plateauRuns: true, messages: true }, devices: [], vapidPublicKey: null })),
+      client.query(refs.getHighstormForecast, {}).catch(() => null),
       sessionQueries.get("pushConfiguration", () => client.query(refs.getPushConfiguration, {}).catch(() => ({ vapidPublicKey: null, configured: false }))),
       client.query(refs.getSeasonLedger, {}).catch((error) => {
         console.warn("Season Ledger backend is unavailable.", error);
@@ -532,6 +535,7 @@ async function load(options = {}) {
       ardentia,
       research,
       notifications,
+      highstorm,
       pushConfiguration,
       seasonLedger,
       worldPressure,
@@ -670,6 +674,7 @@ function buildState(data) {
     research: data.research,
     seasonLedger: data.seasonLedger,
     worldPressure: data.worldPressure || { hostility: 0, state: { key: "quiet", label: "Quiet" }, progressPercent: 0, warning: null },
+    highstorm: data.highstorm || null,
     notifications: data.notifications?.notifications || [],
     notificationUnreadCount: data.notifications?.unreadCount || 0,
     notificationPreferences: data.notifications?.preferences || { combat: true, missions: true, research: true, plateauRuns: true, messages: true },
@@ -709,6 +714,7 @@ function render() {
   renderSelects();
   renderInboxBadge();
   renderNotifications();
+  renderHighstorm();
   renderRaidUnitInputs("sphere-raid-units");
   renderRaidUnitInputs("deep-plains-units");
   renderRaidUnitInputs("neutral-siege-units");
@@ -727,6 +733,31 @@ function render() {
   renderNavStates();
   showRoute(currentRoute, { history: "replace" });
 }
+
+function stormTime(timestamp, includeMinutes = true) {
+  return new Intl.DateTimeFormat(undefined, { timeZone: "America/Denver", hour: "numeric", ...(includeMinutes ? { minute: "2-digit" } : {}) }).format(new Date(timestamp));
+}
+
+function renderHighstorm() {
+  const storm = state.highstorm;
+  if (!storm) return;
+  const active = storm.active === true;
+  document.body.classList.toggle("highstorm-active", active);
+  let status;
+  if (active) status = "HIGHSTORM ACTIVE";
+  else if (storm.forecast?.exact) status = `Highstorm: ${stormTime(storm.forecast.startAt)}`;
+  else status = `Highstorm: ${stormTime(storm.forecast?.startAt)}–${stormTime(storm.forecast?.endAt)}`;
+  $("highstorm-status").textContent = status;
+  $("storm-details-state").textContent = active ? `The storm is active. Expected to pass at ${stormTime(storm.endAt)} Mountain Time.` : `${storm.state === "approaching" ? "The storm is approaching" : "The next storm is forecast"}: ${status.replace("Highstorm: ", "")} Mountain Time.`;
+  const dismissed = sessionStorage.getItem(`sp-highstorm-dismissed:${storm.stormId}`) === "1";
+  $("highstorm-banner").classList.toggle("hidden", !active || dismissed);
+}
+
+function openStormDetails() { const dialog=$("storm-details"); if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open",""); }
+$("highstorm-indicator")?.addEventListener("click", openStormDetails);
+$("highstorm-banner-details")?.addEventListener("click", openStormDetails);
+$("storm-details-close")?.addEventListener("click", () => $("storm-details").close());
+$("highstorm-banner-dismiss")?.addEventListener("click", () => { if(state?.highstorm) sessionStorage.setItem(`sp-highstorm-dismissed:${state.highstorm.stormId}`,"1"); $("highstorm-banner").classList.add("hidden"); });
 
 function renderAdminAccess() {
   const isAdmin = Boolean(state?.isAdmin);

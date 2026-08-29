@@ -13,6 +13,8 @@ import { plateauCountsForPlayer } from "./plateauHelpers";
 import { assignConclave, missionXpBudget, releaseConclave } from "./ardentiaHelpers";
 import { completedResearch } from "./researchHelpers";
 import { createNotification } from "./notificationHelpers";
+import { activeHighstorm } from "./highstorms";
+import { stormParshendiPower, stormRewardPool } from "./highstormRules";
 import { awardSeasonPoints, ensureActiveSeason } from "./seasonLedger";
 import { SEASON_SCORING_RULES } from "./seasonScoringRules";
 import type { Id } from "./_generated/dataModel";
@@ -180,6 +182,7 @@ async function createRaid(
   });
 
   await ctx.scheduler.runAt(arriveAt, internal.raids.resolveRaid, { raidId });
+  await ctx.scheduler.runAfter(0, internal.highstorms.processActiveStorm, {});
 
   return {
     raidId,
@@ -415,10 +418,9 @@ export const resolveRaid = internalMutation({
     }
 
     if (raid.targetType === "parshendi_spheres" || raid.targetType === "deep_plains") {
-      const defense =
-        raid.defensePower ?? COMBAT_RULES.parshendiSphereRaidMaxDefense;
-      const reward =
-        raid.rewardSpheres ?? COMBAT_RULES.parshendiSphereRaidMinReward;
+      const stormActive = (await activeHighstorm(ctx, now)).active;
+      const defense = stormParshendiPower(raid.defensePower ?? COMBAT_RULES.parshendiSphereRaidMaxDefense, stormActive);
+      const reward = stormRewardPool(raid.rewardSpheres ?? COMBAT_RULES.parshendiSphereRaidMinReward, stormActive);
       won = raid.power >= defense;
       const lossResult = applySurvivalLosses(
         normalizeUnits(raid.units),
@@ -442,8 +444,8 @@ export const resolveRaid = internalMutation({
         lastActiveAt: now,
       });
       resultText = won
-        ? `${attacker.name} overcame ${resistanceLabel(defense).toLowerCase()} resistance and recovered ${recovered} spheres from a ${rewardLabel(reward).toLowerCase()} cache.${leftBehind > 0 ? " Some spheres were left behind because the army lacked Plunder." : ""}${gemheartFound ? " The army returned with 1 Gemheart." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`
-        : `${attacker.name} failed against ${resistanceLabel(defense).toLowerCase()} resistance during ${raid.targetType === "deep_plains" ? "a Deep Plains Raid" : "a sphere raid"}. Casualties: ${casualtySummary(lossResult.casualties)}.`;
+        ? `${attacker.name} overcame ${resistanceLabel(defense).toLowerCase()} resistance and recovered ${recovered} spheres from a ${rewardLabel(reward).toLowerCase()} cache.${stormActive ? " Highstorm: Parshendi Power +40%. Highstorm Jackpot: Sphere reward pool ×2." : ""}${leftBehind > 0 ? " Some spheres were left behind because the army lacked Plunder." : ""}${gemheartFound ? " The army returned with 1 Gemheart." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`
+        : `${attacker.name} failed against ${resistanceLabel(defense).toLowerCase()} resistance during ${raid.targetType === "deep_plains" ? "a Deep Plains Raid" : "a sphere raid"}.${stormActive ? " Highstorm: Parshendi Power +40%." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`;
       if (won) {
         await applyHostility(ctx, {
           playerId: attacker._id,

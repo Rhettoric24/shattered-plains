@@ -3,6 +3,8 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
+crons.cron("process active Highstorm exposure", "* * * * *", internal.highstorms.processActiveStorm, {});
+
 crons.cron(
   "open scheduled Plateau Runs",
   "*/5 * * * *",

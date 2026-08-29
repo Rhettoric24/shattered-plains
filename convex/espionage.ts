@@ -4,6 +4,8 @@ import { internalMutation, mutation, query, type MutationCtx } from "./_generate
 import type { Doc, Id } from "./_generated/dataModel";
 import { settlePlayerEconomy } from "./economyHelpers";
 import { createNotification } from "./notificationHelpers";
+import { activeHighstorm } from "./highstorms";
+import { stormCounterIntelligence, stormInvestigationIntel } from "./highstormRules";
 import { requireCurrentPlayer } from "./ownership";
 import { plateauAttributeCountsForPlayer, plateauCountsForPlayer } from "./plateauHelpers";
 import { ownedOperativesIncludingAway, ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
@@ -450,9 +452,10 @@ export const launchSphereHeist = mutation({
 });
 
 async function resolveSphereHeist(ctx: MutationCtx, mission: Doc<"espionageMissions">, attacker: Doc<"players">, target: Doc<"players">, now: number) {
-  const outcome = resolveEspionageOutcome(mission.finalSpyPower, spyPower(target.defendingOperatives));
+  const stormActive = (await activeHighstorm(ctx, now)).active;
+  const outcome = resolveEspionageOutcome(mission.finalSpyPower, stormCounterIntelligence(spyPower(target.defendingOperatives), stormActive));
   const identityExposed = ESPIONAGE_RULES.sphereHeist.identityExposed[outcome];
-  const { casualties, survivors, lost } = sphereHeistCasualties(mission.operatives, outcome);
+  const { casualties, survivors, lost } = sphereHeistCasualties(mission.operatives, outcome, stormActive ? 2 : 1);
   const settledTarget = (await settlePlayerEconomy(ctx, target)).player;
   const settledAttacker = (await settlePlayerEconomy(ctx, attacker)).player;
   const spheresStolen = sphereHeistPayout(settledTarget.spheres, outcome);
@@ -471,7 +474,7 @@ async function resolveSphereHeist(ctx: MutationCtx, mission: Doc<"espionageMissi
   const outcomeName = outcome === "failure" ? "Catastrophic Failure" : outcome === "partial" ? "Failure" : outcome === "success" ? "Success" : "Overwhelming Success";
   const casualtyDetail = OPERATIVE_TIERS.filter((tier) => casualties[tier] > 0)
     .map((tier) => `${casualties[tier]} ${ESPIONAGE_RULES.operatives[tier].name}${casualties[tier] === 1 ? "" : "s"}`).join(", ") || "none";
-  const attackerBody = `${outcomeName} against ${target.name}. Spheres stolen: ${spheresStolen.toLocaleString()}. Operatives lost: ${lost} (${casualtyDetail}). Identity ${identityExposed ? "exposed" : "remained hidden"}. Economy Intel remaining: ${mission.economyIntelRemaining ?? 0}/${ESPIONAGE_RULES.sphereHeist.economyIntelCap}.`;
+  const attackerBody = `${outcomeName} against ${target.name}.${stormActive ? " Storm Cover: effective Counter-Intelligence reduced by 50%; existing failure casualty rate doubled." : ""} Spheres stolen: ${spheresStolen.toLocaleString()}. Operatives lost: ${lost} (${casualtyDetail}). Identity ${identityExposed ? "exposed" : "remained hidden"}. Economy Intel remaining: ${mission.economyIntelRemaining ?? 0}/${ESPIONAGE_RULES.sphereHeist.economyIntelCap}.`;
   await ctx.db.insert("messages", {
     toPlayerId: attacker._id, kind: "system", subject: `Sphere Heist: ${outcomeName}`, body: attackerBody,
     eventType: "sphere_heist_resolved", destinationView: "intelligence", destinationTab: "operations",
@@ -520,8 +523,9 @@ export const resolveInvestigation = internalMutation({
       return { resolved: true, outcome: "failure" as const };
     }
     if (mission.operation === "sphere_heist") return await resolveSphereHeist(ctx, mission, attacker, target, now);
-    const outcome = resolveEspionageOutcome(mission.finalSpyPower, spyPower(target.defendingOperatives));
-    const reward = ESPIONAGE_RULES.intelRewards[outcome];
+    const stormActive = (await activeHighstorm(ctx, now)).active;
+    const outcome = resolveEspionageOutcome(mission.finalSpyPower, stormCounterIntelligence(spyPower(target.defendingOperatives), stormActive));
+    const reward = stormInvestigationIntel(ESPIONAGE_RULES.intelRewards[outcome], outcome === "success" || outcome === "overwhelm", stormActive);
     const intel = await applyIntelReward(ctx, attacker, target._id, mission.category, reward, now);
     let incidentalCategory: EspionageCategory | undefined;
     if (outcome === "partial" || outcome === "success" || outcome === "overwhelm") {
@@ -547,7 +551,7 @@ export const resolveInvestigation = internalMutation({
           ? `The ${categoryName} investigation succeeded and also uncovered incidental ${SEASON_CATEGORIES[incidentalCategory!].name} intelligence.`
           : `The ${categoryName} investigation overwhelmed the target's defenses and produced a Bonus Discovery.`;
     const intelName = intel.resource === "economy" ? "Economy Intel" : "Intel";
-    await ctx.db.insert("messages", { toPlayerId: attacker._id, kind: "system", subject: `${categoryName} Investigation: ${outcome[0].toUpperCase()}${outcome.slice(1)}`, body: `${resultText} ${intelName} gained: ${reward}; stored against ${target.name}: ${intel.amount}/${intel.cap}.`, eventType: "espionage_resolved", destinationView: "intelligence", destinationTab: "ledger", entityType: "espionage_mission", entityId: String(mission._id), kingdomId: target._id, intelligenceCategory: mission.category, createdAt: now });
+    await ctx.db.insert("messages", { toPlayerId: attacker._id, kind: "system", subject: `${categoryName} Investigation: ${outcome[0].toUpperCase()}${outcome.slice(1)}`, body: `${resultText}${stormActive ? ` Storm Cover: effective Counter-Intelligence reduced by 50%.${outcome === "success" || outcome === "overwhelm" ? " Investigation Intel +50%." : ""}` : ""} ${intelName} gained: ${reward}; stored against ${target.name}: ${intel.amount}/${intel.cap}.`, eventType: "espionage_resolved", destinationView: "intelligence", destinationTab: "ledger", entityType: "espionage_mission", entityId: String(mission._id), kingdomId: target._id, intelligenceCategory: mission.category, createdAt: now });
     await createNotification(ctx, { playerId: attacker._id, category: "missions", eventType: "espionage_resolved", title: "Investigation Complete", body: resultText, destinationView: "intelligence", destinationTab: "ledger", entityId: String(mission._id), kingdomId: target._id, intelligenceCategory: mission.category, dedupeKey: `espionage:${mission._id}:attacker`, createdAt: now });
     if (outcome === "failure" || outcome === "partial") {
       const clear = outcome === "failure";

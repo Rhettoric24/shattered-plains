@@ -144,10 +144,10 @@ export function sphereHeistPayout(targetSpheres: number, outcome: EspionageOutco
   return Math.round(Math.min(Math.max(0, targetSpheres), payout) * 1000) / 1000;
 }
 
-export function sphereHeistCasualties(committed: Partial<OperativeCounts>, outcome: EspionageOutcome) {
+export function sphereHeistCasualties(committed: Partial<OperativeCounts>, outcome: EspionageOutcome, rateMultiplier = 1) {
   const commitment = normalizeOperatives(committed);
   const total = operativeCount(commitment);
-  const rate = ESPIONAGE_RULES.sphereHeist.casualtyRates[outcome];
+  const rate = Math.min(1, ESPIONAGE_RULES.sphereHeist.casualtyRates[outcome] * rateMultiplier);
   let remainingLosses = rate > 0 && total > 0 ? Math.min(total, Math.max(1, Math.ceil(total * rate))) : 0;
   const casualties = emptyOperatives();
   const survivors = normalizeOperatives(commitment);

@@ -90,6 +90,7 @@ export default defineSchema({
     arriveAt: v.number(),
     resolvedAt: v.optional(v.number()),
     status: v.union(v.literal("pending"), v.literal("resolved")),
+    lastHighstormExposureId: v.optional(v.string()),
   })
     .index("by_attacker", ["attackerId"])
     .index("by_attacker_and_status", ["attackerId", "status"])
@@ -153,6 +154,8 @@ export default defineSchema({
       v.literal("attacker_retreat"),
       v.literal("defender_retreat"),
     ),
+    attackerHighstormExposureId: v.optional(v.string()),
+    defenderHighstormExposureId: v.optional(v.string()),
   })
     .index("by_status_resolve", ["status", "resolveAt"])
     .index("by_attacker", ["attackerId"])
@@ -306,6 +309,7 @@ export default defineSchema({
     conclaveXpAwarded: v.optional(v.number()),
     doctrineJoinSpeedMultiplier: v.optional(v.number()),
     committedAt: v.number(),
+    lastHighstormExposureId: v.optional(v.string()),
   })
     .index("by_run", ["plateauRunId"])
     .index("by_player", ["playerId"])
@@ -360,6 +364,9 @@ export default defineSchema({
     key: v.string(),
     openAcres: v.number(),
     nextPlateauNameOrdinal: v.optional(v.number()),
+    highstormOverrideStartAt: v.optional(v.number()),
+    highstormOverrideEndAt: v.optional(v.number()),
+    highstormOverrideId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),

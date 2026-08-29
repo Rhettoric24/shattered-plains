@@ -309,6 +309,7 @@ export const joinPlateauRun = mutation({
       createdAt: now,
     });
 
+    await ctx.scheduler.runAfter(0, internal.highstorms.processActiveStorm, {});
     return { commitmentId, power, speed, travelMinutes, updated: Boolean(existingCommitment) };
   },
 });

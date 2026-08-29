@@ -23,6 +23,8 @@ import type * as espionage from "../espionage.js";
 import type * as espionageRules from "../espionageRules.js";
 import type * as eventHelpers from "../eventHelpers.js";
 import type * as game from "../game.js";
+import type * as highstormRules from "../highstormRules.js";
+import type * as highstorms from "../highstorms.js";
 import type * as http from "../http.js";
 import type * as intelligence from "../intelligence.js";
 import type * as intelligenceHelpers from "../intelligenceHelpers.js";
@@ -72,6 +74,8 @@ declare const fullApi: ApiFromModules<{
   espionageRules: typeof espionageRules;
   eventHelpers: typeof eventHelpers;
   game: typeof game;
+  highstormRules: typeof highstormRules;
+  highstorms: typeof highstorms;
   http: typeof http;
   intelligence: typeof intelligence;
   intelligenceHelpers: typeof intelligenceHelpers;

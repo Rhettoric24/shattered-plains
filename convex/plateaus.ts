@@ -21,6 +21,8 @@ import {
 } from "./ardentiaHelpers";
 import { completedResearch, reconcileResearch, recordSuccessfulDefensiveSiege } from "./researchHelpers";
 import { createNotification } from "./notificationHelpers";
+import { activeHighstorm } from "./highstorms";
+import { stormParshendiPower } from "./highstormRules";
 import { activeSeason, observePlateauNeutralized, observePlateauOwnership, recordOpponentAttack, recordSiegeDefenseScore, recordSiegeVictoryScore } from "./seasonLedger";
 import { subtractAvailableUnits, unitCountsValidator, validateMissionUnits } from "./armyRules";
 import {
@@ -576,6 +578,7 @@ export const launchNeutralSiege = mutation({
     await ctx.scheduler.runAt(resolveAt, internal.plateaus.resolveSiege, {
       siegeId,
     });
+    await ctx.scheduler.runAfter(0, internal.highstorms.processActiveStorm, {});
 
     return { siegeId, resolveAt };
   },
@@ -685,6 +688,7 @@ export const launchPlayerSiege = mutation({
     await ctx.scheduler.runAt(resolveAt, internal.plateaus.resolveSiege, {
       siegeId,
     });
+    await ctx.scheduler.runAfter(0, internal.highstorms.processActiveStorm, {});
 
     return { siegeId, resolveAt };
   },
@@ -731,6 +735,7 @@ export const commitSiegeDefenders = mutation({
       defenderCommittedAt: now,
     });
 
+    await ctx.scheduler.runAfter(0, internal.highstorms.processActiveStorm, {});
     return {
       committed: true,
       defenderPower,
@@ -925,10 +930,12 @@ export const resolveSiege = internalMutation({
         siege.emergencyDefensePercent ?? 0,
         defenderCompleted,
       );
-      const parshendiWon = siege.attackerPower > defenderPower;
+      const stormActive = (await activeHighstorm(ctx, now)).active;
+      const parshendiPower = stormParshendiPower(siege.attackerPower, stormActive);
+      const parshendiWon = parshendiPower > defenderPower;
       const defenderLossResult = applyLossRate(
         defenderUnits,
-        baseCasualtyRate(defenderPower, siege.attackerPower),
+        baseCasualtyRate(defenderPower, parshendiPower),
         `${siege._id}:retaliation:defender:${now}`,
         defenderCompleted,
       );
@@ -1008,10 +1015,12 @@ export const resolveSiege = internalMutation({
 
     if (siege.targetType === "neutral") {
       if (!attacker) return { resolved: false };
-      won = siege.attackerPower >= plateau.neutralDefenseRemaining;
+      const stormActive = (await activeHighstorm(ctx, now)).active;
+      const neutralDefense = stormParshendiPower(plateau.neutralDefenseRemaining, stormActive);
+      won = siege.attackerPower >= neutralDefense;
       const lossResult = applyLossRate(
         siege.attackerUnits,
-        baseCasualtyRate(siege.attackerPower, plateau.neutralDefenseRemaining),
+        baseCasualtyRate(siege.attackerPower, neutralDefense),
         `${siege._id}:neutral:${now}`,
         attackerCompleted,
         Boolean(siege.conclaveId),
