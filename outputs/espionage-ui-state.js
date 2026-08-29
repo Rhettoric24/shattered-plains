@@ -16,3 +16,11 @@ export function sphereHeistAvailability(economyIntel, cost = 50) {
     remainingIntel: Math.max(0, availableIntel - requiredIntel),
   };
 }
+
+export function espionageMissionAvailability({ selectedOperatives, hasTarget, heistIntelAvailable = true }) {
+  const selected = Math.max(0, Math.floor(Number(selectedOperatives) || 0));
+  return {
+    available: selected > 0 && Boolean(hasTarget) && Boolean(heistIntelAvailable),
+    selected,
+  };
+}

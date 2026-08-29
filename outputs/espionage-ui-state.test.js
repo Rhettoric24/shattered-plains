@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { sphereHeistAvailability, syncEspionageControlLock } from "./espionage-ui-state.js";
+import { espionageMissionAvailability, sphereHeistAvailability, syncEspionageControlLock } from "./espionage-ui-state.js";
 
 function controlHarness(initiallyDisabled) {
   const controls = [{ disabled: initiallyDisabled }, { disabled: initiallyDisabled }, { disabled: initiallyDisabled }];
@@ -33,5 +33,12 @@ describe("espionage UI state", () => {
     expect(sphereHeistAvailability(49, 50)).toEqual({ available: false, availableIntel: 49, requiredIntel: 50, remainingIntel: 0 });
     expect(sphereHeistAvailability(50, 50)).toEqual({ available: true, availableIntel: 50, requiredIntel: 50, remainingIntel: 0 });
     expect(sphereHeistAvailability(72, 50)).toEqual({ available: true, availableIntel: 72, requiredIntel: 50, remainingIntel: 22 });
+  });
+
+  test("requires a target and at least one operative before a mission can launch", () => {
+    expect(espionageMissionAvailability({ selectedOperatives: 0, hasTarget: true })).toEqual({ available: false, selected: 0 });
+    expect(espionageMissionAvailability({ selectedOperatives: 1, hasTarget: false })).toEqual({ available: false, selected: 1 });
+    expect(espionageMissionAvailability({ selectedOperatives: 1, hasTarget: true })).toEqual({ available: true, selected: 1 });
+    expect(espionageMissionAvailability({ selectedOperatives: 1, hasTarget: true, heistIntelAvailable: false })).toEqual({ available: false, selected: 1 });
   });
 });

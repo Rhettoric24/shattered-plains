@@ -1,5 +1,5 @@
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
-import { sphereHeistAvailability, syncEspionageControlLock } from "./espionage-ui-state.js";
+import { espionageMissionAvailability, sphereHeistAvailability, syncEspionageControlLock } from "./espionage-ui-state.js";
 import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
 import { createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, routeNeedsPlateauBoard, routeNeedsTerritoryIntelligence, runMutationAction } from "./data-loading-state.js";
 import { formatDisclosedPower, kingdomIntelTimingRows, plateauIdentityPresentation, raidDefenseMarkup } from "./intelligence-ui-state.js";
@@ -2469,9 +2469,18 @@ function updateEspionagePreview() {
   const operation = $("espionage-operation")?.value || "investigation";
   const boost = operation === "sphere_heist" ? 0 : Math.max(0, Math.floor(Number($("espionage-intel-spend")?.value) || 0));
   const selected = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  const launch = $("launch-espionage-mission");
+  const heistRules = rules.sphereHeist || ESPIONAGE_UI_DEFAULTS.sphereHeist;
+  const heistAvailability = sphereHeistAvailability(target?.economyIntel, heistRules.economyIntelCost);
+  if (launch) {
+    launch.disabled = !espionageMissionAvailability({
+      selectedOperatives: selected,
+      hasTarget: Boolean(target),
+      heistIntelAvailable: operation !== "sphere_heist" || heistAvailability.available,
+    }).available;
+  }
   if (operation === "sphere_heist") {
-    const heistRules = rules.sphereHeist || ESPIONAGE_UI_DEFAULTS.sphereHeist;
-    const availability = sphereHeistAvailability(target?.economyIntel, heistRules.economyIntelCost);
+    const availability = heistAvailability;
     preview.innerHTML = '<div class="outlook-heading"><span>Sphere Heist outlook</span><strong>' + escapeHtml(target?.name || "Choose a rival") + '</strong></div><div class="outlook-grid">' +
       outlookCell("Selected", number(selected) + " operatives", Object.entries(counts).map(([tier, count]) => number(count) + " " + (rules.operatives?.[tier]?.name || tier)).join("\n")) +
       outlookCell("Spy Power", number(base), "Compared with hidden target Counter-Intelligence at resolution") +
@@ -2557,7 +2566,7 @@ function renderEspionage() {
   }).join("") || '<div class="empty">No espionage missions launched yet.</div>';
   const controls = $("espionage-controls");
   syncEspionageControlLock(controls, networkLocked);
-  if (!networkLocked && isHeist && $("launch-espionage-mission")) $("launch-espionage-mission").disabled = !heistAvailability.available;
+  if (!networkLocked) updateEspionagePreview();
   if ($("launch-espionage-mission")) $("launch-espionage-mission").textContent = isHeist ? "Launch 2-hour Sphere Heist" : "Launch 2-hour investigation";
 }
 
