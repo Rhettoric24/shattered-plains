@@ -42,6 +42,18 @@ describe("post-overhaul shell", () => {
     expect(client).toContain("Maintains narrow estimates and adds +1 Counter-Intelligence");
   });
 
+  test("renders three accessible persisted Recruitment disclosure groups", () => {
+    expect(client).toContain('group("military", "Military Units"');
+    expect(client).toContain('group("ardents", "Ardents"');
+    expect(client).toContain('group("espionage", "Espionage Operatives"');
+    expect(client).toContain('data-recruitment-group="');
+    expect(client).toContain('localStorage.getItem("sp-recruitment-group-v1-" + key) !== "closed"');
+    expect(client).toContain('details.open ? "open" : "closed"');
+    expect(css).toContain(".recruitment-group > summary");
+    expect(css).toContain('content: "Expand ▾"');
+    expect(css).toContain('content: "Collapse ▴"');
+  });
+
   test("keeps player identity in the desktop header and mobile-accessible Settings", () => {
     expect(html).toContain('id="player-name" class="player-name-label"');
     expect(html).toContain('id="settings-player-name"');

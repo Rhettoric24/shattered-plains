@@ -100,6 +100,17 @@
 #unit-roster .recruit-preview.empty-draft { opacity: .56; }
 #unit-roster .unit-card.has-draft .recruit-preview { border-color: color-mix(in srgb, var(--unit-accent) 32%, transparent); }
 #unit-roster [data-recruit-submit] { min-height: 36px; margin-top: auto; }
+.recruitment-group { min-width: 0; border: 1px solid rgba(127, 183, 255, .22); border-radius: 9px; background: rgba(7, 17, 31, .45); overflow: clip; }
+.recruitment-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 11px 14px; cursor: pointer; list-style: none; user-select: none; }
+.recruitment-group > summary::-webkit-details-marker { display: none; }
+.recruitment-group > summary span:first-child { display: grid; min-width: 0; gap: 2px; }
+.recruitment-group > summary strong { color: var(--text); font-size: .9rem; letter-spacing: .08em; text-transform: uppercase; }
+.recruitment-group > summary small { color: var(--muted); font-size: .72rem; }
+.recruitment-group-affordance::before { content: "Expand ▾"; color: var(--accent); font-size: .72rem; font-weight: 800; }
+.recruitment-group[open] .recruitment-group-affordance::before { content: "Collapse ▴"; }
+.recruitment-group-content { padding: 0 12px 12px; }
+.recruitment-group-content.building-grid { display: grid; }
+.recruitment-group-content.personnel-group > .hint { margin: 0 0 10px; }
 .attack-outlook { grid-column: 1 / -1; display: grid; gap: 10px; border: 1px solid rgba(127, 183, 255, .3); border-radius: 8px; padding: 12px; background: linear-gradient(135deg, rgba(127, 183, 255, .1), rgba(7, 17, 31, .62)); }
 .outlook-heading { display: grid; gap: 4px; }
 .outlook-heading span { color: var(--accent-2); font-size: .7rem; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }

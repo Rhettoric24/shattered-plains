@@ -12,6 +12,7 @@
   #plateau-bonus-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .two-column { grid-template-columns: 1fr; }
   #unit-roster { grid-template-columns: 1fr; }
+  .recruitment-group > summary { min-height: 56px; }
 }
 
 @media (max-width: 720px) {
@@ -36,6 +37,9 @@
   .resource-strip { margin: 0; padding: 5px 7px; }
   .space-subnav { min-height: 48px; padding: 5px 7px; }
   .main-panel { padding: 10px 10px 14px; }
+  .recruitment-group > summary { min-height: 60px; padding: 10px 12px; }
+  .recruitment-group > summary strong { font-size: .84rem; }
+  .recruitment-group-content { padding: 0 8px 8px; }
   .primary-nav { position: fixed; z-index: 100; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; width: auto; max-height: none; padding: 5px 5px max(8px, env(safe-area-inset-bottom)); border: 1px solid rgba(127, 183, 255, .28); border-radius: 14px 14px 0 0; background: rgba(7, 17, 31, .985); box-shadow: 0 -10px 30px rgba(0, 0, 0, .42); }
   .primary-nav .nav-button { display: flex; place-content: center; align-items: center; gap: 3px; min-width: 0; min-height: 48px; padding: 3px 4px; font-size: .72rem; text-align: center; }
   .primary-nav [data-admin-only] { display: none; }

@@ -560,9 +560,31 @@ for (const destination of destinations) {
     }
     if (destination.name === "home") await expectNotificationSurfaceAccessible(page);
     if (destination.name === "warcamp-recruitment") {
+      const groups = page.locator("#unit-roster [data-recruitment-group]");
+      await expect(groups).toHaveCount(3);
+      for (const key of ["military", "ardents", "espionage"]) {
+        const group = page.locator(`[data-recruitment-group="${key}"]`);
+        await expect(group).toHaveAttribute("open", "");
+        await expect(group.locator(":scope > summary")).toBeVisible();
+      }
       await expect(page.locator("#unit-roster [data-recruit-submit]").first()).toBeVisible();
       await expect(page.locator("#unit-roster [data-recruit-conclave]")).toBeVisible();
       await expect(page.locator("#unit-roster [data-recruit-operative]")).toHaveCount(3);
+      const military = page.locator('[data-recruitment-group="military"]');
+      await military.locator(":scope > summary").click();
+      await expect(military).not.toHaveAttribute("open", "");
+      await expect(military.locator("[data-recruit-submit]").first()).toBeHidden();
+      await expect(page.locator('[data-recruitment-group="ardents"] [data-recruit-conclave]')).toBeVisible();
+      await military.locator(":scope > summary").click();
+      await expect(military.locator("[data-recruit-submit]").first()).toBeVisible();
+      const espionage = page.locator('[data-recruitment-group="espionage"]');
+      await espionage.locator(":scope > summary").click();
+      await expect.poll(() => page.evaluate(() => localStorage.getItem("sp-recruitment-group-v1-espionage"))).toBe("closed");
+      await page.reload();
+      await destination.open(page);
+      await expect(page.locator('[data-recruitment-group="espionage"]')).not.toHaveAttribute("open", "");
+      await page.locator('[data-recruitment-group="espionage"] > summary').click();
+      await expect(page.locator('[data-recruitment-group="espionage"] [data-recruit-operative]')).toHaveCount(3);
     }
     if (destination.name === "intelligence") await expectEspionageLayouts(page);
     if (destination.name === "plains-sieges") {
