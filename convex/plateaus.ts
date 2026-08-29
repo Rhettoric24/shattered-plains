@@ -70,6 +70,8 @@ import {
   reconcileRetaliationSchedule,
 } from "./worldPressure";
 import { plateauCaptureHostility, reclamationDefense } from "./worldPressureRules";
+import { applyFabrialCasualtyProtection } from "./fabrialRules";
+import { reserveFabrial, settleReusableFabrial } from "./fabrialHelpers";
 
 function cleanUnits(units: UnitCounts) {
   return normalizeUnits(units);
@@ -517,6 +519,7 @@ export const launchNeutralSiege = mutation({
     units: unitCountsValidator,
     ardentiaConclave: v.optional(v.boolean()),
     conclaveId: v.optional(v.id("ardentConclaves")),
+    fabrial: v.optional(v.union(v.literal("painrial"), v.literal("halfShard"))),
   },
   handler: async (ctx, args) => {
     const attacker = await requireCurrentPlayer(ctx);
@@ -538,6 +541,7 @@ export const launchNeutralSiege = mutation({
     );
 
     const now = Date.now();
+    await reserveFabrial(ctx, attacker._id, args.fabrial, now);
     await applyHostility(ctx, { playerId: attacker._id, playerInitiated: true, now });
     const plateauCounts = await plateauCountsForPlayer(ctx, attacker._id);
     const completed = await completedResearch(ctx, attacker._id);
@@ -559,6 +563,7 @@ export const launchNeutralSiege = mutation({
       departAt: now,
       resolveAt,
       status: "pending",
+      ...(args.fabrial ? { fabrialKind: args.fabrial } : {}),
     });
 
     await ctx.db.patch(attacker._id, {
@@ -590,6 +595,7 @@ export const launchPlayerSiege = mutation({
     units: unitCountsValidator,
     ardentiaConclave: v.optional(v.boolean()),
     conclaveId: v.optional(v.id("ardentConclaves")),
+    fabrial: v.optional(v.union(v.literal("painrial"), v.literal("halfShard"))),
   },
   handler: async (ctx, args) => {
     const attacker = await requireCurrentPlayer(ctx);
@@ -617,6 +623,7 @@ export const launchPlayerSiege = mutation({
     );
 
     const now = Date.now();
+    await reserveFabrial(ctx, attacker._id, args.fabrial, now);
     const scoring = await recordOpponentAttack(ctx, attacker._id, defender._id, now);
     const completed = await completedResearch(ctx, attacker._id);
     const resolveAt = now + siegeTravelMs();
@@ -642,6 +649,7 @@ export const launchPlayerSiege = mutation({
       status: "pending",
       scoringSeasonId: scoring.seasonId,
       opponentChainPosition: scoring.chainPosition,
+      ...(args.fabrial ? { fabrialKind: args.fabrial } : {}),
     });
 
     await ctx.db.patch(attacker._id, {
@@ -908,6 +916,7 @@ export const resolveSiege = internalMutation({
     let resultText = "";
     let survivors = siege.attackerUnits;
     let awardedConclaveXp: number | undefined;
+    let fabrialPreventedCasualties = siege.fabrialPreventedCasualties ?? 0;
 
     if (siege.targetType === "parshendi_retaliation") {
       const defender = siege.defenderId ? await ctx.db.get(siege.defenderId) : null;
@@ -1018,13 +1027,15 @@ export const resolveSiege = internalMutation({
       const stormActive = (await activeHighstorm(ctx, now)).active;
       const neutralDefense = stormParshendiPower(plateau.neutralDefenseRemaining, stormActive);
       won = siege.attackerPower >= neutralDefense;
-      const lossResult = applyLossRate(
+      const rawLossResult = applyLossRate(
         siege.attackerUnits,
         baseCasualtyRate(siege.attackerPower, neutralDefense),
         `${siege._id}:neutral:${now}`,
         attackerCompleted,
         Boolean(siege.conclaveId),
       );
+      const lossResult = applyFabrialCasualtyProtection(siege.fabrialKind, rawLossResult);
+      fabrialPreventedCasualties += lossResult.prevented;
       survivors = lossResult.survivors;
       const investigation = resolveConclaveInvestigation(
         Boolean(siege.ardentiaConclave),
@@ -1105,13 +1116,15 @@ export const resolveSiege = internalMutation({
           defenderCompleted,
         );
         won = siege.attackerPower > defenderPower;
-        const attackerLossResult = applyLossRate(
+        const rawAttackerLossResult = applyLossRate(
           siege.attackerUnits,
           baseCasualtyRate(siege.attackerPower, defenderPower),
           `${siege._id}:player:attacker:${now}`,
           attackerCompleted,
           Boolean(siege.conclaveId),
         );
+        const attackerLossResult = applyFabrialCasualtyProtection(siege.fabrialKind, rawAttackerLossResult);
+        fabrialPreventedCasualties += attackerLossResult.prevented;
         survivors = attackerLossResult.survivors;
         const investigation = resolveConclaveInvestigation(
           Boolean(siege.ardentiaConclave),
@@ -1218,11 +1231,17 @@ export const resolveSiege = internalMutation({
     }
 
     if (!attacker) return { resolved: false };
+    if (fabrialPreventedCasualties > 0) resultText += ` ${siege.fabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${fabrialPreventedCasualties} casualties.`;
+    const reusable = await settleReusableFabrial(ctx, attacker._id, siege.fabrialKind, won ? "normal_success" : "lower_failure", `siege:${siege._id}:fabrial-loss`, now);
+    if (reusable.lost) resultText += " The retreat became chaotic. The Half-Shard was lost.";
     await ctx.db.patch(siege._id, {
       status: "resolved",
       resolvedAt: now,
       conclaveXpAwarded: awardedConclaveXp,
       ...(siege.targetType === "player" ? { defenderHeld: !won } : {}),
+      fabrialResolvedAt: siege.fabrialKind ? now : undefined,
+      fabrialLost: siege.fabrialKind ? reusable.lost : undefined,
+      fabrialPreventedCasualties: siege.fabrialKind ? fabrialPreventedCasualties : undefined,
     });
     await ctx.db.insert("messages", {
       toPlayerId: attacker._id,

@@ -91,6 +91,11 @@ export default defineSchema({
     resolvedAt: v.optional(v.number()),
     status: v.union(v.literal("pending"), v.literal("resolved")),
     lastHighstormExposureId: v.optional(v.string()),
+    fabrialKind: v.optional(v.union(v.literal("painrial"), v.literal("soulcaster"), v.literal("halfShard"))),
+    fabrialResolvedAt: v.optional(v.number()),
+    fabrialLost: v.optional(v.boolean()),
+    fabrialPreventedCasualties: v.optional(v.number()),
+    fabrialSoulcasterBonus: v.optional(v.number()),
   })
     .index("by_attacker", ["attackerId"])
     .index("by_attacker_and_status", ["attackerId", "status"])
@@ -156,6 +161,10 @@ export default defineSchema({
     ),
     attackerHighstormExposureId: v.optional(v.string()),
     defenderHighstormExposureId: v.optional(v.string()),
+    fabrialKind: v.optional(v.union(v.literal("painrial"), v.literal("soulcaster"), v.literal("halfShard"))),
+    fabrialResolvedAt: v.optional(v.number()),
+    fabrialLost: v.optional(v.boolean()),
+    fabrialPreventedCasualties: v.optional(v.number()),
   })
     .index("by_status_resolve", ["status", "resolveAt"])
     .index("by_attacker", ["attackerId"])
@@ -359,6 +368,19 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_playerId", ["playerId"]),
+
+  playerFabrials: defineTable({
+    playerId: v.id("players"),
+    kind: v.union(v.literal("painrial"), v.literal("soulcaster"), v.literal("halfShard")),
+    owned: v.number(),
+    committed: v.number(),
+    discoveredAt: v.number(),
+    prototypeGrantedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_playerId", ["playerId"])
+    .index("by_playerId_and_kind", ["playerId", "kind"]),
 
   gameState: defineTable({
     key: v.string(),

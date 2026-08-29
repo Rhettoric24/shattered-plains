@@ -6,6 +6,7 @@ import { plateauCountsForPlayer } from "./plateauHelpers";
 import { createNotification } from "./notificationHelpers";
 import { awardSeasonPoints } from "./seasonLedger";
 import { SEASON_SCORING_RULES } from "./seasonScoringRules";
+import { evaluateFabrialDiscoveries } from "./fabrialHelpers";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -66,6 +67,7 @@ export async function reconcileResearch(ctx: MutationCtx, playerId: Id<"players"
     const doctrineChanged = Boolean(completingDoctrine && state.economicDoctrine && state.economicDoctrine !== completingDoctrine);
     const unlockFuture = (key === "sprenStudies" || key === "religiousStudies") && level >= 4;
     await ctx.db.patch(state._id, { completedLevels, economicDoctrine: completingDoctrine ?? state.economicDoctrine, doctrineChangeCount: (state.doctrineChangeCount ?? 0) + (doctrineChanged ? 1 : 0), futurePathUnlocked: state.futurePathUnlocked || unlockFuture || undefined, activeProject: undefined, activeDoctrine: undefined, activeLevel: undefined, status: undefined, accumulatedBaseMs: undefined, activeDurationBaseMs: undefined, lastAdvancedAt: undefined, projectedCompletionAt: undefined, updatedAt: now });
+    if (key) await evaluateFabrialDiscoveries(ctx, playerId, completedLevels, now);
     const completedName = completingDoctrine ? completingDoctrine : rule!.name;
     if (key) await awardSeasonPoints(ctx, {
       playerId, category: "research", sourceType: "research_completion", sourceKey: `research:${state._id}:${key}:${level}`,

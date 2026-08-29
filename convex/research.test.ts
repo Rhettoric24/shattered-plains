@@ -30,6 +30,13 @@ describe("research configuration", () => {
     expect(ARDENTIA_RULES.monasteryAncientPlateausRequired).toBe(2);
   });
 
+  test("keeps legacy project IDs behind the cleaned-up player-facing names", () => {
+    expect(RESEARCH_RULES.projects.painrialMedicine.name).toBe("Field Surgery");
+    expect(RESEARCH_RULES.projects.soulcastArmor.name).toBe("Tailored Armor");
+    expect(RESEARCH_RULES.projects.soulcasting.name).toBe("Warcamp Architecture");
+    expect(RESEARCH_RULES.projects.painrialMedicine).not.toHaveProperty("powerEffects");
+  });
+
   test("maps Conclave XP to five ranks", () => {
     expect([0, 499, 500, 1000, 1500, 2000].map(conclaveRank)).toEqual([1, 1, 2, 3, 4, 5]);
   });
@@ -83,7 +90,7 @@ describe("research switching", () => {
 });
 
 describe("permanent mechanic effects", () => {
-  test("Soulcast Armor adds power per Spearman", () => {
+  test("Tailored Armor adds power per Spearman", () => {
     expect(effectivePower(units, { soulcastArmor: 3 }) - effectivePower(units)).toBeCloseTo(100);
   });
 
@@ -103,12 +110,12 @@ describe("permanent mechanic effects", () => {
     expect(improved).toBeLessThan(baseline);
   });
 
-  test("Painrials use per-Spearman Survival and Power", () => {
+  test("Field Surgery uses per-Spearman Survival without adding Power", () => {
     const baseline = applySurvivalLosses(units, 0.5, "same-seed");
     const researched = applySurvivalLosses(units, 0.5, "same-seed", { painrialMedicine: 3 });
     expect(researched.finalCasualtyRate).toBeLessThan(baseline.finalCasualtyRate);
     expect(effectiveSurvivability(units, { painrialMedicine: 3 }) - effectiveSurvivability(units)).toBe(200);
-    expect(effectivePower(units, { painrialMedicine: 3 }) - effectivePower(units)).toBe(50);
+    expect(effectivePower(units, { painrialMedicine: 3 }) - effectivePower(units)).toBe(0);
   });
 
   test("Siege Engineering discounts the existing cost curve", () => {

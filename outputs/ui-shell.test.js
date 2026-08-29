@@ -64,6 +64,18 @@ describe("post-overhaul shell", () => {
     expect(html).toMatch(/Build:\s*<code id="build-identifier">[^<]+<\/code>/);
   });
 
+  test("adds the mystery Fabrial tab and supported mission selectors without spendable AP language", () => {
+    expect(html).toContain('id="view-research-fabrials"');
+    expect(html).toContain('id="research-fabrials"');
+    expect(html).toContain('id="sphere-fabrial"');
+    expect(html).toContain('id="deep-plains-fabrial"');
+    expect(html).toContain('id="neutral-fabrial"');
+    expect(html).toContain('id="player-fabrial"');
+    expect(client).toContain('aria-label="Unexplored scholarly applications"');
+    expect(client).toContain("Ancient Plateaus");
+    expect(client).not.toContain("Research AP");
+  });
+
   test("makes the principal Home summaries full width", () => {
     expect(html).toContain("home-module home-kingdom");
     expect(css).toContain(".home-kingdom");

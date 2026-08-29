@@ -27,6 +27,7 @@ type AnyCtx = QueryCtx | MutationCtx;
 type GameplayTable =
   | "ardentConclaves"
   | "playerResearch"
+  | "playerFabrials"
   | "intelligenceReports"
   | "espionageMissions"
   | "kingdomIntelligence"
@@ -137,6 +138,7 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
     seasons: await deleteGameplayTable(ctx, "seasons"),
     ardentConclaves: await deleteGameplayTable(ctx, "ardentConclaves"),
     playerResearch: await deleteGameplayTable(ctx, "playerResearch"),
+    playerFabrials: await deleteGameplayTable(ctx, "playerFabrials"),
     intelligenceReports: await deleteGameplayTable(ctx, "intelligenceReports"),
     plateauCommitments: await deleteGameplayTable(ctx, "plateauCommitments"),
     plateauRuns: await deleteGameplayTable(ctx, "plateauRuns"),

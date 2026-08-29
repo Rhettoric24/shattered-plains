@@ -39,6 +39,8 @@ import {
   type UnitCounts,
 } from "./rules";
 import { applyHostility } from "./worldPressure";
+import { applyFabrialCasualtyProtection, soulcasterRecovery, type FabrialKey } from "./fabrialRules";
+import { reserveFabrial, settleReusableFabrial } from "./fabrialHelpers";
 import {
   hostilityScaledValue,
   raidDefenseDisclosure,
@@ -60,6 +62,7 @@ async function createRaid(
     units: UnitCounts;
     acres?: number;
     conclaveId?: Id<"ardentConclaves">;
+    fabrial?: FabrialKey;
   },
 ) {
   const attacker = await ctx.db.get(args.attackerId);
@@ -89,6 +92,8 @@ async function createRaid(
   }
 
   const now = Date.now();
+  if (args.fabrial && args.targetType !== "parshendi_spheres" && args.targetType !== "deep_plains") throw new Error("Fabrials are not supported for that raid type.");
+  await reserveFabrial(ctx, attacker._id, args.fabrial, now);
   const neutralAggression = args.targetType === "parshendi_spheres" || args.targetType === "deep_plains";
   const pressure = neutralAggression
     ? await applyHostility(ctx, { playerId: attacker._id, playerInitiated: true, now })
@@ -150,6 +155,7 @@ async function createRaid(
     arriveAt,
     status: "pending",
     scoringSeasonId: scoringSeason._id,
+    ...(args.fabrial ? { fabrialKind: args.fabrial } : {}),
   });
   if (args.conclaveId) {
     await assignConclave(ctx, attacker._id, args.conclaveId, "raid", String(raidId));
@@ -209,6 +215,7 @@ export const launchSphereRaid = mutation({
   args: {
     units: unitCountsValidator,
     conclaveId: v.optional(v.id("ardentConclaves")),
+    fabrial: v.optional(v.union(v.literal("painrial"), v.literal("soulcaster"), v.literal("halfShard"))),
   },
   handler: async (ctx, args) => {
     const attacker = await requireCurrentPlayer(ctx);
@@ -217,6 +224,7 @@ export const launchSphereRaid = mutation({
       targetType: "parshendi_spheres",
       units: args.units,
       conclaveId: args.conclaveId,
+      fabrial: args.fabrial,
     });
   },
 });
@@ -225,6 +233,7 @@ export const launchDeepPlainsRaid = mutation({
   args: {
     units: unitCountsValidator,
     conclaveId: v.optional(v.id("ardentConclaves")),
+    fabrial: v.optional(v.union(v.literal("painrial"), v.literal("soulcaster"), v.literal("halfShard"))),
   },
   handler: async (ctx, args) => {
     const attacker = await requireCurrentPlayer(ctx);
@@ -233,6 +242,7 @@ export const launchDeepPlainsRaid = mutation({
       targetType: "deep_plains",
       units: args.units,
       conclaveId: args.conclaveId,
+      fabrial: args.fabrial,
     });
   },
 });
@@ -381,6 +391,8 @@ export const resolveRaid = internalMutation({
     let resultText = "";
     let survivors = raid.units;
     let spheresRecovered = 0;
+    let fabrialPreventedCasualties = raid.fabrialPreventedCasualties ?? 0;
+    let fabrialSoulcasterBonus = 0;
 
     if (raid.targetType === "open_acres") {
       const world = await ctx.db
@@ -391,13 +403,15 @@ export const resolveRaid = internalMutation({
       const defense =
         COMBAT_RULES.openDefenseBase + acres * COMBAT_RULES.openDefensePerAcre;
       won = raid.power >= defense && acres > 0;
-      const lossResult = applySurvivalLosses(
+      const rawLossResult = applySurvivalLosses(
         normalizeUnits(raid.units),
         baseCasualtyRate(raid.power, defense),
         `${raid._id}:open:${now}`,
         completed,
         Boolean(raid.conclaveId),
       );
+      const lossResult = applyFabrialCasualtyProtection(raid.fabrialKind, rawLossResult);
+      fabrialPreventedCasualties += lossResult.prevented;
       survivors = lossResult.survivors;
 
       if (won && world) {
@@ -422,16 +436,22 @@ export const resolveRaid = internalMutation({
       const defense = stormParshendiPower(raid.defensePower ?? COMBAT_RULES.parshendiSphereRaidMaxDefense, stormActive);
       const reward = stormRewardPool(raid.rewardSpheres ?? COMBAT_RULES.parshendiSphereRaidMinReward, stormActive);
       won = raid.power >= defense;
-      const lossResult = applySurvivalLosses(
+      const rawLossResult = applySurvivalLosses(
         normalizeUnits(raid.units),
         Math.min(ARMY_RULES.maximumFinalCasualtyRate, baseCasualtyRate(raid.power, defense) + (raid.targetType === "deep_plains" ? WORLD_PRESSURE_RULES.deepPlains.casualtyRateBonus : 0)),
         `${raid._id}:${raid.targetType}:${now}`,
         completed,
         Boolean(raid.conclaveId),
       );
+      const lossResult = applyFabrialCasualtyProtection(raid.fabrialKind, rawLossResult);
+      fabrialPreventedCasualties += lossResult.prevented;
       survivors = lossResult.survivors;
       const plunder = unitPlunder(normalizeUnits(raid.units), completed, Boolean(raid.conclaveId));
-      const recovered = won ? Math.min(reward, plunder) : 0;
+      const recovery = raid.fabrialKind === "soulcaster"
+        ? soulcasterRecovery(reward, plunder, won)
+        : { normalRecovery: won ? Math.min(reward, plunder) : 0, bonus: 0, totalRecovery: won ? Math.min(reward, plunder) : 0 };
+      const recovered = recovery.totalRecovery;
+      fabrialSoulcasterBonus = recovery.bonus;
       spheresRecovered = recovered;
       const gemheartFound = raid.targetType === "deep_plains" && won &&
         seededFraction(`${raid._id}:deep-plains:gemheart`) < WORLD_PRESSURE_RULES.deepPlains.gemheartChance;
@@ -481,13 +501,15 @@ export const resolveRaid = internalMutation({
         const homePower = effectivePower(defender.units, defenderCompleted);
         const acres = Math.min(raid.acres ?? 1, Math.max(0, defender.acres - 1));
         won = raid.power > homePower && acres > 0;
-        const attackerLossResult = applySurvivalLosses(
+        const rawAttackerLossResult = applySurvivalLosses(
           normalizeUnits(raid.units),
           baseCasualtyRate(raid.power, homePower),
           `${raid._id}:player:attacker:${now}`,
           completed,
           Boolean(raid.conclaveId),
         );
+        const attackerLossResult = applyFabrialCasualtyProtection(raid.fabrialKind, rawAttackerLossResult);
+        fabrialPreventedCasualties += attackerLossResult.prevented;
         survivors = attackerLossResult.survivors;
         const defenderLossResult = applySurvivalLosses(
           normalizeUnits(defender.units),
@@ -544,6 +566,10 @@ export const resolveRaid = internalMutation({
 
     const baseConclaveXp = won ? missionXpBudget(raid.defensePower ?? raid.power) : Math.ceil(missionXpBudget(raid.defensePower ?? raid.power) / 2);
     const awardedConclaveXp = raid.conclaveId ? await releaseConclave(ctx, raid.conclaveId, baseConclaveXp) : undefined;
+    if (fabrialPreventedCasualties > 0) resultText += ` ${raid.fabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${fabrialPreventedCasualties} casualties.`;
+    if (fabrialSoulcasterBonus > 0) resultText += ` Your Soulcaster recovered an additional ${fabrialSoulcasterBonus.toLocaleString()} Spheres beyond the army's normal Plunder capacity.`;
+    const reusable = await settleReusableFabrial(ctx, attacker._id, raid.fabrialKind, won ? "normal_success" : "lower_failure", `raid:${raid._id}:fabrial-loss`, now);
+    if (reusable.lost) resultText += ` The retreat became chaotic. The ${raid.fabrialKind === "halfShard" ? "Half-Shard" : "Soulcaster"} was lost.`;
     if ((raid.targetType === "parshendi_spheres" || raid.targetType === "deep_plains") && won && spheresRecovered > 0 && raid.scoringSeasonId) {
       await awardSeasonPoints(ctx, {
         seasonId: raid.scoringSeasonId,
@@ -563,6 +589,10 @@ export const resolveRaid = internalMutation({
       resolvedAt: now,
       conclaveXpAwarded: awardedConclaveXp,
       spheresRecovered,
+      fabrialResolvedAt: raid.fabrialKind ? now : undefined,
+      fabrialLost: raid.fabrialKind ? reusable.lost : undefined,
+      fabrialPreventedCasualties: raid.fabrialKind ? fabrialPreventedCasualties : undefined,
+      fabrialSoulcasterBonus: raid.fabrialKind ? fabrialSoulcasterBonus : undefined,
     });
     await ctx.db.insert("messages", {
       toPlayerId: attacker._id,

@@ -53,7 +53,7 @@ const SPACE_TABS = {
   warcamp: [{ key: "buildings", label: "Buildings" }, { key: "recruitment", label: "Recruitment" }],
   plains: [{ key: "raids", label: "Raids" }, { key: "sieges", label: "Sieges" }, { key: "plateau-runs", label: "Plateau Runs" }],
   intelligence: [{ key: "ledger", label: "Ledger" }, { key: "operations", label: "Operations" }, { key: "territory", label: "Territory" }],
-  research: [{ key: "current", label: "Current" }, { key: "libraries", label: "Libraries" }, { key: "ardents", label: "Ardents" }],
+  research: [{ key: "current", label: "Current" }, { key: "libraries", label: "Libraries" }, { key: "ardents", label: "Ardents" }, { key: "fabrials", label: "???" }],
 };
 const ROUTE_SECTIONS = {
   home: "overview",
@@ -68,6 +68,7 @@ const ROUTE_SECTIONS = {
   "research:current": "research-current",
   "research:libraries": "research-libraries",
   "research:ardents": "research-ardents",
+  "research:fabrials": "research-fabrials",
   "research:teaser": "research-teaser",
   spanreed: "inbox",
   testing: "testing",
@@ -107,7 +108,7 @@ function routeFromLocation() {
 }
 
 let currentRoute = routeFromLocation();
-let lastSelections = { trainUnit: "", target: "", attackUnits: {}, recruitment: {}, espionageMission: {}, espionageDefense: {}, espionageOperation: "investigation" };
+let lastSelections = { trainUnit: "", target: "", attackUnits: {}, recruitment: {}, fabrials: {}, espionageMission: {}, espionageDefense: {}, espionageOperation: "investigation" };
 let previewListenersReady = false;
 let activePopoverAnchor = null;
 let inboxFilter = "all";
@@ -181,6 +182,8 @@ const refs = {
   disbandConclave: "ardentia:disbandConclave",
   renameConclave: "ardentia:renameConclave",
   getResearchStatus: "research:getStatus",
+  getFabrialStatus: "fabrials:getStatus",
+  fabricateFabrial: "fabrials:fabricate",
   startResearch: "research:start",
   startDoctrine: "research:startDoctrine",
   launchSphereRaid: "raids:launchSphereRaid",
@@ -393,6 +396,7 @@ function subscriptionSpecs(data) {
     ...(monastery >= 1 ? [
       { key: "ardentia", query: refs.getArdentiaStatus },
       { key: "research", query: refs.getResearchStatus },
+      { key: "fabrials", query: refs.getFabrialStatus },
     ] : []),
   ];
 }
@@ -481,7 +485,7 @@ async function load(options = {}) {
       return;
     }
 
-    const [raids, plateauSummary, plateauBoard, territoryIntelligence, plateauRun, inbox, espionage, kingdomLedger, ardentia, research, notifications, highstorm, pushConfiguration, seasonLedger, worldPressure, playerSettings] = await Promise.all([
+    const [raids, plateauSummary, plateauBoard, territoryIntelligence, plateauRun, inbox, espionage, kingdomLedger, ardentia, research, fabrials, notifications, highstorm, pushConfiguration, seasonLedger, worldPressure, playerSettings] = await Promise.all([
       client.query(refs.listVisibleRaids, {}),
       client.query(refs.getMyPlateauState, {}),
       routeNeedsPlateauBoard(currentRoute) ? client.query(refs.getSiegeBoard, {}) : Promise.resolve(null),
@@ -498,6 +502,7 @@ async function load(options = {}) {
       }) : Promise.resolve({ locked: true, season: null, rows: [], generatedAt: Date.now() }),
       Number(playerSummary.player.buildings?.ardentMonastery || 0) >= 1 ? client.query(refs.getArdentiaStatus, {}).catch(() => ({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 })) : Promise.resolve({ owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10, conclaves: [] }),
       Number(playerSummary.player.buildings?.ardentMonastery || 0) >= 1 ? client.query(refs.getResearchStatus, {}).catch(() => ({ unlocked: false, completedLevels: {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } })) : Promise.resolve({ unlocked: false, completedLevels: playerAccounting.completedResearch || {}, active: null, speed: { monastery: 0, conclave: 0, ancient: 0, total: 0 } }),
+      Number(playerSummary.player.buildings?.ardentMonastery || 0) >= 1 ? client.query(refs.getFabrialStatus, {}).catch(() => ({ hasDiscovery: false, inventory: [] })) : Promise.resolve({ hasDiscovery: false, inventory: [] }),
       client.query(refs.listNotifications, {}).catch(() => ({ notifications: [], unreadCount: 0, preferences: { combat: true, missions: true, research: true, plateauRuns: true, messages: true }, devices: [], vapidPublicKey: null })),
       client.query(refs.getHighstormForecast, {}).catch(() => null),
       sessionQueries.get("pushConfiguration", () => client.query(refs.getPushConfiguration, {}).catch(() => ({ vapidPublicKey: null, configured: false }))),
@@ -537,6 +542,7 @@ async function load(options = {}) {
       kingdomLedger,
       ardentia,
       research,
+      fabrials,
       notifications,
       highstorm,
       pushConfiguration,
@@ -675,6 +681,7 @@ function buildState(data) {
     kingdomLedger: data.kingdomLedger || { season: null, rows: [], generatedAt: Date.now() },
     ardentia: data.ardentia || { owned: 0, away: 0, ready: 0, capacity: 0, provisionsEach: 10 },
     research: data.research,
+    fabrials: data.fabrials || { hasDiscovery: false, inventory: [] },
     seasonLedger: data.seasonLedger,
     worldPressure: data.worldPressure || { hostility: 0, state: { key: "quiet", label: "Quiet" }, progressPercent: 0, warning: null },
     highstorm: data.highstorm || null,
@@ -811,6 +818,7 @@ function captureSelections() {
   if ($("target")) lastSelections.target = $("target").value;
   if ($("neutral-plateau-target")) lastSelections.neutralPlateau = $("neutral-plateau-target").value;
   if ($("player-plateau-target")) lastSelections.playerPlateau = $("player-plateau-target").value;
+  ["sphere-fabrial", "deep-plains-fabrial", "neutral-fabrial", "player-fabrial"].forEach((id) => { if ($(id)) lastSelections.fabrials[id] = $(id).value; });
   lastSelections.siegeDefenders = lastSelections.siegeDefenders || {};
   document.querySelectorAll("[data-siege-defense-unit]").forEach((input) => {
     lastSelections.siegeDefenders[input.dataset.siegeId + ":" + input.dataset.unit] = input.value;
@@ -874,7 +882,10 @@ function renderSpaceSubnav(route) {
   nav.innerHTML = visibleTabs.map((tab) => {
     const locked = route.view === "intelligence" && ((tab.key === "ledger" || tab.key === "operations") ? !intel.network : tab.key === "territory" ? !intel.watchtower : false);
     const requirement = tab.key === "territory" ? "Watchtower" : "Ghostblood Network";
-    return '<button type="button" class="subnav-button ' + (route.tab === tab.key ? 'active' : '') + (locked ? ' disclosure-locked' : '') + '"' + (locked ? ' disabled aria-label="Unknown intelligence function. Requires ' + requirement + '." title="Requires ' + requirement + '"' : ' data-route-view="' + route.view + '" data-route-tab="' + tab.key + '"') + '>' + escapeHtml(locked ? "???" : tab.label) + (route.view === "plains" && tab.key === "plateau-runs" && state?.plateauRun ? '<span class="nav-state-dot" aria-label="Plateau Run active"></span>' : '') + '</button>';
+    const mysteryFabrials = route.view === "research" && tab.key === "fabrials" && !state?.fabrials?.hasDiscovery;
+    const label = mysteryFabrials ? "???" : route.view === "research" && tab.key === "fabrials" ? "Fabrials" : tab.label;
+    const accessibility = mysteryFabrials ? ' aria-label="Unexplored scholarly applications" title="Unexplored scholarly applications"' : '';
+    return '<button type="button" class="subnav-button ' + (route.tab === tab.key ? 'active' : '') + (locked ? ' disclosure-locked' : '') + '"' + (locked ? ' disabled aria-label="Unknown intelligence function. Requires ' + requirement + '." title="Requires ' + requirement + '"' : ' data-route-view="' + route.view + '" data-route-tab="' + tab.key + '"' + accessibility) + '>' + escapeHtml(locked ? "???" : label) + (route.view === "plains" && tab.key === "plateau-runs" && state?.plateauRun ? '<span class="nav-state-dot" aria-label="Plateau Run active"></span>' : '') + '</button>';
   }).join("");
 }
 
@@ -1196,13 +1207,13 @@ function researchEffectText(key, level, project) {
   const secondary = project.speedEffects?.[level - 1] || 0;
   if (key === "bridgeEngineering") return "+" + value + " total army Speed";
   if (key === "packHarnessDesign") return "+" + value + " Plunder and " + secondary + " Speed per Chull";
-  if (key === "painrialMedicine") return "+" + value + " Survival and +" + (project.powerEffects?.[level - 1] || 0) + " Power per Spearman";
+  if (key === "painrialMedicine") return "+" + value + " Survival per Spearman";
   if (key === "soulcastArmor") return "+" + value + " Power and " + secondary + " Speed per Spearman";
   if (key === "siegeEngineering") return "Emergency Defenses " + value + "% cheaper";
   if (key === "gemCutting") return value + "-hour Gemheart production interval";
   if (key === "soulcasting") return value + "% total building discount";
   if (key === "marketEconomics") return "+" + value + "% total Market income";
-  if (key === "sprenStudies") return ["", "Subtle Signals: occasional strange reports", "Spren Observation: chance of a bonus Territory fact", "Ancient Insight: +1 permanent research-only AP", "A deeper path begins to answer"][level];
+  if (key === "sprenStudies") return ["", "Subtle Signals: occasional strange reports", "Spren Observation: chance of a bonus Territory fact", "Ancient Insight: +1 permanent Ancient Plateau-equivalent for Research requirements only", "A deeper path begins to answer"][level];
   if (key === "religiousStudies") return ["", "Conclaves earn mission XP twice as quickly", "+1 effective Conclave rank for Research", "Conclaves may strengthen armies instead of Research", "A deeper path begins to answer"][level];
   return String(value) + " " + project.effect;
 }
@@ -1217,6 +1228,7 @@ function renderResearch() {
   const librariesContainer = $("research-libraries");
   const ardentsContainer = $("research-ardents");
   const bonusesContainer = $("research-bonuses");
+  renderFabrials();
   if (!currentContainer || !librariesContainer || !ardentsContainer || !bonusesContainer) return;
   const research = state.research || {};
   if (!research.unlocked) {
@@ -1256,7 +1268,9 @@ function renderResearch() {
     const statusLabel = currentlyActive ? 'In progress' : saved ? 'Saved · ' + savedPercent + '%' : canStart ? 'Ready' : 'Requirements unmet';
     const currentEffect = level ? '<p class="research-effect"><strong>Current effect:</strong> ' + escapeHtml(researchEffectText(key, level, project)) + '</p>' : '';
     const special = (needsGemPlateau ? '<div><span>Gemheart territory</span><strong>' + number(research.speed?.gemheartPlateauCount || 0) + ' held</strong></div>' : '') + (defenses ? '<div><span>Defensive sieges</span><strong>' + number(research.successfulDefensiveSieges || 0) + ' / ' + defenses + '</strong></div>' : '');
-    const html = '<article class="upgrade-card investment-card research-card' + (saved ? ' saved-research-card' : '') + '"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>Current Level ' + level + ' · Next Level ' + next + '</span></div><span class="status-badge ' + (canStart || currentlyActive ? 'ready' : 'blocked') + '">' + escapeHtml(statusLabel) + '</span></div><p class="research-description">' + escapeHtml(project.description || "") + '</p>' + currentEffect + '<p class="research-effect"><strong>Next total effect:</strong> ' + escapeHtml(researchEffectText(key, next, project)) + '</p><div class="research-requirements"><div><span>Sphere cost</span><strong>' + (saved ? 'Paid · resume' : number(spheres) + ' Spheres') + '</strong></div><div><span>Gemheart cost</span><strong>' + (saved ? 'Paid · resume' : number(gems) + ' Gemhearts') + '</strong></div><div><span>Research AP</span><strong>' + number(research.speed?.researchAncientCount || research.speed?.ancientCount || 0) + ' / ' + ancient + '</strong></div><div><span>Monastery</span><strong>Level ' + monastery + '</strong></div>' + special + '</div><button type="button" class="research-time-cell" title="' + escapeHtml(speedTooltip) + '"><span>Base time</span><strong>' + formatDuration(baseMinutes) + '</strong><small>' + (saved ? savedPercent + '% preserved · no repeat cost' : 'Adjusted: ' + formatDuration(adjustedMinutes) + ' with +' + number(research.speed?.total || 0) + '% speed') + '</small></button><button data-research-project="' + key + '" data-research-name="' + escapeHtml(project.name) + '"' + (canStart ? '' : ' disabled') + '>' + escapeHtml(actionLabel) + '</button></article>';
+    const virtualInsight = Number(research.speed?.virtualAncient || 0);
+    const ancientDetail = number(research.speed?.ancientCount || 0) + ' owned' + (virtualInsight ? ' + ' + number(virtualInsight) + ' research-only insight' : '') + ' / ' + ancient + ' required';
+    const html = '<article class="upgrade-card investment-card research-card' + (saved ? ' saved-research-card' : '') + '"><div class="card-heading"><div><strong>' + escapeHtml(project.name) + '</strong><span>Current Level ' + level + ' · Next Level ' + next + '</span></div><span class="status-badge ' + (canStart || currentlyActive ? 'ready' : 'blocked') + '">' + escapeHtml(statusLabel) + '</span></div><p class="research-description">' + escapeHtml(project.description || "") + '</p>' + currentEffect + '<p class="research-effect"><strong>Next total effect:</strong> ' + escapeHtml(researchEffectText(key, next, project)) + '</p><div class="research-requirements"><div><span>Sphere cost</span><strong>' + (saved ? 'Paid · resume' : number(spheres) + ' Spheres') + '</strong></div><div><span>Gemheart cost</span><strong>' + (saved ? 'Paid · resume' : number(gems) + ' Gemhearts') + '</strong></div><div><span>Ancient Plateaus</span><strong>' + ancientDetail + '</strong></div><div><span>Monastery</span><strong>Level ' + monastery + '</strong></div>' + special + '</div><button type="button" class="research-time-cell" title="' + escapeHtml(speedTooltip) + '"><span>Base time</span><strong>' + formatDuration(baseMinutes) + '</strong><small>' + (saved ? savedPercent + '% preserved · no repeat cost' : 'Adjusted: ' + formatDuration(adjustedMinutes) + ' with +' + number(research.speed?.total || 0) + '% speed') + '</small></button><button data-research-project="' + key + '" data-research-name="' + escapeHtml(project.name) + '"' + (canStart ? '' : ' disabled') + '>' + escapeHtml(actionLabel) + '</button></article>';
     return { library: project.library, completed: false, key, name: project.name, level, effect: level ? researchEffectText(key, level, project) : "", html };
   });
   const rankThresholds = state.config.ardentiaRules?.rankThresholds || [0, 500, 1000, 1500, 2000];
@@ -1313,7 +1327,7 @@ function renderResearch() {
   if (doctrine) bonusRows.unshift('<div class="compact-status-row"><span><strong>' + escapeHtml(doctrine.name) + '</strong><small>' + escapeHtml(doctrine.effects.join(" · ")) + '</small></span><span class="status-badge ready">Doctrine</span></div>');
   bonusesContainer.innerHTML = bonusRows.join("") || '<div class="empty">Complete Research to establish kingdom-wide bonuses.</div>';
   librariesContainer.innerHTML = '<div class="research-libraries">' + libraries + '</div>';
-  ardentsContainer.innerHTML = '<div class="cohort-heading"><div><h3>Ardent Cohort</h3><p>Field experience strengthens every Conclave and accelerates the kingdom\'s research. Research AP: ' + number(research.speed?.ancientCount || 0) + ' actual' + (research.speed?.virtualAncient ? ' + ' + number(research.speed.virtualAncient) + ' permanent insight' : '') + '.</p></div><span class="status-badge ready">+' + number(cohortBonus) + '% combined speed</span></div><div class="building-grid">' + (conclaves || '<div class="empty">Form a Scout Conclave from Recruitment.</div>') + '</div>';
+  ardentsContainer.innerHTML = '<div class="cohort-heading"><div><h3>Ardent Cohort</h3><p>Field experience strengthens every Conclave and accelerates the kingdom\'s research. Ancient Plateau requirements use ' + number(research.speed?.ancientCount || 0) + ' owned territor' + (Number(research.speed?.ancientCount || 0) === 1 ? 'y' : 'ies') + (research.speed?.virtualAncient ? ' plus ' + number(research.speed.virtualAncient) + ' permanent research-only insight from Spren Studies III (not territory)' : '') + '.</p></div><span class="status-badge ready">+' + number(cohortBonus) + '% combined speed</span></div><div class="building-grid">' + (conclaves || '<div class="empty">Form a Scout Conclave from Recruitment.</div>') + '</div>';
   librariesContainer.querySelectorAll("[data-research-project]").forEach((button) => button.addEventListener("click", () => {
     if (active && !window.confirm('Switch Research to ' + button.dataset.researchName + '?\n\nYour current paid progress will be saved and can be resumed later.')) return;
     action(() => client.mutation(refs.startResearch, { project: button.dataset.researchProject }));
@@ -1327,6 +1341,25 @@ function renderResearch() {
     const name = window.prompt("Name this Scout Conclave", button.dataset.conclaveName);
     if (name !== null) action(() => client.mutation(refs.renameConclave, { conclaveId: button.dataset.renameConclave, name }));
   }));
+}
+
+function renderFabrials() {
+  const container = $("research-fabrials");
+  const heading = $("fabrials-heading");
+  if (!container || !heading) return;
+  const inventory = state?.fabrials?.inventory || [];
+  if (!state?.fabrials?.hasDiscovery) {
+    heading.textContent = "An unnamed possibility";
+    container.innerHTML = '<div class="empty mystery-panel"><strong>The ardents sense an application they cannot yet describe.</strong><p>Separate lines of scholarship seem to be drawing toward the same unanswered question.</p></div>';
+    return;
+  }
+  heading.textContent = "Fabrials";
+  container.innerHTML = '<div class="building-grid">' + inventory.map((item) => {
+    const canAfford = state.me.spheres >= item.sphereCost && state.me.gemhearts >= item.gemheartCost;
+    const reason = state.me.spheres < item.sphereCost ? 'Requires ' + number(item.sphereCost) + ' Spheres' : state.me.gemhearts < item.gemheartCost ? 'Requires ' + number(item.gemheartCost) + ' Gemheart' + (item.gemheartCost === 1 ? '' : 's') : '';
+    return '<article class="upgrade-card investment-card fabrial-card"><div class="card-heading"><div><strong>' + escapeHtml(item.name) + '</strong><span>' + (item.reusable ? 'Reusable' : 'Disposable') + '</span></div><span class="status-badge ready">Discovered</span></div><p class="research-description">' + escapeHtml(item.description) + '</p><p class="research-effect"><strong>Effect:</strong> ' + escapeHtml(item.effect) + '</p><div class="research-requirements"><div><span>Fabrication</span><strong>' + number(item.sphereCost) + ' Spheres</strong></div><div><span>Gemhearts</span><strong>' + number(item.gemheartCost) + '</strong></div><div><span>Produces</span><strong>' + number(item.batchSize) + '</strong></div><div><span>Inventory</span><strong>' + number(item.available) + ' available · ' + number(item.owned) + ' owned' + (item.reusable ? ' · ' + number(item.committed) + ' committed' : '') + '</strong></div></div><button data-fabricate-fabrial="' + item.kind + '"' + (canAfford ? '' : ' disabled title="' + escapeHtml(reason) + '"') + '>Fabricate ' + escapeHtml(item.name) + (item.batchSize > 1 ? ' ×' + item.batchSize : '') + '</button>' + (reason ? '<small class="hint">' + escapeHtml(reason) + '</small>' : '') + '</article>';
+  }).join('') + '</div>';
+  container.querySelectorAll("[data-fabricate-fabrial]").forEach((button) => button.addEventListener("click", () => action(() => client.mutation(refs.fabricateFabrial, { kind: button.dataset.fabricateFabrial }))));
 }
 
 function renderArmyStatus() {
@@ -1588,8 +1621,7 @@ function outlookCell(label, value, details) {
 function powerBreakdown(units, stats) {
   const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + formatStat(unit.power) + " " + unit.name + " = " + formatStat(Number(units[key]) * Number(unit.power)));
   if (Number(units.shardbearer || 0) > 0) lines.push("Shardbearer Breakthrough: min(" + formatStat(stats.supportingPower) + " supporting Power, " + number(units.shardbearer) + " × " + number(state.config.armyRules?.shardbearerSupportPowerPerUnit || 100) + ") = +" + formatStat(stats.breakthroughPower));
-  if (stats.soulcastArmorPowerBonus) lines.push("Soulcast Armor: " + number(units.spearman) + " Spearmen × " + signedStat(stats.soulcastArmorPowerPerSpearman) + " = " + signedStat(stats.soulcastArmorPowerBonus));
-  if (stats.painrialPowerBonus) lines.push("Painrials: " + number(units.spearman) + " Spearmen × " + signedStat(stats.painrialPowerPerSpearman) + " = " + signedStat(stats.painrialPowerBonus));
+  if (stats.soulcastArmorPowerBonus) lines.push("Tailored Armor: " + number(units.spearman) + " Spearmen × " + signedStat(stats.soulcastArmorPowerPerSpearman) + " = " + signedStat(stats.soulcastArmorPowerBonus));
   if (stats.conclavePowerBonus) lines.push("Deployed Conclave: +10 + 50% × max(0, min(100, " + formatStat(stats.preConclavePower) + " pre-Conclave Power)) = " + signedStat(stats.conclavePowerBonus));
   lines.push("Final Power: " + formatStat(stats.power));
   return lines.join("\n");
@@ -1611,7 +1643,7 @@ function speedBreakdown(units, stats, travel, baseMinutesOverride = null) {
   const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + signedStat(unit.speed) + " " + unit.name + " = " + signedStat(Number(units[key]) * Number(unit.speed)));
   if (stats.bridgeSpeedBonus) lines.push("Bridge Engineering: " + signedStat(stats.bridgeSpeedBonus));
   if (stats.packHarnessSpeedBonus) lines.push("Pack Harnesses: " + number(units.chull) + " Chulls × " + signedStat(stats.packHarnessSpeedPerChull) + " = " + signedStat(stats.packHarnessSpeedBonus));
-  if (stats.soulcastArmorSpeedBonus) lines.push("Soulcast Armor: " + number(units.spearman) + " Spearmen × " + signedStat(stats.soulcastArmorSpeedPerSpearman) + " = " + signedStat(stats.soulcastArmorSpeedBonus));
+  if (stats.soulcastArmorSpeedBonus) lines.push("Tailored Armor: " + number(units.spearman) + " Spearmen × " + signedStat(stats.soulcastArmorSpeedPerSpearman) + " = " + signedStat(stats.soulcastArmorSpeedBonus));
   if (stats.conclaveSpeedBonus) lines.push("Deployed Conclave: " + signedStat(stats.conclaveSpeedBonus));
   lines.push("Final army Speed: " + signedStat(stats.speed));
   const formula = stats.speed >= 0
@@ -1661,7 +1693,7 @@ function playerSiegeIntelOutlook(conclaveAttached) {
 function survivabilityBreakdown(units, stats) {
   const constant = configValue("statDiminishingConstant", 100);
   const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + signedStat(unit.survivability) + " " + unit.name + " = " + signedStat(Number(units[key]) * Number(unit.survivability)));
-  if (stats.researchSurvivabilityBonus) lines.push("Painrials: " + number(units.spearman) + " Spearmen × " + signedStat(stats.painrialSurvivalPerSpearman) + " = " + signedStat(stats.researchSurvivabilityBonus));
+  if (stats.researchSurvivabilityBonus) lines.push("Field Surgery: " + number(units.spearman) + " Spearmen × " + signedStat(stats.painrialSurvivalPerSpearman) + " = " + signedStat(stats.researchSurvivabilityBonus));
   if (stats.conclaveSurvivabilityBonus) lines.push("Deployed Conclave: 50% × max(0, min(100, " + signedStat(stats.preConclaveSurvivability) + " pre-Conclave Survival)) = " + signedStat(stats.conclaveSurvivabilityBonus));
   lines.push("Army Survivability: " + signedStat(stats.survivability));
   lines.push(stats.survivability >= 0
@@ -2174,6 +2206,35 @@ async function updatePushControls() {
     const device = state.notificationDevices.find((entry) => entry.endpoint === subscription.endpoint);
     if (device) $("notification-sound").checked = device.soundEnabled;
   }
+  renderFabrialSelectors();
+}
+
+function renderFabrialSelectors() {
+  const inventory = state.fabrials?.inventory || [];
+  const definitions = {
+    painrial: "Disposable · 25% casualty protection",
+    soulcaster: "Reusable · recovers half of excess Sphere rewards",
+    halfShard: "Reusable · 50% casualty protection · may be lost on severe failure",
+  };
+  const configs = [
+    ["sphere-fabrial", true], ["deep-plains-fabrial", true],
+    ["neutral-fabrial", false], ["player-fabrial", false],
+  ];
+  configs.forEach(([id, sphereProducing]) => {
+    const select = $(id);
+    if (!select) return;
+    const wrapper = select.closest(".fabrial-deployment");
+    wrapper?.classList.toggle("hidden", inventory.length < 1);
+    const previous = lastSelections.fabrials[id] || select.value;
+    select.innerHTML = '<option value="">None</option>' + inventory.map((item) => {
+      const applicable = sphereProducing || item.kind !== "soulcaster";
+      const enabled = applicable && item.available > 0;
+      const suffix = !applicable ? " · Not applicable" : item.available < 1 ? " · Unavailable" : " · " + item.available + " available";
+      return '<option value="' + item.kind + '"' + (enabled ? '' : ' disabled') + ' title="' + escapeHtml(definitions[item.kind]) + '">' + escapeHtml(item.name + ' — ' + definitions[item.kind] + suffix) + '</option>';
+    }).join('');
+    if ([...select.options].some((option) => option.value === previous && !option.disabled)) select.value = previous;
+    select.onchange = () => { lastSelections.fabrials[id] = select.value; };
+  });
 }
 
 function renderLog() {
@@ -2317,7 +2378,7 @@ function plateauTooltip(plateau) {
   if (plateau.type === "sphere") effects.push("Sphere Plateau: +10% passive Sphere income, stacking to +30%.");
   if (plateau.type === "bridged" || plateau.type === "training") effects.push("Bridged Plateau: -10% normal Raid and Plateau Run travel time, stacking to -30%.");
   if (plateau.type === "gemheart") effects.push("Grants 1 Gemheart every 12 real hours if held.");
-  if (plateau.type === "ancient" || plateau.type === "ancient_ruins") effects.push(Number(state.me.buildings.ardentMonastery || 0) > 0 ? "Ancient Plateau: supports scholarship and Research AP." : "Ancient markings: ??? The surveyors lack an institution capable of interpreting them.");
+  if (plateau.type === "ancient" || plateau.type === "ancient_ruins") effects.push(Number(state.me.buildings.ardentMonastery || 0) > 0 ? "Ancient Plateau: counts toward visible Research territory requirements and supports scholarship." : "Ancient markings: ??? The surveyors lack an institution capable of interpreting them.");
   if (plateau.highground) effects.push("Highground: +20% defense when this plateau is attacked.");
   if (plateau.large) effects.push("Large: +10% Soulcast Bunker Provisions capacity, stacking to +30%.");
   if (plateau.gemheartProgress) {
@@ -2338,7 +2399,7 @@ function plateauBonusLabel(plateau) {
   if (plateau.type === "sphere") return "+10% passive Sphere income";
   if (plateau.type === "bridged" || plateau.type === "training") return "-10% Raid and Plateau Run travel";
   if (plateau.type === "gemheart") return "1 Gemheart every 12 real hours";
-  if (plateau.type === "ancient" || plateau.type === "ancient_ruins") return Number(state.me.buildings.ardentMonastery || 0) > 0 ? "Research AP and scholarship" : "???";
+  if (plateau.type === "ancient" || plateau.type === "ancient_ruins") return Number(state.me.buildings.ardentMonastery || 0) > 0 ? "Research requirements and scholarship" : "???";
   return "No active bonus";
 }
 
@@ -2850,10 +2911,8 @@ function raidStats(units, missionType = "") {
   const completed = state.me.completedResearch || {};
   const value = currentResearchValue;
   stats.soulcastArmorPowerPerSpearman = value("soulcastArmor");
-  stats.painrialPowerPerSpearman = value("painrialMedicine", "powerEffects");
   stats.soulcastArmorPowerBonus = Number(units.spearman || 0) * stats.soulcastArmorPowerPerSpearman;
-  stats.painrialPowerBonus = Number(units.spearman || 0) * stats.painrialPowerPerSpearman;
-  stats.researchPowerBonus = stats.soulcastArmorPowerBonus + stats.painrialPowerBonus;
+  stats.researchPowerBonus = stats.soulcastArmorPowerBonus;
   stats.packHarnessPlunderPerChull = value("packHarnessDesign");
   stats.researchPlunderBonus = Number(units.chull || 0) * stats.packHarnessPlunderPerChull;
   stats.painrialSurvivalPerSpearman = value("painrialMedicine");
@@ -2896,7 +2955,7 @@ function currentResearchValue(project, field = "effects") {
 function unitResearchBonuses(unitKey) {
   if (unitKey === "spearman") {
     return {
-      power: currentResearchValue("soulcastArmor") + currentResearchValue("painrialMedicine", "powerEffects"),
+      power: currentResearchValue("soulcastArmor"),
       plunder: 0,
       survivability: currentResearchValue("painrialMedicine"),
     };
@@ -2910,12 +2969,10 @@ function unitResearchMath(unitKey, stat, base, bonus) {
   const lines = ["", "Base " + stat + ": " + formatStat(base)];
   if (unitKey === "spearman" && stat === "power") {
     const armor = currentResearchValue("soulcastArmor");
-    const painrial = currentResearchValue("painrialMedicine", "powerEffects");
-    if (armor) lines.push("Soulcast Armor: " + signedStat(armor));
-    if (painrial) lines.push("Painrials: " + signedStat(painrial));
-    lines.push(formatStat(base) + " + " + formatStat(armor) + " + " + formatStat(painrial) + " = " + formatStat(Number(base || 0) + bonus) + " effective Power per Spearman");
+    if (armor) lines.push("Tailored Armor: " + signedStat(armor));
+    lines.push(formatStat(base) + " + " + formatStat(armor) + " = " + formatStat(Number(base || 0) + bonus) + " effective Power per Spearman");
   } else if (unitKey === "spearman" && stat === "survivability") {
-    lines.push("Painrials: " + signedStat(bonus));
+    lines.push("Field Surgery: " + signedStat(bonus));
     lines.push(formatStat(base) + " + " + formatStat(bonus) + " = " + formatStat(Number(base || 0) + bonus) + " effective Survival per Spearman");
   } else if (unitKey === "chull" && stat === "plunder") {
     lines.push("Pack Harnesses: " + signedStat(bonus));
@@ -3112,6 +3169,12 @@ function consequentialMissionSummary(title, target, units, conclaveId, extra = "
   return { title, html: '<strong>' + escapeHtml(target) + '</strong><span>Force: ' + escapeHtml(unitSummary(units, state.config.units)) + '</span>' + (extra ? '<span>' + escapeHtml(extra) + '</span>' : '') + researchTradeoff };
 }
 
+function selectedFabrial(id) {
+  const kind = $(id)?.value || "";
+  const item = (state.fabrials?.inventory || []).find((entry) => entry.kind === kind);
+  return { kind, summary: item ? item.name + " will accompany this operation (" + (item.reusable ? "reusable" : "consumed on launch") + ")." : "" };
+}
+
 function confirmConsequentialMission(summary) {
   if (state.playerSettings?.confirmConsequentialMissions === false) return Promise.resolve(true);
   const dialog = $("mission-confirmation");
@@ -3166,17 +3229,19 @@ $("launch-sphere-raid").addEventListener("click", async () => {
   try {
     const units = validatedRaidUnits("sphere-raid-units");
     const conclaveId = $("sphere-conclave")?.value || "";
-    if (!await confirmConsequentialMission(consequentialMissionSummary("Initiate sphere raid?", "Parshendi sphere stores", units, conclaveId))) return;
-    action(() => client.mutation(refs.launchSphereRaid, { units, ...(conclaveId ? { conclaveId } : {}) }));
+    const fabrial = selectedFabrial("sphere-fabrial");
+    if (!await confirmConsequentialMission(consequentialMissionSummary("Initiate sphere raid?", "Parshendi sphere stores", units, conclaveId, fabrial.summary))) return;
+    action(() => client.mutation(refs.launchSphereRaid, { units, ...(conclaveId ? { conclaveId } : {}), ...(fabrial.kind ? { fabrial: fabrial.kind } : {}) }));
   } catch (error) { alert(friendlyError(error)); }
 });
 $("launch-deep-plains-raid")?.addEventListener("click", async () => {
   try {
     const units = validatedRaidUnits("deep-plains-units");
     const conclaveId = $("deep-plains-conclave")?.value || "";
+    const fabrial = selectedFabrial("deep-plains-fabrial");
     const deepRange = deepPlainsTravelRange(raidStats(units, "deepPlains").speed);
-    if (!await confirmConsequentialMission(consequentialMissionSummary("Launch Deep Plains raid?", "The Deep Plains", units, conclaveId, "This force will be committed for approximately " + formatDuration(deepRange.min) + "–" + formatDuration(deepRange.max) + " after Speed modifiers."))) return;
-    action(() => client.mutation(refs.launchDeepPlainsRaid, { units, ...(conclaveId ? { conclaveId } : {}) }));
+    if (!await confirmConsequentialMission(consequentialMissionSummary("Launch Deep Plains raid?", "The Deep Plains", units, conclaveId, "This force will be committed for approximately " + formatDuration(deepRange.min) + "–" + formatDuration(deepRange.max) + " after Speed modifiers." + (fabrial.summary ? " " + fabrial.summary : "")))) return;
+    action(() => client.mutation(refs.launchDeepPlainsRaid, { units, ...(conclaveId ? { conclaveId } : {}), ...(fabrial.kind ? { fabrial: fabrial.kind } : {}) }));
   } catch (error) { alert(friendlyError(error)); }
 });
 $("launch-neutral-siege").addEventListener("click", async () => {
@@ -3185,9 +3250,10 @@ $("launch-neutral-siege").addEventListener("click", async () => {
     if (!plateauId) return alert("Choose a neutral plateau.");
     const units = validatedRaidUnits("neutral-siege-units");
     const conclaveId = $("neutral-conclave-select")?.value || "";
+    const fabrial = selectedFabrial("neutral-fabrial");
     const target = state.plateaus.neutral.find((plateau) => plateau.id === plateauId);
-    if (!await confirmConsequentialMission(consequentialMissionSummary("Initiate expedition?", target?.name || "Neutral plateau", units, conclaveId))) return;
-    action(() => client.mutation(refs.launchNeutralSiege, { plateauId, units, ...(conclaveId ? { conclaveId } : {}) }));
+    if (!await confirmConsequentialMission(consequentialMissionSummary("Initiate expedition?", target?.name || "Neutral plateau", units, conclaveId, fabrial.summary))) return;
+    action(() => client.mutation(refs.launchNeutralSiege, { plateauId, units, ...(conclaveId ? { conclaveId } : {}), ...(fabrial.kind ? { fabrial: fabrial.kind } : {}) }));
   } catch (error) { alert(friendlyError(error)); }
 });
 $("launch-player-siege").addEventListener("click", async () => {
@@ -3196,9 +3262,10 @@ $("launch-player-siege").addEventListener("click", async () => {
     if (!plateauId) return alert("Choose an enemy plateau.");
     const units = validatedRaidUnits("player-siege-units");
     const conclaveId = $("player-conclave-select")?.value || "";
+    const fabrial = selectedFabrial("player-fabrial");
     const target = state.plateaus.rivals.find((plateau) => plateau.id === plateauId);
-    if (!await confirmConsequentialMission(consequentialMissionSummary("Initiate rival siege?", target ? target.ownerName + " · " + target.name : "Rival plateau", units, conclaveId, "Player sieges resolve after one real hour."))) return;
-    action(() => client.mutation(refs.launchPlayerSiege, { plateauId, units, ...(conclaveId ? { conclaveId } : {}) }));
+    if (!await confirmConsequentialMission(consequentialMissionSummary("Initiate rival siege?", target ? target.ownerName + " · " + target.name : "Rival plateau", units, conclaveId, "Player sieges resolve after one real hour." + (fabrial.summary ? " " + fabrial.summary : "")))) return;
+    action(() => client.mutation(refs.launchPlayerSiege, { plateauId, units, ...(conclaveId ? { conclaveId } : {}), ...(fabrial.kind ? { fabrial: fabrial.kind } : {}) }));
   } catch (error) { alert(friendlyError(error)); }
 });
 $("plateau-run-submit").addEventListener("click", () => {

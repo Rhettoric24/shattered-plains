@@ -6,6 +6,7 @@ import { createNotification } from "./notificationHelpers";
 import { completedResearch } from "./researchHelpers";
 import { applySurvivalLosses, casualtySummary, effectivePower, effectiveSpeed, normalizeUnits, WORLD_KEY } from "./rules";
 import { forecastFor, HIGHSTORM_RULES, isStormActive, mountainDateKey, stormAt } from "./highstormRules";
+import { applyFabrialCasualtyProtection } from "./fabrialRules";
 
 type DbCtx = Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">;
 async function authoritativeStorm(ctx: DbCtx, now: number) {
@@ -20,11 +21,47 @@ export const getForecast = query({ args: {}, handler: async ctx => {
   return active ? {stormId:storm.stormId,state:"active" as const,active:true,endAt:storm.endAt,serverNow:now} : {stormId:storm.stormId,state:now<storm.startAt?"approaching" as const:"forecast" as const,active:false,forecast:forecastFor(storm,player.buildings.watchtower??0),serverNow:now};
 } });
 
-async function expose(ctx:MutationCtx,now:number){const {storm,active}=await activeHighstorm(ctx,now);if(!active)return{active:false,exposed:0};let exposed=0;
-  const raids=await ctx.db.query("raids").withIndex("by_status_arrival",q=>q.eq("status","pending")).take(100);
-  for(const raid of raids){if(raid.lastHighstormExposureId===storm.stormId)continue;const completed=await completedResearch(ctx,raid.attackerId);const loss=applySurvivalLosses(raid.units,HIGHSTORM_RULES.exposureBaseCasualtyRate,`${raid._id}:${storm.stormId}:exposure`,completed,Boolean(raid.conclaveId));await ctx.db.patch(raid._id,{units:loss.survivors,power:effectivePower(loss.survivors,completed,Boolean(raid.conclaveId)),speed:effectiveSpeed(loss.survivors,completed,Boolean(raid.conclaveId)),lastHighstormExposureId:storm.stormId});await createNotification(ctx,{playerId:raid.attackerId,category:"combat",eventType:"highstorm_exposure",title:"Army Caught in Highstorm",body:`Highstorm exposure casualties: ${casualtySummary(loss.casualties)}.`,destinationView:"plains",destinationTab:"raids",entityId:String(raid._id),dedupeKey:`${storm.stormId}:raid:${raid._id}`,createdAt:now});exposed++;}
-  const sieges=await ctx.db.query("sieges").withIndex("by_status_resolve",q=>q.eq("status","pending")).take(100);
-  for(const siege of sieges){if(siege.attackerId&&siege.attackerHighstormExposureId!==storm.stormId){const completed=await completedResearch(ctx,siege.attackerId);const loss=applySurvivalLosses(siege.attackerUnits,.0375,`${siege._id}:${storm.stormId}:attacker`,completed,Boolean(siege.conclaveId));await ctx.db.patch(siege._id,{attackerUnits:loss.survivors,attackerPower:effectivePower(loss.survivors,completed,Boolean(siege.conclaveId)),attackerSpeed:effectiveSpeed(loss.survivors,completed,Boolean(siege.conclaveId)),attackerHighstormExposureId:storm.stormId});exposed++;}if(siege.defenderId&&siege.defenderCommittedAt&&siege.defenderHighstormExposureId!==storm.stormId){const completed=await completedResearch(ctx,siege.defenderId);const loss=applySurvivalLosses(normalizeUnits(siege.defenderUnits),.0375,`${siege._id}:${storm.stormId}:defender`,completed);await ctx.db.patch(siege._id,{defenderUnits:loss.survivors,defenderPower:effectivePower(loss.survivors,completed),defenderSpeed:effectiveSpeed(loss.survivors,completed),defenderHighstormExposureId:storm.stormId});await createNotification(ctx,{playerId:siege.defenderId,category:"combat",eventType:"highstorm_exposure",title:"Defenders Caught in Highstorm",body:`Highstorm exposure casualties: ${casualtySummary(loss.casualties)}.`,destinationView:"plains",destinationTab:"sieges",entityId:String(siege._id),dedupeKey:`${storm.stormId}:siege:${siege._id}:defender`,createdAt:now});exposed++;}}
-  const runs=await ctx.db.query("plateauRuns").withIndex("by_status",q=>q.eq("status","open")).take(25);for(const run of runs)for await(const c of ctx.db.query("plateauCommitments").withIndex("by_run",q=>q.eq("plateauRunId",run._id))){if(c.lastHighstormExposureId===storm.stormId)continue;const completed=await completedResearch(ctx,c.playerId);const loss=applySurvivalLosses(c.units,.0375,`${c._id}:${storm.stormId}`,completed,Boolean(c.conclaveId));await ctx.db.patch(c._id,{units:loss.survivors,power:effectivePower(loss.survivors,completed,Boolean(c.conclaveId)),speed:effectiveSpeed(loss.survivors,completed,Boolean(c.conclaveId)),lastHighstormExposureId:storm.stormId});exposed++;}return{active:true,stormId:storm.stormId,exposed};}
+async function expose(ctx: MutationCtx, now: number) {
+  const { storm, active } = await activeHighstorm(ctx, now);
+  if (!active) return { active: false, exposed: 0 };
+  let exposed = 0;
+  const raids = await ctx.db.query("raids").withIndex("by_status_arrival", q => q.eq("status", "pending")).take(100);
+  for (const raid of raids) {
+    if (raid.lastHighstormExposureId === storm.stormId) continue;
+    const completed = await completedResearch(ctx, raid.attackerId);
+    const raw = applySurvivalLosses(raid.units, HIGHSTORM_RULES.exposureBaseCasualtyRate, `${raid._id}:${storm.stormId}:exposure`, completed, Boolean(raid.conclaveId));
+    const loss = applyFabrialCasualtyProtection(raid.fabrialKind, raw);
+    await ctx.db.patch(raid._id, { units: loss.survivors, power: effectivePower(loss.survivors, completed, Boolean(raid.conclaveId)), speed: effectiveSpeed(loss.survivors, completed, Boolean(raid.conclaveId)), lastHighstormExposureId: storm.stormId, fabrialPreventedCasualties: (raid.fabrialPreventedCasualties ?? 0) + loss.prevented });
+    await createNotification(ctx, { playerId: raid.attackerId, category: "combat", eventType: "highstorm_exposure", title: "Army Caught in Highstorm", body: `Highstorm exposure casualties: ${casualtySummary(loss.casualties)}.${loss.prevented ? ` ${raid.fabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${loss.prevented}.` : ""}`, destinationView: "plains", destinationTab: "raids", entityId: String(raid._id), dedupeKey: `${storm.stormId}:raid:${raid._id}`, createdAt: now });
+    exposed++;
+  }
+  const sieges = await ctx.db.query("sieges").withIndex("by_status_resolve", q => q.eq("status", "pending")).take(100);
+  for (const siege of sieges) {
+    if (siege.attackerId && siege.attackerHighstormExposureId !== storm.stormId) {
+      const completed = await completedResearch(ctx, siege.attackerId);
+      const raw = applySurvivalLosses(siege.attackerUnits, HIGHSTORM_RULES.exposureBaseCasualtyRate, `${siege._id}:${storm.stormId}:attacker`, completed, Boolean(siege.conclaveId));
+      const loss = applyFabrialCasualtyProtection(siege.fabrialKind, raw);
+      await ctx.db.patch(siege._id, { attackerUnits: loss.survivors, attackerPower: effectivePower(loss.survivors, completed, Boolean(siege.conclaveId)), attackerSpeed: effectiveSpeed(loss.survivors, completed, Boolean(siege.conclaveId)), attackerHighstormExposureId: storm.stormId, fabrialPreventedCasualties: (siege.fabrialPreventedCasualties ?? 0) + loss.prevented });
+      await createNotification(ctx, { playerId: siege.attackerId, category: "combat", eventType: "highstorm_exposure", title: "Army Caught in Highstorm", body: `Highstorm exposure casualties: ${casualtySummary(loss.casualties)}.${loss.prevented ? ` ${siege.fabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${loss.prevented}.` : ""}`, destinationView: "plains", destinationTab: "sieges", entityId: String(siege._id), dedupeKey: `${storm.stormId}:siege:${siege._id}:attacker`, createdAt: now });
+      exposed++;
+    }
+    if (siege.defenderId && siege.defenderCommittedAt && siege.defenderHighstormExposureId !== storm.stormId) {
+      const completed = await completedResearch(ctx, siege.defenderId);
+      const loss = applySurvivalLosses(normalizeUnits(siege.defenderUnits), HIGHSTORM_RULES.exposureBaseCasualtyRate, `${siege._id}:${storm.stormId}:defender`, completed);
+      await ctx.db.patch(siege._id, { defenderUnits: loss.survivors, defenderPower: effectivePower(loss.survivors, completed), defenderSpeed: effectiveSpeed(loss.survivors, completed), defenderHighstormExposureId: storm.stormId });
+      await createNotification(ctx, { playerId: siege.defenderId, category: "combat", eventType: "highstorm_exposure", title: "Defenders Caught in Highstorm", body: `Highstorm exposure casualties: ${casualtySummary(loss.casualties)}.`, destinationView: "plains", destinationTab: "sieges", entityId: String(siege._id), dedupeKey: `${storm.stormId}:siege:${siege._id}:defender`, createdAt: now });
+      exposed++;
+    }
+  }
+  const runs = await ctx.db.query("plateauRuns").withIndex("by_status", q => q.eq("status", "open")).take(25);
+  for (const run of runs) for await (const commitment of ctx.db.query("plateauCommitments").withIndex("by_run", q => q.eq("plateauRunId", run._id))) {
+    if (commitment.lastHighstormExposureId === storm.stormId) continue;
+    const completed = await completedResearch(ctx, commitment.playerId);
+    const loss = applySurvivalLosses(commitment.units, HIGHSTORM_RULES.exposureBaseCasualtyRate, `${commitment._id}:${storm.stormId}`, completed, Boolean(commitment.conclaveId));
+    await ctx.db.patch(commitment._id, { units: loss.survivors, power: effectivePower(loss.survivors, completed, Boolean(commitment.conclaveId)), speed: effectiveSpeed(loss.survivors, completed, Boolean(commitment.conclaveId)), lastHighstormExposureId: storm.stormId });
+    exposed++;
+  }
+  return { active: true, stormId: storm.stormId, exposed };
+}
 export const processActiveStorm=internalMutation({args:{},handler:async ctx=>await expose(ctx,Date.now())});
 export const setDevelopmentOverride=mutation({args:{state:v.union(v.literal("forecast"),v.literal("active"),v.literal("ended"))},handler:async(ctx,args)=>{await requireAdmin(ctx);const now=Date.now();const world=await ctx.db.query("gameState").withIndex("by_key",q=>q.eq("key",WORLD_KEY)).unique();if(!world)throw new Error("World not found.");const start=args.state==="forecast"?now+3_600_000:args.state==="active"?now-60_000:now-7_260_000;await ctx.db.patch(world._id,{highstormOverrideStartAt:start,highstormOverrideEndAt:start+7_200_000,highstormOverrideId:`highstorm:dev:${now}`});return args.state==="active"?await expose(ctx,now):{state:args.state};}});

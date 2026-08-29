@@ -70,7 +70,7 @@ export const start = mutation({
     if (monastery < requiredMonastery) throw new Error(`Ardent Monastery level ${requiredMonastery} is required.`);
     const speed = await researchSpeed(ctx, player);
     const ancient = rule.ancient[nextLevel - 1];
-    if (speed.researchAncientCount < ancient) throw new Error(`${ancient} Research AP required; you currently have ${speed.researchAncientCount}.`);
+    if (speed.researchAncientCount < ancient) throw new Error(`${ancient} Ancient Plateaus required for this research; you have ${speed.ancientCount} territory${speed.virtualAncient ? ` plus ${speed.virtualAncient} research-only insight` : ""}.`);
     const requiresGemheartPlateau = Boolean((rule as unknown as { requiresGemheartPlateau?: readonly boolean[] }).requiresGemheartPlateau?.[nextLevel - 1]);
     if (requiresGemheartPlateau && speed.gemheartPlateauCount < 1) throw new Error("Control a Gemheart Plateau before beginning this research.");
     const defensiveSieges = Number((rule as unknown as { defensiveSieges?: readonly number[] }).defensiveSieges?.[nextLevel - 1] ?? 0);

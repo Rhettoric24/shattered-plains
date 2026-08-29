@@ -543,6 +543,32 @@ test("responsive transition widths retain shell containment", async ({ page }, t
   }
 });
 
+test("the Fabrial mystery or revealed state stays contained", async ({ page }) => {
+  await page.locator("#research-primary-nav").click();
+  const fabrialsTab = page.locator('#space-subnav [data-route-tab="fabrials"]');
+  await expect(fabrialsTab).toBeVisible();
+  const revealed = (await fabrialsTab.textContent())?.trim() === "Fabrials";
+  if (revealed) await expect(fabrialsTab).toHaveAccessibleName("Fabrials");
+  else await expect(fabrialsTab).toHaveAccessibleName("Unexplored scholarly applications");
+  await fabrialsTab.click();
+  await expect(page.locator("#view-research-fabrials")).toBeVisible();
+  if (revealed) {
+    await expect(page.locator("#research-fabrials .fabrial-card").first()).toBeVisible();
+    await expect(page.locator("#research-fabrials [data-fabricate-fabrial]").first()).toBeVisible();
+  } else {
+    await expect(page.locator("#research-fabrials")).toContainText("Separate lines of scholarship");
+    await expect(page.locator("#research-fabrials")).not.toContainText(/Painrial|Soulcaster|Half-Shard/);
+  }
+  await expectContained(page.locator("#research-fabrials"));
+  await expectNoMajorHorizontalOverflow(page);
+
+  await page.locator('#dashboard-nav [data-route-view="plains"]').click();
+  if (revealed) await expect(page.locator("#sphere-fabrial")).toBeVisible();
+  else await expect(page.locator("#sphere-fabrial")).toBeHidden();
+  await expectContained(page.locator("#sphere-form"));
+  await expectNoMajorHorizontalOverflow(page);
+});
+
 for (const destination of destinations) {
   test(`${destination.name} structural regression coverage`, async ({ page }, testInfo) => {
     await destination.open(page);

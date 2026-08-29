@@ -166,6 +166,7 @@
                 </div>
                 <div id="sphere-raid-preview" class="attack-outlook form-wide"></div>
                 <label class="form-wide conclave-deployment">Scout Conclave<select id="sphere-conclave"></select><small data-conclave-tradeoff></small></label>
+                <label class="form-wide fabrial-deployment">Fabrial<select id="sphere-fabrial"></select><small>One optional Fabrial may accompany this operation.</small></label>
                 <button id="launch-sphere-raid" data-mission-launch type="button">Initiate sphere raid</button>
               </form>
             </section>
@@ -177,6 +178,7 @@
                 <div class="form-wide"><label>Raid units</label><div id="deep-plains-units" class="unit-input-grid"></div></div>
                 <div id="deep-plains-preview" class="attack-outlook form-wide"></div>
                 <label class="form-wide conclave-deployment">Scout Conclave<select id="deep-plains-conclave"></select><small data-conclave-tradeoff></small></label>
+                <label class="form-wide fabrial-deployment">Fabrial<select id="deep-plains-fabrial"></select><small>One optional Fabrial may accompany this operation.</small></label>
                 <button id="launch-deep-plains-raid" data-mission-launch type="button">Launch Deep Plains Raid</button>
               </form>
             </section>
@@ -197,6 +199,7 @@
                 </div>
                 <div id="neutral-siege-preview" class="attack-outlook form-wide"></div>
                 <label class="form-wide conclave-deployment">Scout Conclave<select id="neutral-conclave-select"></select><small data-conclave-tradeoff></small></label>
+                <label class="form-wide fabrial-deployment">Fabrial<select id="neutral-fabrial"></select><small>Sphere-recovery Fabrials are not applicable to territorial expeditions.</small></label>
                 <button id="launch-neutral-siege" data-mission-launch type="button">Initiate expedition</button>
               </form>
               <form id="player-siege-form" class="attack-planner expedition-panel" data-expedition-panel="rival" data-attack-planner="rival">
@@ -208,6 +211,7 @@
                 </div>
                 <div id="player-siege-preview" class="attack-outlook form-wide"></div>
                 <label class="form-wide conclave-deployment">Scout Conclave<select id="player-conclave-select"></select><small data-conclave-tradeoff></small></label>
+                <label class="form-wide fabrial-deployment">Fabrial<select id="player-fabrial"></select><small>Sphere-recovery Fabrials are not applicable to territorial sieges.</small></label>
                 <button id="launch-player-siege" data-mission-launch type="button">Initiate siege</button>
               </form>
             </section>
@@ -315,6 +319,10 @@
 
           <section class="view" id="view-research-ardents" data-title="The Ardent Conclave" data-eyebrow="Research · Ardents">
             <section class="panel full-panel"><p class="eyebrow">The Ardentia</p><h2>Conclaves</h2><button type="button" class="secondary" data-route-view="warcamp" data-route-tab="recruitment">Recruit Scout Conclaves</button><div id="research-ardents"></div></section>
+          </section>
+
+          <section class="view" id="view-research-fabrials" data-title="Fabrial studies" data-eyebrow="Research · Fabrials">
+            <section class="panel full-panel"><p class="eyebrow">Applied scholarship</p><h2 id="fabrials-heading">An unnamed possibility</h2><div id="research-fabrials"></div></section>
           </section>
 
           <section class="view" id="view-research-teaser" data-title="An unnamed question" data-eyebrow="???">
