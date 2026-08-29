@@ -166,3 +166,18 @@ export const trainUnit = mutation({
     };
   },
 });
+
+export const disbandUnits = mutation({
+  args: { unit: unitKey, count: v.number() },
+  handler: async (ctx, args) => {
+    const player = await requireCurrentPlayer(ctx);
+    const count = args.count;
+    if (!Number.isInteger(count) || count < 1 || count > 1000) throw new Error("Disband between 1 and 1,000 available units.");
+    if (args.unit === "shardbearer") throw new Error("Shardbearers cannot be disbanded.");
+    const units = normalizeUnits(player.units);
+    if (count > units[args.unit]) throw new Error(`Only ${units[args.unit]} ${UNIT_RULES[args.unit].name} are available to disband.`);
+    units[args.unit] -= count;
+    await ctx.db.patch(player._id, { units, lastActiveAt: Date.now() });
+    return { disbanded: count, unit: args.unit, units, refundedSpheres: 0, refundedGemhearts: 0 };
+  },
+});

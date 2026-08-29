@@ -326,7 +326,7 @@ async function expectEspionageLayouts(page: Page) {
   await page.locator("#close-kingdom-intel-dialog").click();
   await page.locator("#space-subnav").getByRole("button", { name: "Operations", exact: true }).click();
   await expect(page.locator("#view-intelligence-operations")).toBeVisible();
-  const card = page.locator(".operative-card").first();
+  const card = page.locator("#espionage-roster .operative-card").first();
   const composer = page.locator("#espionage-mission-form");
   await expect(card).toBeVisible();
   await expect(composer).toBeVisible();
@@ -373,16 +373,8 @@ async function expectEspionageLayouts(page: Page) {
   await expect(page.locator("#heist-below-threshold-test button")).toBeDisabled();
   await expectContained(card);
   await expectContained(composer);
-  const cards = page.locator(".operative-card");
-  for (let index = 0; index < await cards.count(); index += 1) {
-    const current = cards.nth(index);
-    const quantity = current.locator(".operative-recruit .quantity-control");
-    const recruit = current.locator(".operative-recruit > button");
-    await expectInside(quantity, current);
-    await expectInside(recruit, current);
-    const [quantityBox, recruitBox] = await Promise.all([quantity.boundingBox(), recruit.boundingBox()]);
-    if (quantityBox && recruitBox) expect(recruitBox.y).toBeGreaterThanOrEqual(quantityBox.y + quantityBox.height - 1);
-  }
+  await expect(page.locator("#view-intelligence-operations").getByRole("button", { name: "Open Recruitment" })).toBeVisible();
+  await expect(page.locator("#espionage-roster [data-recruit-operative]")).toHaveCount(0);
   for (const form of [page.locator("#espionage-defense-form"), composer]) {
     const controls = form.locator(".operative-input, select, input, button");
     for (let index = 0; index < await controls.count(); index += 1) {
@@ -567,6 +559,11 @@ for (const destination of destinations) {
       await expectStickySubnav(page);
     }
     if (destination.name === "home") await expectNotificationSurfaceAccessible(page);
+    if (destination.name === "warcamp-recruitment") {
+      await expect(page.locator("#unit-roster [data-recruit-submit]").first()).toBeVisible();
+      await expect(page.locator("#unit-roster [data-recruit-conclave]")).toBeVisible();
+      await expect(page.locator("#unit-roster [data-recruit-operative]")).toHaveCount(3);
+    }
     if (destination.name === "intelligence") await expectEspionageLayouts(page);
     if (destination.name === "plains-sieges") {
       const siegeNames = page.locator(".siege-card > span:first-of-type");

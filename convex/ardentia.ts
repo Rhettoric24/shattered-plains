@@ -7,6 +7,7 @@ import { plateauAttributeCountsForPlayer, plateauCountsForPlayer } from "./plate
 import { ownedOperativesIncludingAway, ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import { ARDENTIA_RULES } from "./rules";
 import { ardentiaConclaveStatus } from "./ardentiaHelpers";
+import { reconcileResearch } from "./researchHelpers";
 
 export const getStatus = query({
   args: {},
@@ -77,6 +78,23 @@ export const recruitConclave = mutation({
       createdAt: now,
     });
     return { recruited: true, owned: nextOwned, conclaveId, provisions };
+  },
+});
+
+export const disbandConclave = mutation({
+  args: { conclaveId: v.id("ardentConclaves") },
+  handler: async (ctx, args) => {
+    const player = await requireCurrentPlayer(ctx);
+    const conclave = await ctx.db.get(args.conclaveId);
+    if (!conclave || conclave.ownerPlayerId !== player._id) throw new Error("Conclave not found.");
+    if (conclave.missionId) throw new Error("A deployed Scout Conclave cannot be disbanded.");
+    const now = Date.now();
+    await reconcileResearch(ctx, player._id, now);
+    await ctx.db.delete(conclave._id);
+    const remaining = Math.max(0, (player.ardentiaConclaves ?? 0) - 1);
+    await ctx.db.patch(player._id, { ardentiaConclaves: remaining, lastActiveAt: now });
+    await reconcileResearch(ctx, player._id, now);
+    return { disbanded: true, conclaveId: args.conclaveId, owned: remaining, refundedSpheres: 0 };
   },
 });
 

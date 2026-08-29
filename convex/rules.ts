@@ -356,7 +356,7 @@ export const BUILDING_RULES = {
     levelCosts: [1500, 3000, 7500],
     maxLevel: 3,
     constructionTimeMs: 0,
-    description: "Reveals neutral territory, improves incoming warnings, and protects your warcamp's secrets.",
+    description: "Improves intelligence across the Shattered Plains and predicts approaching Highstorms.",
   },
   ardentMonastery: {
     name: "Ardent Monastery",

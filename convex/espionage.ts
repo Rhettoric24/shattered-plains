@@ -359,6 +359,20 @@ export const recruitOperatives = mutation({
   },
 });
 
+export const disbandOperatives = mutation({
+  args: { tier: operativeTierValidator, count: v.number() },
+  handler: async (ctx, args) => {
+    const player = await requireCurrentPlayer(ctx);
+    const count = args.count;
+    if (!Number.isInteger(count) || count < 1 || count > 1000) throw new Error("Disband between 1 and 1,000 available operatives.");
+    const available = normalizeOperatives(player.operatives);
+    if (count > available[args.tier]) throw new Error(`Only ${available[args.tier]} ${ESPIONAGE_RULES.operatives[args.tier].name} are available to disband.`);
+    available[args.tier] -= count;
+    await ctx.db.patch(player._id, { operatives: available, lastActiveAt: Date.now() });
+    return { disbanded: count, tier: args.tier, available, refundedSpheres: 0 };
+  },
+});
+
 export const setDefense = mutation({
   args: { operatives: operativeCountsValidator },
   handler: async (ctx, args) => {

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 
 const html = readFileSync(new URL("./convex-client.html", import.meta.url), "utf8");
+const client = readFileSync(new URL("./convex-client.js", import.meta.url), "utf8");
 const css = ["shattered-plains-styles.css", "clarity-components.css", "clarity-responsive.css"]
   .map((file) => readFileSync(new URL(`./${file}`, import.meta.url), "utf8"))
   .join("\n");
@@ -24,6 +25,21 @@ describe("post-overhaul shell", () => {
     expect(css).toMatch(/grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
     expect(css).toMatch(/bottom:\s*max\(10px,\s*env\(safe-area-inset-bottom\)\)/);
     expect(css).toMatch(/top:\s*max\(10px,\s*env\(safe-area-inset-top\)\)/);
+    expect(css).toMatch(/\.primary-nav\s*\{[^}]*position:\s*fixed[^}]*bottom:\s*0/);
+    expect(css).not.toMatch(/\.primary-nav\s*\{[^}]*(?:transform|will-change|contain):/);
+    expect(css).toMatch(/body\s*\{[^}]*padding-bottom:\s*calc\(78px\s*\+\s*env\(safe-area-inset-bottom\)\)/);
+  });
+
+  test("teaches Watchtower forecasts and consolidates personnel acquisition", () => {
+    expect(html).toContain("Open Recruitment");
+    expect(html).toContain("Recruit Scout Conclaves");
+    expect(css).toContain("safe-area-inset-bottom");
+    expect(client).toContain("Highstorm arrival within about 4 hours");
+    expect(client).toContain("Highstorm arrival within about 2 hours");
+    expect(client).toContain("Highstorm arrival within about 1 hour");
+    expect(client).toContain("Exact Highstorm arrival time");
+    expect(client).toContain("Reveals plateau names, types, attributes, and broad resistance ranges");
+    expect(client).toContain("Maintains narrow estimates and adds +1 Counter-Intelligence");
   });
 
   test("keeps player identity in the desktop header and mobile-accessible Settings", () => {
