@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { createFreshSeason } from "./seasonLedger";
@@ -19,6 +19,13 @@ import {
 } from "./espionageRules";
 
 const modules = import.meta.glob("./**/*.ts");
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-01-01T08:00:00.000Z"));
+});
+
+afterEach(() => vi.useRealTimers());
 const units = { bridgeman: 0, spearman: 0, chull: 0, scout: 0, heavy: 0, shardbearer: 0 };
 const buildings = { market: 0, watchtower: 0, ardentMonastery: 0, barracks: 0, soulcastBunker: 0, espionageNetwork: 3 };
 const emptyOps = { informant: 0, spy: 0, ghostblood: 0 };

@@ -33,7 +33,8 @@ jobs:
       - name: Build static frontend
         run: npm run build
         env:
-          CONVEX_URL: ${{ vars.CONVEX_URL || 'https://clean-yak-51.convex.cloud' }}
+          # Deliberately keep Pages on Yak until an explicit production cutover.
+          CONVEX_URL: https://clean-yak-51.convex.cloud
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

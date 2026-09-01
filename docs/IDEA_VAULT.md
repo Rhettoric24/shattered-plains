@@ -85,6 +85,24 @@ hoarding or activity?
 First friend test intentionally excludes it to observe player-created
 goals.
 
+# Persistent Kaiju Chasmfiend
+
+Potential future shared-world boss campaign, separate from the regular
+urgent Plateau Run cadence.
+
+A singular, exceptionally powerful Chasmfiend could persist across
+multiple encounters, retain wounds between attempts, and become a
+seasonal story that requires sustained cooperation to defeat.
+
+Questions: - how long does it remain? - can failed assaults make useful
+progress without trivializing the eventual kill? - does it retaliate or
+change the world while alive? - how are rewards divided across attempts?
+- how does it remain distinct from four independent, time-sensitive
+Chasmfiend hunts per day?
+
+Do not add persistence to ordinary Plateau Runs until their immediate
+join, contribution, speed, and reward loop proves fun in testing.
+
 # Diplomacy / Trade
 
 Potential direction: low Hostility can support diplomacy/trade while

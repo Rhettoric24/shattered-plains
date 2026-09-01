@@ -215,10 +215,12 @@ export const PLATEAU_RUN_RULES = {
   everyGameDays: 3,
   joinRealMs: 30 * 60 * 1000,
   activePlayerWindowMs: 2 * 24 * 60 * 60 * 1000,
-  difficultyPerActivePlayer: 15,
-  difficultyRandomMin: 1,
-  difficultyRandomMax: 4,
-  minimumDifficulty: 5,
+  difficultyBase: 250,
+  difficultyPerActivePlayer: 125,
+  minimumDifficulty: 600,
+  fullStrengthAfterMs: 14 * 24 * 60 * 60 * 1000,
+  fullStrengthMultiplier: 11 / 3,
+  difficultyVariancePercent: 5,
   sphereRewardPerActivePlayer: 500,
   sphereRewardRandomMin: 250,
   sphereRewardRandomMax: 900,
@@ -226,6 +228,26 @@ export const PLATEAU_RUN_RULES = {
   fastestPowerBonus: 0.1,
   joinOrderSpeedBonuses: [0.1, 0.07, 0.05],
 } as const;
+
+export function plateauRunSeasonMultiplier(seasonStartsAt: number, now: number) {
+  const progress = Math.min(1, Math.max(0, now - seasonStartsAt) / PLATEAU_RUN_RULES.fullStrengthAfterMs);
+  return 1 + progress * (PLATEAU_RUN_RULES.fullStrengthMultiplier - 1);
+}
+
+export function plateauRunBaseDifficulty(activePlayers: number) {
+  return Math.max(
+    PLATEAU_RUN_RULES.minimumDifficulty,
+    PLATEAU_RUN_RULES.difficultyBase + Math.max(1, Math.floor(activePlayers)) * PLATEAU_RUN_RULES.difficultyPerActivePlayer,
+  );
+}
+
+export function plateauRunPowerLabel(power: number) {
+  if (power < 900) return "Young";
+  if (power < 1400) return "Mature";
+  if (power < 2000) return "Ancient";
+  if (power < 2500) return "Colossal";
+  return "Legendary";
+}
 
 export function plateauRunJoinSpeedBonus(joinIndex: number, multiplier = 1) {
   return (PLATEAU_RUN_RULES.joinOrderSpeedBonuses[joinIndex] ?? 0) * multiplier;

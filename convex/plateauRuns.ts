@@ -21,10 +21,12 @@ import {
   doctrineFromResearch,
   bridgedTravelReduction,
   normalizeUnits,
-  missionRiskLabel,
   PLATEAU_RUN_RULES,
+  plateauRunBaseDifficulty,
   plateauRunFinalSpeed,
   plateauRunJoinSpeedBonus,
+  plateauRunPowerLabel,
+  plateauRunSeasonMultiplier,
   PLATEAU_RUN_SCHEDULE,
   totalUnits,
   unitPlunder,
@@ -84,17 +86,15 @@ async function createPlateauRun(
 
   const activeCount = await activePlayerCount(ctx, now);
   const scoringSeason = await ensureActiveSeason(ctx, now);
-  const randomShiftMagnitude = seededInt(
-    `${now}:plateau:difficulty:magnitude`,
-    PLATEAU_RUN_RULES.difficultyRandomMin,
-    PLATEAU_RUN_RULES.difficultyRandomMax,
+  const difficultyVariance = seededInt(
+    `${now}:plateau:difficulty:variance`,
+    -PLATEAU_RUN_RULES.difficultyVariancePercent,
+    PLATEAU_RUN_RULES.difficultyVariancePercent,
   );
-  const randomShiftSign =
-    seededInt(`${now}:plateau:difficulty:sign`, 0, 1) === 0 ? -1 : 1;
-  const difficulty = Math.max(
-    PLATEAU_RUN_RULES.minimumDifficulty,
-    activeCount * PLATEAU_RUN_RULES.difficultyPerActivePlayer +
-      randomShiftMagnitude * randomShiftSign,
+  const difficulty = Math.round(
+    plateauRunBaseDifficulty(activeCount) *
+      plateauRunSeasonMultiplier(scoringSeason.startsAt, now) *
+      (1 + difficultyVariance / 100),
   );
   const spherePool =
     activeCount * PLATEAU_RUN_RULES.sphereRewardPerActivePlayer +
@@ -119,7 +119,7 @@ async function createPlateauRun(
 
   await ctx.scheduler.runAfter(0, internal.notifications.notifyPlateauRunOpenBatch, {
     plateauRunId,
-    body: `A Plateau Run has opened. The mission appears ${missionRiskLabel(difficulty).toLowerCase()}, with a ${rewardLabel(spherePool).toLowerCase()} sphere pool.`,
+    body: `A ${plateauRunPowerLabel(difficulty)} Chasmfiend has appeared, with a ${rewardLabel(spherePool).toLowerCase()} sphere pool.`,
     createdAt: now,
     paginationOpts: { numItems: 40, cursor: null },
   });
@@ -443,7 +443,7 @@ export const resolvePlateauRun = internalMutation({
           toPlayerId: player._id,
           kind: "system",
           subject: "Plateau Run Failed",
-          body: `The combined force failed against ${missionRiskLabel(run.difficulty).toLowerCase()} opposition. Casualties: ${casualtySummary(lossResult.casualties)}.`,
+          body: `The combined force failed against the ${plateauRunPowerLabel(run.difficulty).toLowerCase()} Chasmfiend. Casualties: ${casualtySummary(lossResult.casualties)}.`,
           eventType: "plateau_run_resolved", destinationView: "plains", destinationTab: "plateau-runs", entityType: "plateau_run", entityId: String(run._id),
           createdAt: now,
         });

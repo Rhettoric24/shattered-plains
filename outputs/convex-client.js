@@ -2773,10 +2773,11 @@ function openPlateauTarget(plateauId) {
 }
 
 function plateauRunDifficultyLabel(power) {
-  if (power <= 20) return "Manageable";
-  if (power <= 36) return "Dangerous";
-  if (power <= 56) return "Brutal";
-  return "Overwhelming";
+  if (power < 900) return "Young Chasmfiend";
+  if (power < 1400) return "Mature Chasmfiend";
+  if (power < 2000) return "Ancient Chasmfiend";
+  if (power < 2500) return "Colossal Chasmfiend";
+  return "Legendary Chasmfiend";
 }
 
 function plateauRunLootLabel(spheres) {

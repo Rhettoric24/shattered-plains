@@ -19,10 +19,12 @@ Aspirations belong in `IDEA_VAULT.md` or `ROADMAP.md`.
 
 **Development backend:** `clean-yak-51`
 
-**Production/shared backend:** `groovy-buzzard-108`, intentionally
-untouched by current experimental feature deployments.
+**Production/friend-test backend:** `groovy-buzzard-108`. It receives
+only deliberate production deployments; experimental and pre-release
+work remains on Yak.
 
-The public PWA currently serves the test build.
+The public PWA currently serves the Yak test build until an explicit
+production frontend cutover. See `DEPLOYMENT.md` for the operating policy.
 
 ## Kingdom / Warcamp
 
@@ -321,6 +323,15 @@ Parshendi opposition.
 Plateaus have deterministic human-readable names. Watchtower/Territory
 Intelligence controls disclosure precision; owned plateaus are fully
 known.
+
+Plateau Runs are Chasmfiend boss encounters. Their Power begins at
+`max(600, 250 + 125 × active players)`, rises linearly to `11/3` of that
+base over the first 14 real days of a season, then caps. Each run receives
+seeded ±5% variance. At four active players this is roughly 713–788 Power
+at season start and 2,613–2,888 at full strength.
+
+Power labels: - under 900 Young - 900–1,399 Mature - 1,400–1,999 Ancient
+- 2,000–2,499 Colossal - 2,500+ Legendary
 
 Plateau Run join-Speed bonuses: - first +10 - second +7 - third +5 -
 later +0

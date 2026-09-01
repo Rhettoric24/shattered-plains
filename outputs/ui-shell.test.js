@@ -3,10 +3,16 @@ import { describe, expect, test } from "vitest";
 
 const html = readFileSync(new URL("./convex-client.html", import.meta.url), "utf8");
 const client = readFileSync(new URL("./convex-client.js", import.meta.url), "utf8");
+const deploymentWorkflow = readFileSync(new URL("../.github/workflows/deploy-static-site.yml", import.meta.url), "utf8");
 const css = ["shattered-plains-styles.css", "clarity-components.css", "clarity-responsive.css"]
   .map((file) => readFileSync(new URL(`./${file}`, import.meta.url), "utf8"))
   .join("\n");
 describe("post-overhaul shell", () => {
+  test("requires an explicit backend for every published frontend", () => {
+    expect(deploymentWorkflow).toContain("CONVEX_URL: https://clean-yak-51.convex.cloud");
+    expect(deploymentWorkflow).not.toContain("vars.CONVEX_URL ||");
+  });
+
   test("places branding, global controls, resources, and subnavigation in one shell", () => {
     const primaryNav = html.match(/<nav id="dashboard-nav"[\s\S]*?<\/nav>/)?.[0] || "";
     const globalShell = html.match(/<header id="global-shell"[\s\S]*?<\/header>/)?.[0] || "";

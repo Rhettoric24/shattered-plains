@@ -252,6 +252,14 @@ offline" is not optimal.
 
 # Future
 
+### DECIDED --- Plateau Runs are escalating Chasmfiend bosses
+
+Plateau Runs should begin as difficult shared encounters and become much
+harder as a season progresses. For the friend-test tuning pass, four active
+players produce about 750 base Power at season start and about 2,750 before
+variance at full strength after 14 real days. Maturity labels communicate
+the escalation without adding persistence or specialty reward rules yet.
+
 ### DEFERRED --- Narak
 
 Not required for first friend test.
@@ -282,8 +290,10 @@ Only as an intentional economy redesign, not a casual resource sink.
 
 ### DECIDED --- Keep development and production separate
 
-Experimental work uses `clean-yak-51`; do not casually deploy to
-`groovy-buzzard-108`.
+Experimental, local, automated-test, and pre-release work uses
+`clean-yak-51`. The friend-test world uses `groovy-buzzard-108`, which is
+updated only after an explicit request to deploy or publish to production.
+See `DEPLOYMENT.md` for the release procedure.
 
 ### DECIDED --- Commit, push, backend deploy, frontend deploy are separate
 

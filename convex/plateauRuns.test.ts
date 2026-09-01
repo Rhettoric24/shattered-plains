@@ -3,7 +3,15 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { internal } from "./_generated/api";
 import schema from "./schema";
-import { emptyBuildings, emptyUnits, plateauRunFinalSpeed, plateauRunJoinSpeedBonus } from "./rules";
+import {
+  emptyBuildings,
+  emptyUnits,
+  plateauRunBaseDifficulty,
+  plateauRunFinalSpeed,
+  plateauRunJoinSpeedBonus,
+  plateauRunPowerLabel,
+  plateauRunSeasonMultiplier,
+} from "./rules";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -68,6 +76,25 @@ async function resolveTwoPlayerRun(args: {
 }
 
 describe("Plateau Run join order and winner selection", () => {
+  test("ramps a four-player Chasmfiend from 750 to 2750 Power over fourteen days", () => {
+    const startsAt = 1_000_000;
+    const fullStrengthAt = startsAt + 14 * 24 * 60 * 60 * 1000;
+    expect(plateauRunBaseDifficulty(4)).toBe(750);
+    expect(plateauRunSeasonMultiplier(startsAt, startsAt)).toBe(1);
+    expect(plateauRunSeasonMultiplier(startsAt, fullStrengthAt)).toBeCloseTo(11 / 3);
+    expect(plateauRunBaseDifficulty(4) * plateauRunSeasonMultiplier(startsAt, fullStrengthAt)).toBeCloseTo(2750);
+  });
+
+  test("uses Chasmfiend maturity labels for Plateau Run Power", () => {
+    expect([899, 900, 1400, 2000, 2500].map(plateauRunPowerLabel)).toEqual([
+      "Young",
+      "Mature",
+      "Ancient",
+      "Colossal",
+      "Legendary",
+    ]);
+  });
+
   test("uses 10%, 7%, 5%, then 0% join-order Speed bonuses", () => {
     expect([0, 1, 2, 3].map((index) => plateauRunJoinSpeedBonus(index))).toEqual([0.1, 0.07, 0.05, 0]);
     expect([0, 1, 2, 3].map((index) => plateauRunFinalSpeed(100, index))).toEqual([110.00000000000001, 107, 105, 100]);

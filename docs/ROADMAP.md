@@ -62,15 +62,26 @@ Pay special attention around Market 4--5.
 
 # FRIEND-TEST RELEASE HARDENING
 
-Desired eventual environments: - DEV: `clean-yak-51` - STAGING/friend
-test: separate persistent Convex deployment - PROD: `groovy-buzzard-108`
+Chosen environments: - DEV/pre-release: `clean-yak-51` -
+PROD/friend test: `groovy-buzzard-108`. Add a third persistent staging
+deployment later only if the workflow demonstrates a need for it.
 
-Before friend test: - remove/avoid silent frontend fallback to
-`clean-yak-51` - require explicit backend configuration - verify
-auth/env/SITE_URL/admin/VAPID - deploy backend - verify function
-contract - snapshot - run needed migrations and rerun for idempotency -
-auth smoke test - inject frontend config last - publish frontend - smoke
-test live PWA
+Completed production preparation:
+
+-   ✅ Removed the conditional frontend fallback; Pages explicitly names
+    Yak until a deliberate production cutover.
+-   ✅ Configured Buzzard auth, `SITE_URL`, admin access, and VAPID push.
+-   ✅ Deployed the current backend and verified its function contract
+    matches Yak.
+-   ✅ Exported a pre-friend-test production snapshot.
+-   ✅ Initialized the clean production world and reran bootstrap to
+    verify idempotency. No legacy player migrations were required.
+
+Remaining before friend invitations:
+
+-   Run the production auth/new-account smoke test.
+-   Change the Pages workflow backend from Yak to Buzzard explicitly.
+-   Publish the production frontend and smoke-test the live PWA.
 
 # FRIEND TEST
 
