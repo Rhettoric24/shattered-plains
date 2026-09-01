@@ -221,9 +221,10 @@ export const PLATEAU_RUN_RULES = {
   fullStrengthAfterMs: 14 * 24 * 60 * 60 * 1000,
   fullStrengthMultiplier: 11 / 3,
   difficultyVariancePercent: 5,
-  sphereRewardPerActivePlayer: 500,
-  sphereRewardRandomMin: 250,
-  sphereRewardRandomMax: 900,
+  sphereRewardBase: 3000,
+  sphereRewardPerActivePlayer: 1000,
+  sphereRewardFullStrengthMultiplier: 1.5,
+  sphereRewardVariancePercent: 5,
   gemheartReward: 1,
   fastestPowerBonus: 0.1,
   joinOrderSpeedBonuses: [0.1, 0.07, 0.05],
@@ -232,6 +233,11 @@ export const PLATEAU_RUN_RULES = {
 export function plateauRunSeasonMultiplier(seasonStartsAt: number, now: number) {
   const progress = Math.min(1, Math.max(0, now - seasonStartsAt) / PLATEAU_RUN_RULES.fullStrengthAfterMs);
   return 1 + progress * (PLATEAU_RUN_RULES.fullStrengthMultiplier - 1);
+}
+
+export function plateauRunRewardMultiplier(seasonStartsAt: number, now: number) {
+  const progress = Math.min(1, Math.max(0, now - seasonStartsAt) / PLATEAU_RUN_RULES.fullStrengthAfterMs);
+  return 1 + progress * (PLATEAU_RUN_RULES.sphereRewardFullStrengthMultiplier - 1);
 }
 
 export function plateauRunBaseDifficulty(activePlayers: number) {

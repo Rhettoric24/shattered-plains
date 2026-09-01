@@ -26,6 +26,7 @@ import {
   plateauRunFinalSpeed,
   plateauRunJoinSpeedBonus,
   plateauRunPowerLabel,
+  plateauRunRewardMultiplier,
   plateauRunSeasonMultiplier,
   PLATEAU_RUN_SCHEDULE,
   totalUnits,
@@ -96,13 +97,16 @@ async function createPlateauRun(
       plateauRunSeasonMultiplier(scoringSeason.startsAt, now) *
       (1 + difficultyVariance / 100),
   );
-  const spherePool =
-    activeCount * PLATEAU_RUN_RULES.sphereRewardPerActivePlayer +
-    seededInt(
-      `${now}:plateau:spheres`,
-      PLATEAU_RUN_RULES.sphereRewardRandomMin,
-      PLATEAU_RUN_RULES.sphereRewardRandomMax,
-    );
+  const sphereVariance = seededInt(
+    `${now}:plateau:spheres:variance`,
+    -PLATEAU_RUN_RULES.sphereRewardVariancePercent,
+    PLATEAU_RUN_RULES.sphereRewardVariancePercent,
+  );
+  const spherePool = Math.round(
+    (PLATEAU_RUN_RULES.sphereRewardBase + activeCount * PLATEAU_RUN_RULES.sphereRewardPerActivePlayer) *
+      plateauRunRewardMultiplier(scoringSeason.startsAt, now) *
+      (1 + sphereVariance / 100),
+  );
   const closesAt = now + PLATEAU_RUN_RULES.joinRealMs;
 
   const plateauRunId = await ctx.db.insert("plateauRuns", {

@@ -333,6 +333,11 @@ at season start and 2,613–2,888 at full strength.
 Power labels: - under 900 Young - 900–1,399 Mature - 1,400–1,999 Ancient
 - 2,000–2,499 Colossal - 2,500+ Legendary
 
+The Sphere pool begins at `3,000 + 1,000 × active players`, rises linearly
+to 1.5× over the same 14-day ramp, and receives seeded ±5% variance. Four
+active players therefore produce about 6,650–7,350 Spheres initially and
+9,975–11,025 at full strength.
+
 Plateau Run join-Speed bonuses: - first +10 - second +7 - third +5 -
 later +0
 

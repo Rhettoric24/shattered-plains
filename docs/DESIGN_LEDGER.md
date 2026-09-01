@@ -259,6 +259,8 @@ harder as a season progresses. For the friend-test tuning pass, four active
 players produce about 750 base Power at season start and about 2,750 before
 variance at full strength after 14 real days. Maturity labels communicate
 the escalation without adding persistence or specialty reward rules yet.
+The ordinary Sphere pool starts at 3,000 plus 1,000 per active player and
+ramps to 1.5× over the season-strength window, with ±5% variance.
 
 ### DEFERRED --- Narak
 
