@@ -53,6 +53,8 @@
   .quantity-adjust-row [data-quantity-max]:last-child { grid-column: 3 / 4; }
   .operative-card .card-heading > div { display: grid; min-width: 0; gap: 3px; }
   .operative-card .status-badge { flex: 0 0 auto; max-width: 46%; overflow-wrap: normal; word-break: normal; }
+  .fresh-player-dispatch { align-items: stretch; flex-direction: column; }
+  .fresh-player-dispatch button { width: 100%; }
   .operative-recruit { grid-template-columns: minmax(0, 1fr); align-items: start; }
   .operative-recruit > button { justify-self: end; width: min(132px, 100%); min-width: 104px; max-width: 132px; min-height: 42px; max-height: 42px; }
   .cohort-heading, .conclave-xp-heading, .research-library-toggle, .doctrine-section .section-heading { align-items: flex-start; flex-direction: column; }

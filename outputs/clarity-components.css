@@ -59,6 +59,14 @@
 
 /* Compact Army recruitment cards keep the same information with less vertical weight. */
 #unit-roster { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.fresh-player-dispatch { display: flex; grid-column: 1 / -1; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid rgba(120, 184, 232, .42); border-radius: 8px; padding: 14px 16px; background: linear-gradient(135deg, rgba(51, 117, 164, .16), rgba(7, 17, 31, .82)); box-shadow: inset 3px 0 0 rgba(120, 184, 232, .72); }
+.fresh-player-dispatch div { display: grid; min-width: 0; gap: 5px; }
+.fresh-player-dispatch span { color: var(--military-accent); font-size: .68rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.fresh-player-dispatch strong { color: var(--text); font-family: Georgia, "Times New Roman", serif; font-size: 1.12rem; }
+.fresh-player-dispatch p { margin: 0; color: var(--muted); line-height: 1.45; }
+.fresh-player-dispatch button { flex: 0 0 auto; }
+.gemheart-scarcity { border-left-color: var(--gemheart-accent); background: rgba(187, 164, 236, .08); }
+.gemheart-scarcity strong { display: block; margin-bottom: 3px; color: var(--gemheart-accent); }
 #unit-roster .unit-card {
   --unit-accent: #8fb8e8;
   --unit-tint: rgba(82, 132, 185, .13);

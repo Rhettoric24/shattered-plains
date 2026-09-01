@@ -124,4 +124,18 @@ describe("post-overhaul shell", () => {
     expect(client).toContain('$("player-plateau-target").disabled = rivalOptions.length < 1;');
   });
 
+  test("guides fresh recruits toward a first neutral expedition", () => {
+    expect(client).toContain("The Plains wait beyond the warcamp.");
+    expect(client).toContain("Survey the Plains");
+    expect(client).toContain('data-route-view="plains" data-route-tab="sieges"');
+    expect(client).toContain('plateau.origin === "neutral"');
+    expect(client).toContain('sp-first-neutral-expedition-v1-');
+  });
+
+  test("warns before scarce starting Gemhearts are spent on recruitment", () => {
+    expect(client).toContain("Your first Gemhearts are scarce.");
+    expect(client).toContain("Spending them here is permanent.");
+    expect(client).toContain("state.config.startingGemhearts");
+  });
+
 });

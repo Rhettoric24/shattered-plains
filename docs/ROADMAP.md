@@ -50,9 +50,9 @@ Pay special attention around Market 4--5.
 
 -   ✅ Make Power/Speed/Plunder/Survivability explanations tap-accessible
     on mobile.
--   Add one narrative-first fresh-player hint connecting Warcamp
+-   ✅ Add one narrative-first fresh-player hint connecting Warcamp
     recruitment → Plains expedition. No build order.
--   Communicate starting Gemheart scarcity before easy irreversible
+-   ✅ Communicate starting Gemheart scarcity before easy irreversible
     spending.
 -   Clarify rival Intel vs Economy Intel vs Ledger/disclosure quality.
 -   Add one concise Intelligence-purpose explanation.
