@@ -1760,7 +1760,7 @@ function plateauTargetPreview(stats) {
   const bonus = state.config.plateauRuns.joinOrderSpeedBonuses[participantCount] || 0;
   const effectiveSpeed = stats.speed + bridgedTravelReductionPercent();
   const speedScore = effectiveSpeed * (1 + bonus);
-  return "Difficulty " + plateauRunDifficultyLabel(state.plateauRun.difficultyPower) + ", loot " + plateauRunLootLabel(state.plateauRun.spherePool) + ". Your speed score " + formatStat(speedScore) + " with " + Math.round(bonus * 100) + "% join bonus and " + number(bridgedTravelReductionPercent()) + "% Bridged travel reduction";
+  return "Difficulty " + plateauRunDifficultyLabel(state.plateauRun.difficultyPower) + ", loot " + number(state.plateauRun.spherePool) + " Spheres. Your speed score " + formatStat(speedScore) + " with " + Math.round(bonus * 100) + "% join bonus and " + number(bridgedTravelReductionPercent()) + "% Bridged travel reduction";
 }
 
 function neutralSiegePreview(stats) {
@@ -2075,7 +2075,7 @@ function renderPlateau() {
   }
   $("plateau-run-submit").textContent = myCommitment ? "Update commitment" : "Commit to plateau run";
   $("cancel-plateau-commitment").classList.toggle("hidden", !myCommitment);
-  status.innerHTML = '<div class="plateau-card"><strong>Join window open</strong><span><b data-local-countdown-at="' + Number(run.joinUntil) + '">' + formatDuration(remaining) + '</b> left</span><small>Difficulty ' + plateauRunDifficultyLabel(run.difficultyPower) + '. Loot: ' + number(run.gemheartReward) + ' Gemheart and a ' + plateauRunLootLabel(run.spherePool) + ' sphere pool.</small></div>';
+  status.innerHTML = '<div class="plateau-card"><strong>Join window open</strong><span><b data-local-countdown-at="' + Number(run.joinUntil) + '">' + formatDuration(remaining) + '</b> left</span><small>Difficulty ' + plateauRunDifficultyLabel(run.difficultyPower) + '. Loot: ' + number(run.gemheartReward) + ' Gemheart and ' + number(run.spherePool) + ' Spheres.</small></div>';
   participants.innerHTML = run.participants.length ? run.participants.map((entry) => {
     const bonus = entry.joinOrderSpeedBonus ? " +" + Math.round(entry.joinOrderSpeedBonus * 100) + "% join speed" : "";
     const isMine = entry.playerId === state.me.id;

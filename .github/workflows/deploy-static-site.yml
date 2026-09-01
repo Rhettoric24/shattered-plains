@@ -33,7 +33,7 @@ jobs:
       - name: Build static frontend
         run: npm run build
         env:
-          # Deliberately keep Pages on Yak until an explicit production cutover.
+          # Keep Pages on Yak until the friend-test production cutover is explicitly approved.
           CONVEX_URL: https://clean-yak-51.convex.cloud
 
       - name: Upload Pages artifact

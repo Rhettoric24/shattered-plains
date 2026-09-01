@@ -13,6 +13,13 @@ describe("post-overhaul shell", () => {
     expect(deploymentWorkflow).not.toContain("vars.CONVEX_URL ||");
   });
 
+  test("presents Plateau Runs as Chasmfiends with exact Sphere loot", () => {
+    expect(client).toContain('return "Young Chasmfiend"');
+    expect(client).toContain('return "Legendary Chasmfiend"');
+    expect(client).toContain("number(run.spherePool) + ' Spheres.");
+    expect(client).not.toContain("a ' + plateauRunLootLabel(run.spherePool) + ' sphere pool");
+  });
+
   test("places branding, global controls, resources, and subnavigation in one shell", () => {
     const primaryNav = html.match(/<nav id="dashboard-nav"[\s\S]*?<\/nav>/)?.[0] || "";
     const globalShell = html.match(/<header id="global-shell"[\s\S]*?<\/header>/)?.[0] || "";
