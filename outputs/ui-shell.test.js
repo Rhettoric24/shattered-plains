@@ -151,4 +151,18 @@ describe("post-overhaul shell", () => {
     expect(html).toContain("spending it does not lower persistent Military disclosure");
   });
 
+  test("uses Survive as the canonical player-facing stat name", () => {
+    expect(client).toContain('statButton("survivability", "Survive"');
+    expect(client).toContain('outlookCell("Survive"');
+    expect(client).toContain("Survive per Spearman");
+    expect(client).not.toContain('outlookCell("Survival"');
+    expect(client).not.toContain('outlookCell("Survivability"');
+    expect(client).not.toContain(" · Survival ");
+    expect(client).not.toContain(" · Survivability ");
+    expect(client).not.toContain("% Survival,");
+    expect(client).not.toContain("% Survivability,");
+    expect(html).toContain("Survive-based exposure event");
+    expect(html).not.toContain("Survivability-based exposure event");
+  });
+
 });

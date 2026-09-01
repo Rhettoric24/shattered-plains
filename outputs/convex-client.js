@@ -1069,7 +1069,7 @@ function renderUnits() {
       : '';
     const disband = key !== "shardbearer" && available > 0 ? '<button type="button" class="secondary" data-disband-unit="' + key + '" data-available="' + available + '">Disband available</button>' : '';
     const statButton = (stat, label, value, bonus = 0) => '<button type="button" class="stat-cell" data-stat-explanation="' + stat + '" aria-label="Explain ' + label + '" title="' + escapeHtml(statTitle(stat, value, bonus)) + '"><span>' + label + '</span><strong>' + statValue(value, bonus) + '</strong></button>';
-    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">Available: ' + number(available) + ' · Owned: ' + number(count) + '</span></div><div class="unit-stat-grid">' + statButton("power", "Power", unit.power, researchBonuses.power) + statButton("speed", "Speed", unit.speed) + statButton("plunder", "Plunder", unit.plunder, researchBonuses.plunder) + statButton("survivability", "Survivability", unit.survivability, researchBonuses.survivability) + '</div>' + breakthrough + gemheartWarning + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div>' + quantityControlMarkup('data-recruit-quantity aria-label="Recruitment quantity"', draft, maxRecruitable(key), { max: true }) + '<div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button>' + disband + '<details class="details-lore"><summary>Details &amp; Lore</summary><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div></details></article>';
+    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">Available: ' + number(available) + ' · Owned: ' + number(count) + '</span></div><div class="unit-stat-grid">' + statButton("power", "Power", unit.power, researchBonuses.power) + statButton("speed", "Speed", unit.speed) + statButton("plunder", "Plunder", unit.plunder, researchBonuses.plunder) + statButton("survivability", "Survive", unit.survivability, researchBonuses.survivability) + '</div>' + breakthrough + gemheartWarning + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div>' + quantityControlMarkup('data-recruit-quantity aria-label="Recruitment quantity"', draft, maxRecruitable(key), { max: true }) + '<div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button>' + disband + '<details class="details-lore"><summary>Details &amp; Lore</summary><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div></details></article>';
   }).join("");
   const monasteryLevel = Number(state.me.buildings.ardentMonastery || 0);
   const ardentia = state.ardentia;
@@ -1078,7 +1078,7 @@ function renderUnits() {
   const conclaveCombatReady = Number(state.research?.completedLevels?.religiousStudies || 0) >= 3;
   const conclaveRows = (ardentia.conclaves || []).map((entry) => '<div class="compact-status-row"><span><strong>' + escapeHtml(entry.name) + '</strong><small>' + (entry.missionId ? 'Away on mission' : 'Ready · Rank ' + number(entry.rank)) + '</small></span>' + (entry.missionId ? '<span class="status-badge blocked">Committed</span>' : '<button type="button" class="secondary compact-button" data-disband-conclave="' + entry._id + '" data-conclave-name="' + escapeHtml(entry.name) + '">Disband</button>') + '</div>').join('');
   const conclaveCard = monasteryLevel > 0
-    ? '<article class="upgrade-card unit-card conclave-card"><div class="card-heading"><div><strong>Ardentia Scout Conclave</strong><span>Field intelligence specialists</span></div><span class="status-badge">' + number(ardentia.ready) + ' ready / ' + number(ardentia.owned) + ' formed</span></div><div class="unit-identity"><p>' + (conclaveCombatReady ? 'May accompany an army as an unkillable support cohort, strengthening its Power and Survival. A deployed Conclave stops contributing Research speed until it returns.' : 'Accompanies an army to improve the resulting intelligence report. It does not add combat Power until the necessary Religious Studies are complete.') + '</p><small><strong>Capacity:</strong> ' + number(ardentia.owned) + ' / ' + number(ardentia.capacity) + ' supported by Ardent Monastery level ' + monasteryLevel + '.</small></div><div class="unit-costs"><span><small>Formation cost</small><strong>' + number(rules.recruitmentCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rules.provisionsCost) + '</strong></span></div><p class="rule-callout">One Conclave may accompany each expedition. It always has at least a 25% chance to complete its investigation and is never permanently destroyed.</p><button type="button" data-recruit-conclave' + (canRecruit ? '' : ' disabled') + '>' + (ardentia.owned >= ardentia.capacity ? 'Monastery capacity reached' : 'Form Scout Conclave') + '</button>' + conclaveRows + '</article>'
+    ? '<article class="upgrade-card unit-card conclave-card"><div class="card-heading"><div><strong>Ardentia Scout Conclave</strong><span>Field intelligence specialists</span></div><span class="status-badge">' + number(ardentia.ready) + ' ready / ' + number(ardentia.owned) + ' formed</span></div><div class="unit-identity"><p>' + (conclaveCombatReady ? 'May accompany an army as an unkillable support cohort, strengthening its Power and Survive. A deployed Conclave stops contributing Research speed until it returns.' : 'Accompanies an army to improve the resulting intelligence report. It does not add combat Power until the necessary Religious Studies are complete.') + '</p><small><strong>Capacity:</strong> ' + number(ardentia.owned) + ' / ' + number(ardentia.capacity) + ' supported by Ardent Monastery level ' + monasteryLevel + '.</small></div><div class="unit-costs"><span><small>Formation cost</small><strong>' + number(rules.recruitmentCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rules.provisionsCost) + '</strong></span></div><p class="rule-callout">One Conclave may accompany each expedition. It always has at least a 25% chance to complete its investigation and is never permanently destroyed.</p><button type="button" data-recruit-conclave' + (canRecruit ? '' : ' disabled') + '>' + (ardentia.owned >= ardentia.capacity ? 'Monastery capacity reached' : 'Form Scout Conclave') + '</button>' + conclaveRows + '</article>'
     : '';
   const operativeRoles = { informant: "Rumor gatherers and local contacts", spy: "Trained covert field agents", ghostblood: "Elite clandestine operatives" };
   const operativeCards = Object.entries(state.espionage?.rules?.operatives || {}).map(([tier, rule]) => { const unlocked = Number(state.espionage?.networkLevel || 0) >= Number(rule.networkLevel || 0); const available = Number(state.espionage?.available?.[tier] || 0); return '<article class="upgrade-card unit-card operative-card operative-' + tier + ' ' + (unlocked ? '' : 'locked') + '" data-recruit-card="' + tier + '"><div class="card-heading"><div><strong>' + escapeHtml(rule.name) + '</strong><span>' + escapeHtml(operativeRoles[tier] || "Espionage operative") + '</span></div><span class="status-badge ' + (unlocked ? 'ready' : 'blocked') + '">' + (unlocked ? 'Available: ' + number(available) : 'Network ' + number(rule.networkLevel) + ' required') + '</span></div><div class="unit-stat-grid"><div class="stat-cell operative-stat"><span>Spy Power</span><strong>' + number(rule.spyPower) + '</strong></div><div class="stat-cell operative-stat"><span>Network level</span><strong>' + number(rule.networkLevel) + '</strong></div></div><div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(rule.sphereCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rule.provisionsCost) + ' each</strong></span></div><div class="operative-recruit">' + quantityControlMarkup('data-operative-recruit-count="' + tier + '" aria-label="' + escapeHtml(rule.name) + ' recruitment count"' + (unlocked ? '' : ' disabled'), 1, unlocked ? Math.max(0, Math.floor(state.me.spheres / Number(rule.sphereCost || 1))) : 0, { max: true }) + '<button type="button" data-recruit-operative="' + tier + '"' + (unlocked ? '' : ' disabled') + '>Recruit ' + escapeHtml(rule.name) + '</button></div>' + (available ? '<button type="button" class="secondary" data-disband-operative="' + tier + '" data-available="' + available + '">Disband available</button>' : '') + '</article>'; }).join('');
@@ -1090,7 +1090,7 @@ function renderUnits() {
   const hasNeutralHolding = state.plateaus.mine.some((plateau) => plateau.origin === "neutral");
   if (hasNeutralHolding) localStorage.setItem(expeditionHintKey, "complete");
   const showExpeditionHint = localStorage.getItem(expeditionHintKey) !== "complete";
-  const expeditionHint = showExpeditionHint ? '<aside class="fresh-player-dispatch"><div><span>Orders from the warcamp</span><strong>The Plains wait beyond the warcamp.</strong><p>Recruit a force suited to the crossing, then send it to survey an unclaimed plateau. Strength may win the ground, but Speed, Plunder, and Survivability shape what returns.</p></div><button type="button" data-route-view="plains" data-route-tab="sieges">Survey the Plains</button></aside>' : '';
+  const expeditionHint = showExpeditionHint ? '<aside class="fresh-player-dispatch"><div><span>Orders from the warcamp</span><strong>The Plains wait beyond the warcamp.</strong><p>Recruit a force suited to the crossing, then send it to survey an unclaimed plateau. Strength may win the ground, but Speed, Plunder, and Survive shape what returns.</p></div><button type="button" data-route-view="plains" data-route-tab="sieges">Survey the Plains</button></aside>' : '';
   $("unit-roster").innerHTML = expeditionHint + group("military", "Military Units", number(militaryOwned) + " owned", unitCards, "building-grid") + group("ardents", "Ardents", number(ardentia.ready) + " ready · " + number(ardentia.owned) + " formed", conclaveCard || '<div class="empty">Construct an Ardent Monastery to form Scout Conclaves.</div>', "building-grid") + group("espionage", "Espionage Operatives", number(operativeOwned) + " owned", '<p class="hint">Recruit here; assign defenders and launch missions from Intelligence.</p><div class="operative-roster">' + operativeCards + '</div>', "personnel-group");
   $("unit-roster").querySelectorAll("[data-recruitment-group]").forEach((details) => details.addEventListener("toggle", () => localStorage.setItem("sp-recruitment-group-v1-" + details.dataset.recruitmentGroup, details.open ? "open" : "closed")));
   attachRecruitmentControls();
@@ -1175,7 +1175,7 @@ function renderConclaveControls() {
     if (readyConclavesOnly.some((entry) => entry._id === selected)) select.value = selected;
     const detail = select.closest(".conclave-deployment")?.querySelector("[data-conclave-tradeoff]");
     if (detail) detail.textContent = combatReady
-      ? "Religious Studies III: adds +10 Power plus 50% of up to 100 existing Power, +50% Survival, +25 Plunder, and +1 Speed. The Conclave is not killed like a normal unit, but contributes no Research speed until it returns."
+      ? "Religious Studies III: adds +10 Power plus 50% of up to 100 existing Power, +50% Survive, +25 Plunder, and +1 Speed. The Conclave is not killed like a normal unit, but contributes no Research speed until it returns."
       : "Improves the resulting intelligence report. It does not add combat strength until Religious Studies III.";
   });
   return;
@@ -1221,7 +1221,7 @@ function researchEffectText(key, level, project) {
   const secondary = project.speedEffects?.[level - 1] || 0;
   if (key === "bridgeEngineering") return "+" + value + " total army Speed";
   if (key === "packHarnessDesign") return "+" + value + " Plunder and " + secondary + " Speed per Chull";
-  if (key === "painrialMedicine") return "+" + value + " Survival per Spearman";
+  if (key === "painrialMedicine") return "+" + value + " Survive per Spearman";
   if (key === "soulcastArmor") return "+" + value + " Power and " + secondary + " Speed per Spearman";
   if (key === "siegeEngineering") return "Emergency Defenses " + value + "% cheaper";
   if (key === "gemCutting") return value + "-hour Gemheart production interval";
@@ -1488,7 +1488,7 @@ function renderRaidUnitInputs(containerId) {
   container.innerHTML = Object.entries(state.config.unlockedUnits).map(([key, unit]) => {
     const available = Number(state.me.availableUnits[key] || 0) + Number(currentCommitment?.units?.[key] || 0);
     const existing = currentValues[key] ?? lastSelections.attackUnits?.[plannerId]?.[key] ?? "0";
-    return '<div class="unit-input mission-unit-input"><div class="mission-unit-heading"><strong>' + escapeHtml(unit.name) + '</strong><small>Available ' + number(available) + ' · Power ' + formatStat(unit.power) + ' · Speed ' + formatStat(unit.speed) + ' · Plunder ' + formatStat(unit.plunder || 0) + ' · Survival ' + signedStat(unit.survivability) + '</small></div>' + quantityControlMarkup('data-unit="' + key + '" aria-label="' + escapeHtml(unit.name) + ' quantity"', existing, available, { half: true, max: true }) + '</div>';
+    return '<div class="unit-input mission-unit-input"><div class="mission-unit-heading"><strong>' + escapeHtml(unit.name) + '</strong><small>Available ' + number(available) + ' · Power ' + formatStat(unit.power) + ' · Speed ' + formatStat(unit.speed) + ' · Plunder ' + formatStat(unit.plunder || 0) + ' · Survive ' + signedStat(unit.survivability) + '</small></div>' + quantityControlMarkup('data-unit="' + key + '" aria-label="' + escapeHtml(unit.name) + ' quantity"', existing, available, { half: true, max: true }) + '</div>';
   }).join("");
   bindQuantityControls(container);
 }
@@ -1619,7 +1619,7 @@ function previewMarkup(units, type, planner) {
   if (type === "plateau") {
     return '<div class="outlook-heading"><span>Army outlook</span><strong>' + escapeHtml(target) + '</strong></div><div class="outlook-grid">' +
       outlookCell("Power", formatStat(stats.power), powerBreakdown(units, stats)) +
-      outlookCell("Survival", signedStat(stats.survivability), survivabilityBreakdown(units, stats)) +
+      outlookCell("Survive", signedStat(stats.survivability), survivabilityBreakdown(units, stats)) +
       outlookCell("Plunder", number(stats.plunder), plunderBreakdown(units, stats)) +
       outlookCell("Speed", signedStat(stats.speed), speedBreakdown(units, stats, travel)) +
       '</div>';
@@ -1628,7 +1628,7 @@ function previewMarkup(units, type, planner) {
     outlookCell("Power", formatStat(stats.power), powerBreakdown(units, stats)) +
     outlookCell(rewardLabel, type === "plateau" ? "Event pool" : number(stats.plunder) + " Spheres", plunderBreakdown(units, stats)) +
     outlookCell("Time committed", isDeepPlains ? formatDuration(deepRange.min) + "–" + formatDuration(deepRange.max) : formatDuration(travel), timingTitle) +
-    outlookCell("Survivability", signedStat(stats.survivability), survivabilityBreakdown(units, stats)) +
+    outlookCell("Survive", signedStat(stats.survivability), survivabilityBreakdown(units, stats)) +
     (intelOutlook ? outlookCell("Intelligence", intelOutlook.value, intelOutlook.details) : "") +
     (conclaveAttached ? outlookCell("Investigation", "Conclave attached", "Success follows this army's final casualty risk, with a minimum 25% and maximum 95% chance. The exact chance is revealed after resolution.") : "") +
     '</div>';
@@ -1714,11 +1714,11 @@ function survivabilityBreakdown(units, stats) {
   const constant = configValue("statDiminishingConstant", 100);
   const lines = activeUnitEntries().filter(([key]) => Number(units[key] || 0) > 0).map(([key, unit]) => number(units[key]) + " × " + signedStat(unit.survivability) + " " + unit.name + " = " + signedStat(Number(units[key]) * Number(unit.survivability)));
   if (stats.researchSurvivabilityBonus) lines.push("Field Surgery: " + number(units.spearman) + " Spearmen × " + signedStat(stats.painrialSurvivalPerSpearman) + " = " + signedStat(stats.researchSurvivabilityBonus));
-  if (stats.conclaveSurvivabilityBonus) lines.push("Deployed Conclave: 50% × max(0, min(100, " + signedStat(stats.preConclaveSurvivability) + " pre-Conclave Survival)) = " + signedStat(stats.conclaveSurvivabilityBonus));
-  lines.push("Army Survivability: " + signedStat(stats.survivability));
+  if (stats.conclaveSurvivabilityBonus) lines.push("Deployed Conclave: 50% × max(0, min(100, " + signedStat(stats.preConclaveSurvivability) + " pre-Conclave Survive)) = " + signedStat(stats.conclaveSurvivabilityBonus));
+  lines.push("Army Survive: " + signedStat(stats.survivability));
   lines.push(stats.survivability >= 0
-    ? "Final casualties = Base casualties × " + constant + " ÷ (" + constant + " + Survivability)"
-    : "Final casualties = Base casualties × (1 + |Survivability| ÷ " + constant + ")");
+    ? "Final casualties = Base casualties × " + constant + " ÷ (" + constant + " + Survive)"
+    : "Final casualties = Base casualties × (1 + |Survive| ÷ " + constant + ")");
   lines.push("Base casualties = 25% × Enemy Power ÷ Your Power, bounded from 3% to 80%.");
   return lines.join("\n");
 }
@@ -1968,7 +1968,7 @@ function siegeDefenderUnitInputs(siege) {
     const available = state.me.availableUnits[key] || 0;
     const stored = lastSelections.siegeDefenders?.[siege.id + ":" + key];
     const existing = stored ?? "0";
-    return '<div class="unit-input mission-unit-input"><div class="mission-unit-heading"><strong>' + escapeHtml(unit.name) + '</strong><small>Available ' + number(available) + ' · Power ' + formatStat(unit.power) + ' · Speed ' + signedStat(unit.speed) + ' · Plunder ' + formatStat(unit.plunder || 0) + ' · Survival ' + signedStat(unit.survivability) + '</small></div>' + quantityControlMarkup('data-siege-defense-unit data-siege-id="' + siege.id + '" data-unit="' + key + '" aria-label="' + escapeHtml(unit.name) + ' defenders"', existing, available, { half: true, max: true }) + '</div>';
+    return '<div class="unit-input mission-unit-input"><div class="mission-unit-heading"><strong>' + escapeHtml(unit.name) + '</strong><small>Available ' + number(available) + ' · Power ' + formatStat(unit.power) + ' · Speed ' + signedStat(unit.speed) + ' · Plunder ' + formatStat(unit.plunder || 0) + ' · Survive ' + signedStat(unit.survivability) + '</small></div>' + quantityControlMarkup('data-siege-defense-unit data-siege-id="' + siege.id + '" data-unit="' + key + '" aria-label="' + escapeHtml(unit.name) + ' defenders"', existing, available, { half: true, max: true }) + '</div>';
   }).join("");
 }
 
@@ -2110,7 +2110,7 @@ function renderSiegeDefenseOutlook(siegeId) {
   preview.innerHTML = '<div class="outlook-heading"><span>Mission outlook</span><strong>' + escapeHtml(plateau?.name || "Siege defense") + '</strong></div><div class="outlook-grid">' +
     outlookCell("Power", formatStat(stats.power), powerBreakdown(units, stats)) +
     outlookCell("Effective defense", formatStat(effectiveDefense), "Army Power " + formatStat(stats.power) + " × terrain " + formatStat(highgroundMultiplier) + " × Emergency Defenses " + formatStat(emergencyMultiplier)) +
-    outlookCell("Survival", signedStat(stats.survivability), survivabilityBreakdown(units, stats)) +
+    outlookCell("Survive", signedStat(stats.survivability), survivabilityBreakdown(units, stats)) +
     outlookCell("Speed", signedStat(stats.speed), speedBreakdown(units, stats, travelMinutes(stats.speed, false))) +
     outlookCell("Plunder", number(stats.plunder), plunderBreakdown(units, stats)) +
     '</div>';
@@ -2421,7 +2421,7 @@ function unitStatsTooltip(unit) {
     "Power: " + formatStat(unit.power) + " - " + statTooltip("power") + "\n" +
     "Speed: " + formatStat(unit.speed) + " - " + statTooltip("speed") + "\n" +
     "Plunder: " + formatStat(unit.plunder || 0) + " - " + statTooltip("plunder") + "\n" +
-    "Survivability: " + signedStat(unit.survivability) + " - " + statTooltip("survivability")
+    "Survive: " + signedStat(unit.survivability) + " - " + statTooltip("survivability")
   );
 }
 
@@ -3044,7 +3044,7 @@ function unitResearchMath(unitKey, stat, base, bonus) {
     lines.push(formatStat(base) + " + " + formatStat(armor) + " = " + formatStat(Number(base || 0) + bonus) + " effective Power per Spearman");
   } else if (unitKey === "spearman" && stat === "survivability") {
     lines.push("Field Surgery: " + signedStat(bonus));
-    lines.push(formatStat(base) + " + " + formatStat(bonus) + " = " + formatStat(Number(base || 0) + bonus) + " effective Survival per Spearman");
+    lines.push(formatStat(base) + " + " + formatStat(bonus) + " = " + formatStat(Number(base || 0) + bonus) + " effective Survive per Spearman");
   } else if (unitKey === "chull" && stat === "plunder") {
     lines.push("Pack Harnesses: " + signedStat(bonus));
     lines.push(formatStat(base) + " + " + formatStat(bonus) + " = " + formatStat(Number(base || 0) + bonus) + " effective Plunder per Chull");
@@ -3171,7 +3171,7 @@ function statTooltip(stat) {
     power: "Add every unit's Power. Shardbearers also add a bounded Breakthrough bonus by doubling up to 100 supporting Power each.",
     speed: "Add every unit's Speed. Positive Speed shortens missions with diminishing returns; negative Speed lengthens them.",
     plunder: "Add every unit's Plunder. The total is the maximum number of Spheres the army can carry home.",
-    survivability: "Add every unit's Survivability. It changes casualties after relative Power determines the base casualty rate.",
+    survivability: "Add every unit's Survive. It changes casualties after relative Power determines the base casualty rate.",
   };
   return tips[stat] || "";
 }

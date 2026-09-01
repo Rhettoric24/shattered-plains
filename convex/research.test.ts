@@ -110,7 +110,7 @@ describe("permanent mechanic effects", () => {
     expect(improved).toBeLessThan(baseline);
   });
 
-  test("Field Surgery uses per-Spearman Survival without adding Power", () => {
+  test("Field Surgery uses per-Spearman Survive without adding Power", () => {
     const baseline = applySurvivalLosses(units, 0.5, "same-seed");
     const researched = applySurvivalLosses(units, 0.5, "same-seed", { painrialMedicine: 3 });
     expect(researched.finalCasualtyRate).toBeLessThan(baseline.finalCasualtyRate);

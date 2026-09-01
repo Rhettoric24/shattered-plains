@@ -48,7 +48,7 @@ Pay special attention around Market 4--5.
 
 # BEFORE FRIEND TEST --- Small Clarity Pass
 
--   ✅ Make Power/Speed/Plunder/Survivability explanations tap-accessible
+-   ✅ Make Power/Speed/Plunder/Survive explanations tap-accessible
     on mobile.
 -   ✅ Add one narrative-first fresh-player hint connecting Warcamp
     recruitment → Plains expedition. No build order.
@@ -56,7 +56,7 @@ Pay special attention around Market 4--5.
     spending.
 -   ✅ Clarify rival Intel vs Economy Intel vs Ledger/disclosure quality.
 -   ✅ Add one concise Intelligence-purpose explanation.
--   Standardize Survival/Survivability terminology.
+-   ✅ Standardize player-facing terminology on Survive.
 -   ✅ Give empty neutral- and rival-plateau selectors explicit disabled
     states.
 

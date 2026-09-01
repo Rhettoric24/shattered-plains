@@ -44,7 +44,7 @@ Core concepts:
 -   Power
 -   Speed
 -   Plunder
--   Survivability
+-   Survive
 
 Mission composers communicate army capability, opposition, reward, and
 timing.
@@ -86,9 +86,9 @@ Improves Chull Plunder with Speed tradeoffs.
 
 Internal ID: `painrialMedicine`.
 
--   I: +1 Survival per Spearman
--   II: +1 Survival per Spearman
--   III: +2 Survival per Spearman
+-   I: +1 Survive per Spearman
+-   II: +1 Survive per Spearman
+-   III: +2 Survive per Spearman
 
 Previous Power bonuses were removed.
 

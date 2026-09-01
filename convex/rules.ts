@@ -60,7 +60,7 @@ export const RESEARCH_RULES = {
   projects: {
     bridgeEngineering: { name: "Bridge Engineering", library: "military", description: "Ardents and bridge crews refine construction, deployment, and crossing methods so armies move across the Plains with greater confidence and speed.", ancient: [0, 1, 2], gemhearts: [0, 0, 1], monastery: [1, 2, 3], costs: [5000, 7000, 7000], durationsMs: [3600000, 14400000, 43200000], effects: [10, 20, 30], effect: "total army Speed" },
     packHarnessDesign: { name: "Pack Harnesses", library: "military", description: "Reworked harnesses let Chulls carry far richer loads, though every fitted beast slows the column.", ancient: [0, 0, 0], gemhearts: [0, 0, 0], monastery: [1, 2, 3], costs: [5000, 7000, 10000], durationsMs: [3600000, 14400000, 43200000], effects: [10, 25, 50], speedEffects: [-3, -3, -2], effect: "Plunder per Chull" },
-    painrialMedicine: { name: "Field Surgery", library: "military", description: "Ardents systematize battlefield triage, wound treatment, and recovery so spear formations endure losses without sacrificing fighting strength.", ancient: [0, 0, 0], gemhearts: [0, 1, 1], monastery: [1, 2, 3], costs: [5000, 5000, 7000], durationsMs: [3600000, 14400000, 43200000], effects: [1, 1, 2], effect: "Survival per Spearman" },
+    painrialMedicine: { name: "Field Surgery", library: "military", description: "Ardents systematize battlefield triage, wound treatment, and recovery so spear formations endure losses without sacrificing fighting strength.", ancient: [0, 0, 0], gemhearts: [0, 1, 1], monastery: [1, 2, 3], costs: [5000, 5000, 7000], durationsMs: [3600000, 14400000, 43200000], effects: [1, 1, 2], effect: "Survive per Spearman" },
     soulcastArmor: { name: "Tailored Armor", library: "military", description: "Armorers tailor each layer to the wearer and the formation, trading marching ease for greater striking power until the design is fully refined.", ancient: [1, 2, 3], gemhearts: [0, 1, 2], monastery: [1, 2, 3], costs: [5000, 10000, 15000], durationsMs: [3600000, 14400000, 43200000], effects: [0.5, 1, 1], speedEffects: [-0.5, -0.5, 0], effect: "Power per Spearman" },
     siegeEngineering: { name: "Siege Engineering", library: "military", description: "Warcamp engineers study barricades and chokepoints that make emergency fortifications more affordable.", ancient: [0, 0, 0], gemhearts: [0, 0, 0], monastery: [1, 2, 3], costs: [3000, 5000, 7000], durationsMs: [3600000, 14400000, 43200000], effects: [10, 15, 20], defensiveSieges: [0, 0, 5], effect: "% Emergency Defense discount" },
     gemCutting: { name: "Gem Cutting", library: "economic", description: "Skilled gemcutters preserve more useful Stormlight and shorten the interval between viable harvests.", ancient: [2, 2, 3], gemhearts: [1, 1, 2], monastery: [1, 2, 3], costs: [5000, 7000, 10000], durationsMs: [3600000, 14400000, 43200000], effects: [11.5, 11, 10], requiresGemheartPlateau: [true, true, true], effect: "hour Gemheart interval" },
@@ -834,7 +834,7 @@ export function survivalProfile(units: Partial<UnitCounts>) {
             : "Fragile formation";
   return {
     label,
-    details: `Army Survivability ${survivability >= 0 ? "+" : ""}${survivability}.`,
+    details: `Army Survive ${survivability >= 0 ? "+" : ""}${survivability}.`,
   };
 }
 

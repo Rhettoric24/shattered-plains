@@ -470,18 +470,25 @@ test("earned Watchtower intelligence is visible in military decision surfaces", 
 
   await page.locator("#space-subnav").getByRole("button", { name: "Sieges", exact: true }).click();
   const neutralOptions = page.locator("#neutral-plateau-target option");
-  if (await neutralOptions.count()) {
+  const hasNeutralTarget = await page.locator("#neutral-plateau-target").evaluate((select: HTMLSelectElement) => Boolean(select.value));
+  if (hasNeutralTarget) {
     await expect(neutralOptions.first()).not.toHaveText(/Unsurveyed Plateau/);
     await expect(neutralOptions.first()).toHaveText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau/);
     await expect(page.locator("#neutral-siege-preview")).toContainText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau/);
     await expect(page.locator("#neutral-siege-preview")).toContainText(/Parshendi resistance:/);
   } else {
+    await expect(neutralOptions).toHaveCount(1);
+    await expect(neutralOptions.first()).toHaveText("No neutral plateaus available");
     await expect(page.locator("#neutral-siege-preview")).toContainText("Choose a neutral plateau");
   }
 
   const rivalOptions = page.locator("#player-plateau-target option");
-  if (await rivalOptions.count()) {
+  const hasRivalTarget = await page.locator("#player-plateau-target").evaluate((select: HTMLSelectElement) => Boolean(select.value));
+  if (hasRivalTarget) {
     await expect(rivalOptions.first()).toHaveText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau|Type unknown/);
+  } else {
+    await expect(rivalOptions).toHaveCount(1);
+    await expect(rivalOptions.first()).toHaveText("No rival plateaus available");
   }
 
   await page.addScriptTag({

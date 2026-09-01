@@ -40,7 +40,7 @@ assets.
 
 ### DECIDED --- Painrials Research became Field Surgery
 
-Internal ID remains `painrialMedicine`. Power bonuses removed. Survival
+Internal ID remains `painrialMedicine`. Power bonuses removed. Survive
 remains +1/+1/+2 per Spearman.
 
 **Why:** separates battlefield medicine from the physical Painrial.

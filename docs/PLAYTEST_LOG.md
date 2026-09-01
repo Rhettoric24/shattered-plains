@@ -129,5 +129,5 @@ system.
 ### Action
 
 Before friend test consider tap stat explanations, one core-loop hint,
-Gemheart warning, Intelligence terminology/purpose, and Survivability
+Gemheart warning, Intelligence terminology/purpose, and Survive
 wording.
