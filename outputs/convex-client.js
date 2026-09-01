@@ -1442,18 +1442,23 @@ function renderSelects() {
     }).join("");
   }
   if ($("neutral-plateau-target")) {
-    $("neutral-plateau-target").innerHTML = state.plateaus.neutral.map((plateau) => {
+    const neutralOptions = state.plateaus.neutral.map((plateau) => {
       const identity = plateauIdentityPresentation(plateau);
       const gameplayIdentity = identity.known ? " · " + identity.type + (identity.traits.length ? " · " + identity.traits.join(" • ") : "") : "";
       return '<option value="' + plateau.id + '">' + escapeHtml(plateau.name + gameplayIdentity + " · " + formatIntelValue(plateau.resistance)) + '</option>';
-    }).join("");
+    });
+    $("neutral-plateau-target").innerHTML = neutralOptions.length ? neutralOptions.join("") : '<option value="">No neutral plateaus available</option>';
+    $("neutral-plateau-target").disabled = neutralOptions.length < 1;
     if (lastSelections.neutralPlateau && state.plateaus.neutral.some((plateau) => plateau.id === lastSelections.neutralPlateau)) $("neutral-plateau-target").value = lastSelections.neutralPlateau;
   }
   if ($("player-plateau-target")) {
-    $("player-plateau-target").innerHTML = state.plateaus.rivals.map((plateau) => {
-      const label = plateau.ownerName + " - " + plateau.name;
+    const rivalOptions = state.plateaus.rivals.map((plateau) => {
+      const typeLabel = plateau.type === "unknown" ? "Type unknown" : plateau.typeName;
+      const label = plateau.ownerName + " - " + plateau.name + " · " + typeLabel;
       return '<option value="' + plateau.id + '"' + (plateau.gemheartProgress ? ' data-gemheart-at="' + plateau.gemheartProgress.nextGemheartAt + '" data-countdown-label="' + escapeHtml(label) + '"' : '') + '>' + escapeHtml(label + (plateau.gemheartProgress ? " · Next Gemheart: " + formatCountdownAt(plateau.gemheartProgress.nextGemheartAt) : "")) + '</option>';
-    }).join("");
+    });
+    $("player-plateau-target").innerHTML = rivalOptions.length ? rivalOptions.join("") : '<option value="">No rival plateaus available</option>';
+    $("player-plateau-target").disabled = rivalOptions.length < 1;
     if (lastSelections.playerPlateau && state.plateaus.rivals.some((plateau) => plateau.id === lastSelections.playerPlateau)) $("player-plateau-target").value = lastSelections.playerPlateau;
   }
 }

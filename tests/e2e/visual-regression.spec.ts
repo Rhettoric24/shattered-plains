@@ -479,6 +479,11 @@ test("earned Watchtower intelligence is visible in military decision surfaces", 
     await expect(page.locator("#neutral-siege-preview")).toContainText("Choose a neutral plateau");
   }
 
+  const rivalOptions = page.locator("#player-plateau-target option");
+  if (await rivalOptions.count()) {
+    await expect(rivalOptions.first()).toHaveText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau|Type unknown/);
+  }
+
   await page.addScriptTag({
     type: "module",
     content: intelligenceUiModuleSource + `

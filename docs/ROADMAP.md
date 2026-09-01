@@ -57,7 +57,8 @@ Pay special attention around Market 4--5.
 -   Clarify rival Intel vs Economy Intel vs Ledger/disclosure quality.
 -   Add one concise Intelligence-purpose explanation.
 -   Standardize Survival/Survivability terminology.
--   Inspect neutral-plateau selector when no options exist.
+-   ✅ Give empty neutral- and rival-plateau selectors explicit disabled
+    states.
 
 # FRIEND-TEST RELEASE HARDENING
 

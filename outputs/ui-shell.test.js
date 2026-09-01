@@ -112,4 +112,16 @@ describe("post-overhaul shell", () => {
     expect(css).toContain("#unit-roster .operative-ghostblood");
   });
 
+  test("includes intelligence-aware plateau types in rival siege targets", () => {
+    expect(client).toContain('const typeLabel = plateau.type === "unknown" ? "Type unknown" : plateau.typeName;');
+    expect(client).toContain('plateau.ownerName + " - " + plateau.name + " · " + typeLabel');
+  });
+
+  test("gives empty siege target selectors an explicit disabled state", () => {
+    expect(client).toContain("No neutral plateaus available");
+    expect(client).toContain("No rival plateaus available");
+    expect(client).toContain('$("neutral-plateau-target").disabled = neutralOptions.length < 1;');
+    expect(client).toContain('$("player-plateau-target").disabled = rivalOptions.length < 1;');
+  });
+
 });
