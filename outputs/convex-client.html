@@ -250,7 +250,15 @@
 
           <section class="view" id="view-ledger" data-title="Kingdom and Season Ledger" data-eyebrow="Intelligence · Ledger">
             <section class="panel full-panel kingdom-intelligence-panel">
-              <div class="section-heading"><p class="eyebrow">Season Intelligence</p><h2>Kingdom Intelligence</h2><p class="hint">Build knowledge of rival seasonal strength through targeted investigations.</p></div>
+              <div class="section-heading"><p class="eyebrow">Season Intelligence</p><h2>Kingdom Intelligence</h2><p class="hint">Intelligence helps you judge rival strength before committing armies, operatives, or resources.<sup>*</sup></p></div>
+              <details class="intel-model-note">
+                <summary><span aria-hidden="true">*</span> Friend-test note: two Intelligence models</summary>
+                <div class="intel-model-grid">
+                  <section><strong>Persistent Intel · Military and Economy</strong><p>Each category builds its own 0–100 meter against each rival. 0–24 shows a qualitative label, 25–74 an estimate, and 75–100 an exact ledger snapshot. These meters do not decay. Economy Intel can be spent in blocks of 50 on Sphere Heists; Military Intel can be spent in blocks of 50 by participants investigating an active PvP siege.</p></section>
+                  <section><strong>Report Intel · Research and Territory</strong><p>Investigations produce a Level 0–2 report of that rival’s ledger score. Reports lose one precision level every six hours, so reinvestigating refreshes a fading snapshot. These categories do not unlock separate Research or Territory operations in this friend test.</p></section>
+                </div>
+                <p class="intel-model-footnote"><strong>Separate boost pool:</strong> Military, Research, and Territory investigations can also earn Rival Intel. Rival Intel may be spent before a later investigation to add Spy Power; spending it does not lower persistent Military disclosure.</p>
+              </details>
               <div id="kingdom-intelligence-table" class="kingdom-intelligence-scroll"></div>
             </section>
           </section>

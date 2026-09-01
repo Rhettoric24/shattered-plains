@@ -55,6 +55,7 @@
   .operative-card .status-badge { flex: 0 0 auto; max-width: 46%; overflow-wrap: normal; word-break: normal; }
   .fresh-player-dispatch { align-items: stretch; flex-direction: column; }
   .fresh-player-dispatch button { width: 100%; }
+  .intel-model-grid { grid-template-columns: 1fr; }
   .operative-recruit { grid-template-columns: minmax(0, 1fr); align-items: start; }
   .operative-recruit > button { justify-self: end; width: min(132px, 100%); min-width: 104px; max-width: 132px; min-height: 42px; max-height: 42px; }
   .cohort-heading, .conclave-xp-heading, .research-library-toggle, .doctrine-section .section-heading { align-items: flex-start; flex-direction: column; }

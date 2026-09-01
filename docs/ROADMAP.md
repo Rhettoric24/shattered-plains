@@ -54,8 +54,8 @@ Pay special attention around Market 4--5.
     recruitment → Plains expedition. No build order.
 -   ✅ Communicate starting Gemheart scarcity before easy irreversible
     spending.
--   Clarify rival Intel vs Economy Intel vs Ledger/disclosure quality.
--   Add one concise Intelligence-purpose explanation.
+-   ✅ Clarify rival Intel vs Economy Intel vs Ledger/disclosure quality.
+-   ✅ Add one concise Intelligence-purpose explanation.
 -   Standardize Survival/Survivability terminology.
 -   ✅ Give empty neutral- and rival-plateau selectors explicit disabled
     states.

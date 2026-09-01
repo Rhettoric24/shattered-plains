@@ -67,6 +67,15 @@
 .fresh-player-dispatch button { flex: 0 0 auto; }
 .gemheart-scarcity { border-left-color: var(--gemheart-accent); background: rgba(187, 164, 236, .08); }
 .gemheart-scarcity strong { display: block; margin-bottom: 3px; color: var(--gemheart-accent); }
+.intel-model-note { border: 1px solid rgba(127, 183, 255, .28); border-radius: 8px; background: rgba(7, 17, 31, .54); }
+.intel-model-note > summary { padding: 11px 13px; color: var(--accent); cursor: pointer; font-size: .78rem; font-weight: 850; }
+.intel-model-note > summary span { color: var(--warning); }
+.intel-model-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 0 13px 11px; }
+.intel-model-grid section { border-left: 3px solid rgba(127, 183, 255, .52); padding: 7px 9px; background: rgba(127, 183, 255, .06); }
+.intel-model-grid strong { color: var(--text); font-size: .8rem; }
+.intel-model-grid p, .intel-model-footnote { margin: 5px 0 0; color: var(--muted); font-size: .75rem; line-height: 1.45; }
+.intel-model-footnote { margin: 0 13px 13px; border-top: 1px solid rgba(216, 229, 245, .12); padding-top: 9px; }
+.intel-model-footnote strong { color: var(--warning); }
 #unit-roster .unit-card {
   --unit-accent: #8fb8e8;
   --unit-tint: rgba(82, 132, 185, .13);

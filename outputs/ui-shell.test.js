@@ -138,4 +138,17 @@ describe("post-overhaul shell", () => {
     expect(client).toContain("state.config.startingGemhearts");
   });
 
+  test("explains the two friend-test Intelligence models and separate spend pools", () => {
+    expect(html).toContain("Intelligence helps you judge rival strength before committing armies, operatives, or resources.");
+    expect(html).toContain("Friend-test note: two Intelligence models");
+    expect(html).toContain("Persistent Intel · Military and Economy");
+    expect(html).toContain("0–24 shows a qualitative label, 25–74 an estimate, and 75–100 an exact ledger snapshot");
+    expect(html).toContain("Military Intel can be spent in blocks of 50 by participants investigating an active PvP siege");
+    expect(html).toContain("Report Intel · Research and Territory");
+    expect(html).toContain("lose one precision level every six hours");
+    expect(html).toContain("do not unlock separate Research or Territory operations in this friend test");
+    expect(html).toContain("Separate boost pool:");
+    expect(html).toContain("spending it does not lower persistent Military disclosure");
+  });
+
 });
