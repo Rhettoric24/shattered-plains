@@ -68,6 +68,13 @@ function economyIntelAmount(resource: Doc<"kingdomIntelResources"> | null | unde
   ));
 }
 
+function militaryIntelAmount(resource: Doc<"kingdomIntelResources"> | null | undefined) {
+  return Math.max(0, Math.min(
+    ESPIONAGE_RULES.sphereHeist.economyIntelCap,
+    Math.floor(resource?.militaryAmount ?? resource?.amount ?? 0),
+  ));
+}
+
 function economyIntelAmountForWrite(resource: Doc<"kingdomIntelResources"> | null | undefined, legacyReport: Doc<"kingdomIntelligence"> | null | undefined) {
   return resource?.economyAmount === undefined
     ? legacyEconomyIntelAmount(legacyReport?.achievedLevel ?? 0)
@@ -82,16 +89,17 @@ async function intelResource(ctx: MutationCtx, viewerPlayerId: Id<"players">, ta
 
 async function applyIntelReward(ctx: MutationCtx, attacker: Doc<"players">, targetPlayerId: Id<"players">, category: EspionageCategory, reward: number, now: number) {
   const row = await intelResource(ctx, attacker._id, targetPlayerId);
-  if (category === "economy") {
+  if (category === "economy" || category === "military") {
     const report = await ctx.db.query("kingdomIntelligence")
       .withIndex("by_viewerPlayerId_and_targetPlayerId_and_category", (q) =>
         q.eq("viewerPlayerId", attacker._id).eq("targetPlayerId", targetPlayerId).eq("category", "economy"))
       .unique();
     const cap = ESPIONAGE_RULES.sphereHeist.economyIntelCap;
-    const amount = Math.min(cap, economyIntelAmountForWrite(row, report) + reward);
-    if (row) await ctx.db.patch(row._id, { economyAmount: amount, updatedAt: now });
-    else await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attacker._id, targetPlayerId, amount: 0, economyAmount: amount, updatedAt: now });
-    return { amount, cap, resource: "economy" as const };
+    const amount = Math.min(cap, category === "economy" ? economyIntelAmountForWrite(row, report) + reward : militaryIntelAmount(row) + reward);
+    const field = category === "economy" ? { economyAmount: amount } : { militaryAmount: amount, amount };
+    if (row) await ctx.db.patch(row._id, { ...field, updatedAt: now });
+    else await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attacker._id, targetPlayerId, amount: 0, ...field, updatedAt: now });
+    return { amount, cap, resource: category };
   }
   const cap = networkValue(ESPIONAGE_RULES.network.intelCaps, networkLevel(attacker));
   const amount = Math.min(cap, Math.max(0, (row?.amount ?? 0) + reward));
@@ -206,6 +214,8 @@ export const getStatus = query({
         intel: resourcesByTarget.get(String(target._id))?.amount ?? 0, intelCap: cap,
         economyIntel: economyIntelAmount(resourcesByTarget.get(String(target._id))),
         economyIntelCap: ESPIONAGE_RULES.sphereHeist.economyIntelCap,
+        militaryIntel: militaryIntelAmount(resourcesByTarget.get(String(target._id))),
+        militaryIntelCap: ESPIONAGE_RULES.sphereHeist.economyIntelCap,
       })),
       missions: recent.map((mission) => ({
         missionId: mission._id, targetPlayerId: mission.targetPlayerId, targetName: names.get(String(mission.targetPlayerId)) ?? "Unknown kingdom",
@@ -261,8 +271,8 @@ export const getKingdomLedger = query({
         const targetEconomyIntel = economyIntelAmount(resource);
         const currentLevel = own
           ? 2
-          : category === "economy"
-            ? economyIntelDisclosureLevel(targetEconomyIntel)
+          : category === "economy" || category === "military"
+            ? economyIntelDisclosureLevel(category === "economy" ? targetEconomyIntel : militaryIntelAmount(resource))
             : reportLevel;
         const observed = own ? actual[category] : report?.observedScore ?? actual[category];
         const broadLabel = qualitativeScore(category, actual[category]);
@@ -273,11 +283,12 @@ export const getKingdomLedger = query({
             : { mode: "qualitative" as const, label: broadLabel, display: broadLabel };
         return [category, {
           category, categoryName: SEASON_CATEGORIES[category].name, currentLevel,
-          bestLevel: own ? 2 : category === "economy" ? Math.max(report?.bestLevel ?? 0, currentLevel) : report?.bestLevel ?? 0,
+          bestLevel: own ? 2 : category === "economy" || category === "military" ? Math.max(report?.bestLevel ?? 0, currentLevel) : report?.bestLevel ?? 0,
           presentation, observedAt: own ? now : category === "economy" ? report?.observedAt ?? resource?.updatedAt ?? null : report?.observedAt ?? null,
-          nextDecayAt: own || !report || category === "economy" ? null : nextDecayAt(report.achievedLevel, report.observedAt, now),
-          source: own ? "Your Season Ledger" : category === "economy" ? report?.source ?? "Persistent Economy Intel" : report?.source ?? "General reputation",
+          nextDecayAt: own || !report || category === "economy" || category === "military" ? null : nextDecayAt(report.achievedLevel, report.observedAt, now),
+          source: own ? "Your Season Ledger" : category === "economy" ? report?.source ?? "Persistent Economy Intel" : category === "military" ? report?.source ?? "Persistent Military Intel" : report?.source ?? "General reputation",
           ...(category === "economy" && !own ? { economyIntel: targetEconomyIntel, economyIntelCap: ESPIONAGE_RULES.sphereHeist.economyIntelCap } : {}),
+          ...(category === "military" && !own ? { militaryIntel: militaryIntelAmount(resource), militaryIntelCap: ESPIONAGE_RULES.sphereHeist.economyIntelCap } : {}),
           discoveries: (discoveryMap.get(`${target._id}:${category}`) ?? []).map((entry) => ({ id: entry._id, kind: entry.factKind, text: entry.text, observedAt: entry.observedAt })),
         }];
       })) as Record<EspionageCategory, any>;
@@ -564,7 +575,7 @@ export const resolveInvestigation = internalMutation({
         : outcome === "success"
           ? `The ${categoryName} investigation succeeded and also uncovered incidental ${SEASON_CATEGORIES[incidentalCategory!].name} intelligence.`
           : `The ${categoryName} investigation overwhelmed the target's defenses and produced a Bonus Discovery.`;
-    const intelName = intel.resource === "economy" ? "Economy Intel" : "Intel";
+    const intelName = intel.resource === "economy" ? "Economy Intel" : intel.resource === "military" ? "Military Intel" : "Intel";
     await ctx.db.insert("messages", { toPlayerId: attacker._id, kind: "system", subject: `${categoryName} Investigation: ${outcome[0].toUpperCase()}${outcome.slice(1)}`, body: `${resultText}${stormActive ? ` Storm Cover: effective Counter-Intelligence reduced by 50%.${outcome === "success" || outcome === "overwhelm" ? " Investigation Intel +50%." : ""}` : ""} ${intelName} gained: ${reward}; stored against ${target.name}: ${intel.amount}/${intel.cap}.`, eventType: "espionage_resolved", destinationView: "intelligence", destinationTab: "ledger", entityType: "espionage_mission", entityId: String(mission._id), kingdomId: target._id, intelligenceCategory: mission.category, createdAt: now });
     await createNotification(ctx, { playerId: attacker._id, category: "missions", eventType: "espionage_resolved", title: "Investigation Complete", body: resultText, destinationView: "intelligence", destinationTab: "ledger", entityId: String(mission._id), kingdomId: target._id, intelligenceCategory: mission.category, dedupeKey: `espionage:${mission._id}:attacker`, createdAt: now });
     if (outcome === "failure" || outcome === "partial") {

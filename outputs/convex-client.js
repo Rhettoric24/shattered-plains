@@ -197,6 +197,9 @@ const refs = {
   launchNeutralSiege: "plateaus:launchNeutralSiege",
   launchPlayerSiege: "plateaus:launchPlayerSiege",
   commitSiegeDefenders: "plateaus:commitSiegeDefenders",
+  reinforcePlayerSiege: "plateaus:reinforcePlayerSiege",
+  beginSiegeBattle: "plateaus:beginSiegeBattle",
+  launchSiegeInvestigation: "plateaus:launchSiegeInvestigation",
   setEmergencyDefense: "plateaus:setEmergencyDefense",
   fortifySiege: "plateaus:fortifySiege",
   retreatSiege: "plateaus:retreatSiege",
@@ -1061,7 +1064,8 @@ function renderUnits() {
       ? '<p class="rule-callout">Breakthrough: doubles up to ' + number(shardbearerSupportPower) + ' supporting Power per Shardbearer.</p>'
       : '';
     const disband = key !== "shardbearer" && available > 0 ? '<button type="button" class="secondary" data-disband-unit="' + key + '" data-available="' + available + '">Disband available</button>' : '';
-    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">Available: ' + number(available) + ' · Owned: ' + number(count) + '</span></div><div class="unit-stat-grid"><button type="button" class="stat-cell" title="' + escapeHtml(statTitle("power", unit.power, researchBonuses.power)) + '"><span>Power</span><strong>' + statValue(unit.power, researchBonuses.power) + '</strong></button><button type="button" class="stat-cell" title="' + escapeHtml(statTitle("speed", unit.speed, 0)) + '"><span>Speed</span><strong>' + statValue(unit.speed, 0) + '</strong></button><button type="button" class="stat-cell" title="' + escapeHtml(statTitle("plunder", unit.plunder, researchBonuses.plunder)) + '"><span>Plunder</span><strong>' + statValue(unit.plunder, researchBonuses.plunder) + '</strong></button><button type="button" class="stat-cell" title="' + escapeHtml(statTitle("survivability", unit.survivability, researchBonuses.survivability)) + '"><span>Survival</span><strong>' + statValue(unit.survivability, researchBonuses.survivability) + '</strong></button></div>' + breakthrough + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div>' + quantityControlMarkup('data-recruit-quantity aria-label="Recruitment quantity"', draft, maxRecruitable(key), { max: true }) + '<div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button>' + disband + '<details class="details-lore"><summary>Details &amp; Lore</summary><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div></details></article>';
+    const statButton = (stat, label, value, bonus = 0) => '<button type="button" class="stat-cell" data-stat-explanation="' + stat + '" aria-label="Explain ' + label + '" title="' + escapeHtml(statTitle(stat, value, bonus)) + '"><span>' + label + '</span><strong>' + statValue(value, bonus) + '</strong></button>';
+    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">Available: ' + number(available) + ' · Owned: ' + number(count) + '</span></div><div class="unit-stat-grid">' + statButton("power", "Power", unit.power, researchBonuses.power) + statButton("speed", "Speed", unit.speed) + statButton("plunder", "Plunder", unit.plunder, researchBonuses.plunder) + statButton("survivability", "Survivability", unit.survivability, researchBonuses.survivability) + '</div>' + breakthrough + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div>' + quantityControlMarkup('data-recruit-quantity aria-label="Recruitment quantity"', draft, maxRecruitable(key), { max: true }) + '<div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button>' + disband + '<details class="details-lore"><summary>Details &amp; Lore</summary><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div></details></article>';
   }).join("");
   const monasteryLevel = Number(state.me.buildings.ardentMonastery || 0);
   const ardentia = state.ardentia;
@@ -1072,7 +1076,8 @@ function renderUnits() {
   const conclaveCard = monasteryLevel > 0
     ? '<article class="upgrade-card unit-card conclave-card"><div class="card-heading"><div><strong>Ardentia Scout Conclave</strong><span>Field intelligence specialists</span></div><span class="status-badge">' + number(ardentia.ready) + ' ready / ' + number(ardentia.owned) + ' formed</span></div><div class="unit-identity"><p>' + (conclaveCombatReady ? 'May accompany an army as an unkillable support cohort, strengthening its Power and Survival. A deployed Conclave stops contributing Research speed until it returns.' : 'Accompanies an army to improve the resulting intelligence report. It does not add combat Power until the necessary Religious Studies are complete.') + '</p><small><strong>Capacity:</strong> ' + number(ardentia.owned) + ' / ' + number(ardentia.capacity) + ' supported by Ardent Monastery level ' + monasteryLevel + '.</small></div><div class="unit-costs"><span><small>Formation cost</small><strong>' + number(rules.recruitmentCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rules.provisionsCost) + '</strong></span></div><p class="rule-callout">One Conclave may accompany each expedition. It always has at least a 25% chance to complete its investigation and is never permanently destroyed.</p><button type="button" data-recruit-conclave' + (canRecruit ? '' : ' disabled') + '>' + (ardentia.owned >= ardentia.capacity ? 'Monastery capacity reached' : 'Form Scout Conclave') + '</button>' + conclaveRows + '</article>'
     : '';
-  const operativeCards = Object.entries(state.espionage?.rules?.operatives || {}).map(([tier, rule]) => { const unlocked = Number(state.espionage?.networkLevel || 0) >= Number(rule.networkLevel || 0); const available = Number(state.espionage?.available?.[tier] || 0); return '<article class="operative-card"><div class="card-heading"><div><strong>' + escapeHtml(rule.name) + '</strong><span>Ghostblood Network ' + number(rule.networkLevel) + '</span></div><span class="status-badge ' + (unlocked ? 'ready' : 'blocked') + '">' + (unlocked ? number(available) + ' available' : 'Locked') + '</span></div><div class="unit-costs"><span><small>Spy Power</small><strong>' + number(rule.spyPower) + '</strong></span><span><small>Provision</small><strong>' + number(rule.provisionsCost) + '</strong></span><span><small>Cost</small><strong>' + number(rule.sphereCost) + ' Spheres</strong></span></div><div class="operative-recruit">' + quantityControlMarkup('data-operative-recruit-count="' + tier + '" aria-label="' + escapeHtml(rule.name) + ' recruitment count"' + (unlocked ? '' : ' disabled'), 1, unlocked ? Math.max(0, Math.floor(state.me.spheres / Number(rule.sphereCost || 1))) : 0, { max: true }) + '<button type="button" data-recruit-operative="' + tier + '"' + (unlocked ? '' : ' disabled') + '>Recruit</button></div>' + (available ? '<button type="button" class="secondary" data-disband-operative="' + tier + '" data-available="' + available + '">Disband available</button>' : '') + '</article>'; }).join('');
+  const operativeRoles = { informant: "Rumor gatherers and local contacts", spy: "Trained covert field agents", ghostblood: "Elite clandestine operatives" };
+  const operativeCards = Object.entries(state.espionage?.rules?.operatives || {}).map(([tier, rule]) => { const unlocked = Number(state.espionage?.networkLevel || 0) >= Number(rule.networkLevel || 0); const available = Number(state.espionage?.available?.[tier] || 0); return '<article class="upgrade-card unit-card operative-card operative-' + tier + ' ' + (unlocked ? '' : 'locked') + '" data-recruit-card="' + tier + '"><div class="card-heading"><div><strong>' + escapeHtml(rule.name) + '</strong><span>' + escapeHtml(operativeRoles[tier] || "Espionage operative") + '</span></div><span class="status-badge ' + (unlocked ? 'ready' : 'blocked') + '">' + (unlocked ? 'Available: ' + number(available) : 'Network ' + number(rule.networkLevel) + ' required') + '</span></div><div class="unit-stat-grid"><div class="stat-cell operative-stat"><span>Spy Power</span><strong>' + number(rule.spyPower) + '</strong></div><div class="stat-cell operative-stat"><span>Network level</span><strong>' + number(rule.networkLevel) + '</strong></div></div><div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(rule.sphereCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rule.provisionsCost) + ' each</strong></span></div><div class="operative-recruit">' + quantityControlMarkup('data-operative-recruit-count="' + tier + '" aria-label="' + escapeHtml(rule.name) + ' recruitment count"' + (unlocked ? '' : ' disabled'), 1, unlocked ? Math.max(0, Math.floor(state.me.spheres / Number(rule.sphereCost || 1))) : 0, { max: true }) + '<button type="button" data-recruit-operative="' + tier + '"' + (unlocked ? '' : ' disabled') + '>Recruit ' + escapeHtml(rule.name) + '</button></div>' + (available ? '<button type="button" class="secondary" data-disband-operative="' + tier + '" data-available="' + available + '">Disband available</button>' : '') + '</article>'; }).join('');
   const groupOpen = (key) => localStorage.getItem("sp-recruitment-group-v1-" + key) !== "closed";
   const group = (key, title, summary, content, contentClass) => '<details class="recruitment-group form-wide" data-recruitment-group="' + key + '"' + (groupOpen(key) ? ' open' : '') + '><summary><span><strong>' + title + '</strong><small>' + summary + '</small></span><span class="recruitment-group-affordance" aria-hidden="true"></span></summary><div id="recruitment-group-' + key + '" class="recruitment-group-content ' + contentClass + '">' + content + '</div></details>';
   const militaryOwned = activeUnitEntries().reduce((sum, [key]) => sum + Number(state.me.availableUnits[key] || 0) + Number(state.me.unitsAway[key] || 0), 0);
@@ -1372,6 +1377,7 @@ function attachRecruitmentControls() {
   document.querySelectorAll("[data-recruit-card]").forEach((card) => {
     const key = card.dataset.recruitCard;
     const input = card.querySelector("[data-recruit-quantity]");
+    if (!input) return;
     const update = (value) => { input.value = String(Math.max(0, Math.floor(Number(value) || 0))); lastSelections.recruitment[key] = input.value; renderRecruitmentPreview(card, key); };
     bindQuantityControls(card);
     input.addEventListener("input", () => update(input.value));
@@ -1773,6 +1779,24 @@ function renderPlateaus() {
     });
   });
   document.querySelectorAll(".siege-defense-panel").forEach((panel) => bindQuantityControls(panel));
+  document.querySelectorAll("[data-reinforce-siege]").forEach((button) => button.addEventListener("click", () => {
+    const siegeId = button.dataset.reinforceSiege;
+    const units = emptyUnits();
+    document.querySelectorAll('[data-siege-reinforcement-unit][data-siege-id="' + siegeId + '"]').forEach(input => { units[input.dataset.unit] = Math.max(0, Math.floor(Number(input.value) || 0)); });
+    action(() => client.mutation(refs.reinforcePlayerSiege, { siegeId, units }));
+  }));
+  document.querySelectorAll("[data-begin-siege-battle]").forEach((button) => button.addEventListener("click", async () => {
+    const siegeId = button.dataset.beginSiegeBattle;
+    if (!await confirmConsequentialMission({ title: button.textContent + "?", html: '<span>Combat will resolve immediately using all forces that have arrived.</span><span>Traveling reinforcements return home and pending investigations are refunded.</span>' })) return;
+    action(() => client.mutation(refs.beginSiegeBattle, { siegeId }));
+  }));
+  document.querySelectorAll("[data-investigate-siege]").forEach((button) => button.addEventListener("click", async () => {
+    const siegeId = button.dataset.investigateSiege;
+    const operatives = { informant: 0, spy: 0, ghostblood: 0 };
+    document.querySelectorAll('[data-siege-operative][data-siege-id="' + siegeId + '"]').forEach(input => { operatives[input.dataset.tier] = Math.max(0, Math.floor(Number(input.value) || 0)); });
+    if (!await confirmConsequentialMission({ title: "Launch Siege Investigation?", html: '<span>50 Military Intel will be consumed.</span><span>Failure or partial success can permanently kill operatives.</span>' })) return;
+    action(() => client.mutation(refs.launchSiegeInvestigation, { siegeId, operatives }));
+  }));
   document.querySelectorAll("[data-siege-defense-unit]").forEach((input) => {
     input.addEventListener("input", () => {
       lastSelections.siegeDefenders = lastSelections.siegeDefenders || {};
@@ -1872,8 +1896,34 @@ function siegeCard(siege) {
       ? "Defenses unknown"
       : "Parshendi hold " + neutralDefenseLabel(plateau?.neutralDefenseRemaining || 0);
   const defenderPanel = isDefender && (siege.targetType === "player" || siege.targetType === "parshendi_retaliation") ? siegeDefenderPanel(siege, plateau) : "";
+  const v2Panel = siege.siegeVersion >= 2 && siege.targetType === "player" ? siegeV2Panel(siege) : "";
   const conclaveText = isAttacker && siege.ardentiaConclave ? ' Ardentia Scout Conclave attached.' : '';
-  return '<article class="list-item raid-item siege-card" data-entity-id="' + escapeHtml(siege.id) + '"><strong>' + title + '</strong><span>' + escapeHtml(plateauName) + '</span><small>' + attackerText + '. ' + committedText + '. ' + defenseText + '.' + conclaveText + ' Resolves in <span data-local-countdown-at="' + Number(siege.resolveAt) + '">' + formatDuration(remaining) + '</span>.</small>' + defenderPanel + '</article>';
+  return '<article class="list-item raid-item siege-card" data-entity-id="' + escapeHtml(siege.id) + '"><strong>' + title + '</strong><span>' + escapeHtml(plateauName) + '</span><small>' + attackerText + '. ' + committedText + '. ' + defenseText + '.' + conclaveText + ' Resolves in <span data-local-countdown-at="' + Number(siege.resolveAt) + '">' + formatDuration(remaining) + '</span>.</small>' + defenderPanel + v2Panel + '</article>';
+}
+
+function siegeV2Panel(siege) {
+  const now = Date.now();
+  const encircling = now < Number(siege.encircleEndsAt || 0);
+  const phase = encircling ? 'Encirclement ends in <span data-local-countdown-at="' + Number(siege.encircleEndsAt) + '">' + formatCountdownAt(siege.encircleEndsAt) + '</span>' : 'Active Siege · deadline <span data-local-countdown-at="' + Number(siege.resolveAt) + '">' + formatCountdownAt(siege.resolveAt) + '</span>';
+  const battleLabel = siege.role === "defender" ? "Sally Forth" : "Launch Assault";
+  const battle = !encircling ? '<button type="button" data-begin-siege-battle="' + siege.id + '">' + battleLabel + '</button>' : '';
+  const reinforcement = !encircling ? '<details><summary>Send reinforcements</summary><div class="unit-input-grid siege-defense-grid">' + siegeActionUnitInputs(siege.id) + '</div><button type="button" data-reinforce-siege="' + siege.id + '">Dispatch reinforcements</button></details>' : '';
+  const pending = (siege.investigations || []).find((entry) => entry.status === "pending");
+  const report = [...(siege.investigations || [])].reverse().find((entry) => entry.report);
+  const investigation = pending
+    ? '<small>Siege Investigation resolves in <span data-local-countdown-at="' + Number(pending.resolveAt) + '">' + formatCountdownAt(pending.resolveAt) + '</span>.</small>'
+    : '<details><summary>Siege Investigation · 50 Military Intel</summary><div class="operative-input-grid">' + siegeOperativeInputs(siege.id) + '</div><button type="button" data-investigate-siege="' + siege.id + '"' + (siege.militaryIntel < 50 ? ' disabled' : '') + '>Investigate enemy force</button></details>';
+  const reportText = report ? '<small><strong>' + escapeHtml(String(report.outcome || "Report")) + ':</strong> ' + escapeHtml(JSON.stringify(report.report)) + '</small>' : '';
+  const inbound = (siege.reinforcements || []).map(row => '<small>Reinforcements arrive <span data-local-countdown-at="' + Number(row.arriveAt) + '">' + formatCountdownAt(row.arriveAt) + '</span>' + (row.power !== undefined ? ' · Power ' + formatStat(row.power) : '') + '.</small>').join('');
+  return '<div class="siege-defense-panel"><strong>' + phase + '</strong><small>Military Intel against this rival: ' + number(siege.militaryIntel) + '/100.</small>' + inbound + reinforcement + investigation + reportText + battle + '</div>';
+}
+
+function siegeActionUnitInputs(siegeId) {
+  return Object.entries(state.config.unlockedUnits).map(([key, unit]) => '<div class="unit-input mission-unit-input"><strong>' + escapeHtml(unit.name) + '</strong>' + quantityControlMarkup('data-siege-reinforcement-unit data-siege-id="' + siegeId + '" data-unit="' + key + '"', '0', state.me.availableUnits[key] || 0, { half: true, max: true }) + '</div>').join('');
+}
+
+function siegeOperativeInputs(siegeId) {
+  return Object.entries(state.espionage?.rules?.operatives || {}).map(([tier, rule]) => '<label>' + escapeHtml(rule.name) + '<input type="number" min="0" max="' + number(state.espionage?.available?.[tier] || 0) + '" value="0" data-siege-operative data-siege-id="' + siegeId + '" data-tier="' + tier + '"></label>').join('');
 }
 
 function siegeDefenderPanel(siege, plateau) {
@@ -2853,6 +2903,13 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
         emergencyDefensePercent: siege.emergencyDefensePercent || 0,
         emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent || 0,
         ardentiaConclave: Boolean(siege.ardentiaConclave),
+        siegeVersion: Number(siege.siegeVersion || 1),
+        encircleEndsAt: siege.encircleEndsAt || null,
+        battleStartedAt: siege.battleStartedAt || null,
+        role: siege.role || "observer",
+        militaryIntel: Number(siege.militaryIntel || 0),
+        reinforcements: siege.reinforcements || [],
+        investigations: siege.investigations || [],
         resolveAt: siege.resolveAt,
       };
     }),
@@ -3264,7 +3321,7 @@ $("launch-player-siege").addEventListener("click", async () => {
     const conclaveId = $("player-conclave-select")?.value || "";
     const fabrial = selectedFabrial("player-fabrial");
     const target = state.plateaus.rivals.find((plateau) => plateau.id === plateauId);
-    if (!await confirmConsequentialMission(consequentialMissionSummary("Initiate rival siege?", target ? target.ownerName + " · " + target.name : "Rival plateau", units, conclaveId, "Player sieges resolve after one real hour." + (fabrial.summary ? " " + fabrial.summary : "")))) return;
+    if (!await confirmConsequentialMission(consequentialMissionSummary("Initiate rival siege?", target ? target.ownerName + " · " + target.name : "Rival plateau", units, conclaveId, "Encirclement lasts one hour; either side may then begin battle before the 24-hour deadline." + (fabrial.summary ? " " + fabrial.summary : "")))) return;
     action(() => client.mutation(refs.launchPlayerSiege, { plateauId, units, ...(conclaveId ? { conclaveId } : {}), ...(fabrial.kind ? { fabrial: fabrial.kind } : {}) }));
   } catch (error) { alert(friendlyError(error)); }
 });

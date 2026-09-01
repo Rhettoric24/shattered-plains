@@ -203,12 +203,13 @@ describe("espionage backend", () => {
     const after = await asAttacker.query(api.espionage.getStatus, {});
     expect(after.available).toEqual({ informant: 1, spy: 0, ghostblood: 1 });
     expect(after.targets[0].intel).toBe(17);
+    expect(after.targets[0].militaryIntel).toBe(17);
     const ledger = await asAttacker.query(api.espionage.getKingdomLedger, {});
     const ownRow = ledger.rows.find((row) => row.playerId === attackerId)!;
     const defender = ledger.rows.find((row) => row.playerId === defenderId)!;
     expect(ownRow.cells.military.presentation).toMatchObject({ mode: "exact", display: "0", label: "Unblooded" });
-    expect(defender.cells.military.currentLevel).toBe(2);
-    expect(defender.cells.military.presentation).not.toHaveProperty("label");
+    expect(defender.cells.military.currentLevel).toBe(0);
+    expect(defender.cells.military.presentation).toMatchObject({ mode: "qualitative", label: "Formidable" });
     expect(["economy", "research", "territory"].filter((category) => (defender.cells as any)[category].currentLevel === 1)).toHaveLength(1);
     expect(defender.total.mode).toBe("incomplete");
     const unchangedScore = await t.run(async (ctx) => await ctx.db.query("seasonScores").withIndex("by_seasonId_and_playerId", (q) => q.eq("seasonId", seasonId).eq("playerId", defenderId)).unique());

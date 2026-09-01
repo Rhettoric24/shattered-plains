@@ -53,6 +53,15 @@ async function expose(ctx: MutationCtx, now: number) {
       exposed++;
     }
   }
+  const reinforcements = await ctx.db.query("siegeReinforcements").withIndex("by_status_and_arriveAt", q => q.eq("status", "traveling")).take(200);
+  for (const reinforcement of reinforcements) {
+    if (reinforcement.lastHighstormExposureId === storm.stormId) continue;
+    const completed = await completedResearch(ctx, reinforcement.playerId);
+    const loss = applySurvivalLosses(reinforcement.units, HIGHSTORM_RULES.exposureBaseCasualtyRate, `${reinforcement._id}:${storm.stormId}:reinforcement`, completed);
+    await ctx.db.patch(reinforcement._id, { units: loss.survivors, power: effectivePower(loss.survivors, completed), speed: effectiveSpeed(loss.survivors, completed), lastHighstormExposureId: storm.stormId });
+    await createNotification(ctx, { playerId: reinforcement.playerId, category: "combat", eventType: "highstorm_exposure", title: "Reinforcements Caught in Highstorm", body: `Highstorm exposure casualties: ${casualtySummary(loss.casualties)}.`, destinationView: "plains", destinationTab: "sieges", entityId: String(reinforcement.siegeId), dedupeKey: `${storm.stormId}:siege-reinforcement:${reinforcement._id}`, createdAt: now });
+    exposed++;
+  }
   const runs = await ctx.db.query("plateauRuns").withIndex("by_status", q => q.eq("status", "open")).take(25);
   for (const run of runs) for await (const commitment of ctx.db.query("plateauCommitments").withIndex("by_run", q => q.eq("plateauRunId", run._id))) {
     if (commitment.lastHighstormExposureId === storm.stormId) continue;

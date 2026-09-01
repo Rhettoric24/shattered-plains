@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { requireAdmin } from "./admin";
 import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
@@ -22,7 +22,8 @@ import {
 import { completedResearch, reconcileResearch, recordSuccessfulDefensiveSiege } from "./researchHelpers";
 import { createNotification } from "./notificationHelpers";
 import { activeHighstorm } from "./highstorms";
-import { stormParshendiPower } from "./highstormRules";
+import { stormCounterIntelligence, stormParshendiPower, HIGHSTORM_RULES } from "./highstormRules";
+import { addOperatives, normalizeOperatives, resolveEspionageOutcome, sphereHeistCasualties, spyPower, subtractOperatives } from "./espionageRules";
 import { activeSeason, observePlateauNeutralized, observePlateauOwnership, recordOpponentAttack, recordSiegeDefenseScore, recordSiegeVictoryScore } from "./seasonLedger";
 import { subtractAvailableUnits, unitCountsValidator, validateMissionUnits } from "./armyRules";
 import {
@@ -61,6 +62,7 @@ import {
   totalUnits,
   unitSpeed,
   travelMsForUnits,
+  missionMsForBase,
   type UnitCounts,
 } from "./rules";
 import {
@@ -79,6 +81,43 @@ function cleanUnits(units: UnitCounts) {
 
 function applyLossRate(units: UnitCounts, lossRate: number, seed: string, completed?: Record<string, number>, conclaveCombat = false) {
   return applySurvivalLosses(normalizeUnits(units), lossRate, seed, completed, conclaveCombat);
+}
+
+const SIEGE_V2 = {
+  version: 2,
+  encircleMs: 60 * 60 * 1000,
+  maximumMs: 24 * 60 * 60 * 1000,
+  attackerReinforcementBaseMs: 60 * 60 * 1000,
+  defenderReinforcementBaseMs: 30 * 60 * 1000,
+  attackerInvestigationMs: 60 * 60 * 1000,
+  defenderInvestigationMs: 30 * 60 * 1000,
+  investigationCost: 50,
+  forcedDefenseMultiplier: 1.1,
+} as const;
+
+function militaryIntelAmount(resource: Doc<"kingdomIntelResources"> | null | undefined) {
+  return Math.max(0, Math.min(100, Math.floor(resource?.militaryAmount ?? resource?.amount ?? 0)));
+}
+
+async function siegeIntelResource(ctx: MutationCtx, viewerPlayerId: Id<"players">, targetPlayerId: Id<"players">) {
+  return await ctx.db.query("kingdomIntelResources")
+    .withIndex("by_viewerPlayerId_and_targetPlayerId", q => q.eq("viewerPlayerId", viewerPlayerId).eq("targetPlayerId", targetPlayerId))
+    .unique();
+}
+
+async function cancelPendingSiegeInvestigations(ctx: MutationCtx, siegeId: Id<"sieges">, now: number) {
+  const pending = (await ctx.db.query("siegeInvestigations").withIndex("by_siegeId", q => q.eq("siegeId", siegeId)).take(20))
+    .filter(row => row.status === "pending");
+  for (const investigation of pending) {
+    const player = await ctx.db.get(investigation.investigatorId);
+    if (player) {
+      const resource = await siegeIntelResource(ctx, player._id, investigation.targetPlayerId);
+      if (resource) await ctx.db.patch(resource._id, { militaryAmount: Math.min(100, militaryIntelAmount(resource) + investigation.militaryIntelSpent), updatedAt: now });
+      else await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: player._id, targetPlayerId: investigation.targetPlayerId, amount: 0, militaryAmount: investigation.militaryIntelSpent, updatedAt: now });
+      await ctx.db.patch(player._id, { operatives: addOperatives(player.operatives, investigation.operatives), lastActiveAt: now });
+    }
+    await ctx.db.patch(investigation._id, { status: "cancelled", resolvedAt: now });
+  }
 }
 
 async function validateConclaveAttachment(
@@ -280,6 +319,11 @@ export const getSiegeBoard = query({
       .query("sieges")
       .withIndex("by_status_resolve", (q) => q.eq("status", "pending"))
       .take(200);
+    const [allReinforcements, allInvestigations, intelResources] = await Promise.all([
+      ctx.db.query("siegeReinforcements").take(500),
+      ctx.db.query("siegeInvestigations").take(500),
+      ctx.db.query("kingdomIntelResources").withIndex("by_viewerPlayerId_and_targetPlayerId", q => q.eq("viewerPlayerId", viewer._id)).take(200),
+    ]);
     const referencedPlayerIds = new Set<string>([String(viewer._id)]);
     for (const plateau of allOwned) if (plateau.ownerPlayerId) referencedPlayerIds.add(String(plateau.ownerPlayerId));
     for (const siege of activeSieges) {
@@ -461,6 +505,12 @@ export const getSiegeBoard = query({
         const isAttacker = siege.attackerId === viewer._id;
         const isDefender = siege.defenderId === viewer._id;
         const incomingLevel = isDefender ? passiveTerritoryLevel : 0;
+        const opponentId = isAttacker ? siege.defenderId : isDefender ? siege.attackerId : undefined;
+        const militaryIntel = opponentId ? militaryIntelAmount(intelResources.find(row => row.targetPlayerId === opponentId)) : 0;
+        const ownInvestigations = allInvestigations.filter(row => row.siegeId === siege._id && row.investigatorId === viewer._id);
+        const reinforcements = allReinforcements.filter(row => row.siegeId === siege._id && row.status === "traveling");
+        const visibleReinforcements = reinforcements.filter(row => row.playerId === viewer._id).map(row => ({ id: row._id, side: row.side, arriveAt: row.arriveAt, units: row.units, power: row.power }));
+        if (militaryIntel >= 25) for (const row of reinforcements.filter(row => row.playerId !== viewer._id)) visibleReinforcements.push({ id: row._id, side: row.side, arriveAt: militaryIntel >= 75 ? row.arriveAt : Math.ceil(row.arriveAt / 3600000) * 3600000, units: undefined as any, power: undefined as any });
         return {
           _id: siege._id,
           plateauId: siege.plateauId,
@@ -472,7 +522,7 @@ export const getSiegeBoard = query({
           defenderName: siege.defenderId
             ? playerNames[siege.defenderId] ?? "Unknown"
             : "Parshendi",
-          attackerIntel: presentIntelNumber(siege.attackerPower, isAttacker ? 3 : incomingLevel),
+          attackerIntel: presentIntelNumber(siege.attackerPower, isAttacker ? 3 : militaryIntel >= 75 ? 2 : militaryIntel >= 25 ? 1 : incomingLevel),
           ...(isAttacker
             ? {
                 attackerUnits: siege.attackerUnits,
@@ -493,6 +543,13 @@ export const getSiegeBoard = query({
               }
             : {}),
           departAt: siege.departAt,
+          siegeVersion: siege.siegeVersion ?? 1,
+          encircleEndsAt: siege.encircleEndsAt ?? null,
+          battleStartedAt: siege.battleStartedAt ?? null,
+          role: isAttacker ? "attacker" : isDefender ? "defender" : "observer",
+          militaryIntel,
+          reinforcements: visibleReinforcements,
+          investigations: ownInvestigations.map(row => ({ id: row._id, status: row.status, outcome: row.outcome ?? null, resolveAt: row.resolveAt, casualties: row.casualties ?? null, report: row.report ?? null })),
           resolveAt: siege.resolveAt,
           status: siege.status,
         };
@@ -626,7 +683,8 @@ export const launchPlayerSiege = mutation({
     await reserveFabrial(ctx, attacker._id, args.fabrial, now);
     const scoring = await recordOpponentAttack(ctx, attacker._id, defender._id, now);
     const completed = await completedResearch(ctx, attacker._id);
-    const resolveAt = now + siegeTravelMs();
+    const encircleEndsAt = now + SIEGE_V2.encircleMs;
+    const resolveAt = now + SIEGE_V2.maximumMs;
     const remainingUnits = subtractAvailableUnits(attacker.units, units);
     const siegeId = await ctx.db.insert("sieges", {
       plateauId: plateau._id,
@@ -645,6 +703,8 @@ export const launchPlayerSiege = mutation({
       ardentiaConclave,
       ...(args.conclaveId ? { conclaveId: args.conclaveId } : {}),
       departAt: now,
+      siegeVersion: SIEGE_V2.version,
+      encircleEndsAt,
       resolveAt,
       status: "pending",
       scoringSeasonId: scoring.seasonId,
@@ -698,7 +758,7 @@ export const launchPlayerSiege = mutation({
     });
     await ctx.scheduler.runAfter(0, internal.highstorms.processActiveStorm, {});
 
-    return { siegeId, resolveAt };
+    return { siegeId, encircleEndsAt, resolveAt };
   },
 });
 
@@ -716,8 +776,12 @@ export const commitSiegeDefenders = mutation({
     if (siege.defenderId !== defender._id) {
       throw new Error("Only the defender can commit to this siege.");
     }
+    const now = Date.now();
     if (Date.now() >= siege.resolveAt) {
       throw new Error("This siege is already resolving.");
+    }
+    if (siege.siegeVersion === SIEGE_V2.version && siege.encircleEndsAt && now >= siege.encircleEndsAt) {
+      throw new Error("The initial defense must be committed during Encirclement.");
     }
     if (siege.defenderCommittedAt) {
       throw new Error("Defenders are already committed to this siege.");
@@ -730,8 +794,6 @@ export const commitSiegeDefenders = mutation({
     const completed = await completedResearch(ctx, defender._id);
     const defenderPower = effectivePower(units, completed);
     const defenderSpeed = effectiveSpeed(units, completed);
-    const now = Date.now();
-
     await ctx.db.patch(defender._id, {
       units: remainingUnits,
       lastActiveAt: now,
@@ -749,6 +811,148 @@ export const commitSiegeDefenders = mutation({
       defenderPower,
       defenderSpeed,
     };
+  },
+});
+
+export const reinforcePlayerSiege = mutation({
+  args: { siegeId: v.id("sieges"), units: unitCountsValidator },
+  handler: async (ctx, args) => {
+    const player = await requireCurrentPlayer(ctx);
+    const siege = await ctx.db.get(args.siegeId);
+    if (!siege || siege.status !== "pending" || siege.targetType !== "player" || siege.siegeVersion !== SIEGE_V2.version) throw new Error("Choose an active player siege.");
+    const side = siege.attackerId === player._id ? "attacker" : siege.defenderId === player._id ? "defender" : null;
+    if (!side) throw new Error("Only siege participants can reinforce.");
+    const now = Date.now();
+    if (!siege.encircleEndsAt || now < siege.encircleEndsAt) throw new Error("Reinforcements begin after Encirclement.");
+    if (now >= siege.resolveAt || siege.battleStartedAt) throw new Error("The battle has already begun.");
+    if (side === "defender" && !siege.defenderCommittedAt) throw new Error("Commit the initial defense before reinforcing.");
+    const units = cleanUnits(args.units);
+    if (totalUnits(units) < 1) throw new Error("Send at least one reinforcement.");
+    validateMissionUnits(player.buildings, units);
+    const remaining = subtractAvailableUnits(player.units, units);
+    const completed = await completedResearch(ctx, player._id);
+    const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
+    const baseMs = side === "attacker" ? SIEGE_V2.attackerReinforcementBaseMs : SIEGE_V2.defenderReinforcementBaseMs;
+    const arriveAt = now + missionMsForBase(baseMs, units, plateauCounts, completed);
+    const reinforcementId = await ctx.db.insert("siegeReinforcements", {
+      siegeId: siege._id, playerId: player._id, side, units,
+      power: effectivePower(units, completed), speed: effectiveSpeed(units, completed),
+      departAt: now, arriveAt, status: "traveling",
+    });
+    await ctx.db.patch(player._id, { units: remaining, lastActiveAt: now });
+    await ctx.scheduler.runAt(arriveAt, internal.plateaus.arriveSiegeReinforcement, { reinforcementId });
+    await ctx.scheduler.runAfter(0, internal.highstorms.processActiveStorm, {});
+    return { reinforcementId, arriveAt, side };
+  },
+});
+
+export const arriveSiegeReinforcement = internalMutation({
+  args: { reinforcementId: v.id("siegeReinforcements") },
+  handler: async (ctx, args) => {
+    const reinforcement = await ctx.db.get(args.reinforcementId);
+    if (!reinforcement || reinforcement.status !== "traveling") return { arrived: false };
+    const siege = await ctx.db.get(reinforcement.siegeId);
+    const player = await ctx.db.get(reinforcement.playerId);
+    const now = Date.now();
+    if (!siege || siege.status !== "pending" || siege.battleStartedAt || now >= siege.resolveAt) {
+      if (player) await ctx.db.patch(player._id, { units: addUnits(player.units, reinforcement.units), lastActiveAt: now });
+      await ctx.db.patch(reinforcement._id, { status: "returned" });
+      return { arrived: false };
+    }
+    const completed = await completedResearch(ctx, reinforcement.playerId);
+    if (reinforcement.side === "attacker") {
+      const units = addUnits(siege.attackerUnits, reinforcement.units);
+      await ctx.db.patch(siege._id, { attackerUnits: units, attackerPower: effectivePower(units, completed, Boolean(siege.conclaveId)), attackerSpeed: effectiveSpeed(units, completed, Boolean(siege.conclaveId)) });
+    } else {
+      const units = addUnits(siege.defenderUnits ?? emptyUnits(), reinforcement.units);
+      await ctx.db.patch(siege._id, { defenderUnits: units, defenderPower: effectivePower(units, completed), defenderSpeed: effectiveSpeed(units, completed) });
+    }
+    await ctx.db.patch(reinforcement._id, { status: "arrived" });
+    return { arrived: true };
+  },
+});
+
+export const beginSiegeBattle = mutation({
+  args: { siegeId: v.id("sieges") },
+  handler: async (ctx, args) => {
+    const player = await requireCurrentPlayer(ctx);
+    const siege = await ctx.db.get(args.siegeId);
+    if (!siege || siege.status !== "pending" || siege.targetType !== "player" || siege.siegeVersion !== SIEGE_V2.version) throw new Error("Choose an active player siege.");
+    const side = siege.attackerId === player._id ? "attacker" : siege.defenderId === player._id ? "defender" : null;
+    if (!side) throw new Error("Only siege participants can begin battle.");
+    const now = Date.now();
+    if (!siege.encircleEndsAt || now < siege.encircleEndsAt) throw new Error("Battle cannot begin during Encirclement.");
+    const dueInvestigation = (await ctx.db.query("siegeInvestigations").withIndex("by_siegeId", q => q.eq("siegeId", siege._id)).take(20))
+      .find(row => row.status === "pending" && row.resolveAt <= now);
+    if (dueInvestigation) throw new Error("Siege reports are being finalized. Try again in a moment.");
+    await cancelPendingSiegeInvestigations(ctx, siege._id, now);
+    await ctx.db.patch(siege._id, { battleStartedAt: now, battleStartedBy: side });
+    await ctx.scheduler.runAfter(0, internal.plateaus.resolveSiege, { siegeId: siege._id });
+    return { started: true, side };
+  },
+});
+
+export const launchSiegeInvestigation = mutation({
+  args: { siegeId: v.id("sieges"), operatives: v.object({ informant: v.number(), spy: v.number(), ghostblood: v.number() }) },
+  handler: async (ctx, args) => {
+    const investigator = await requireCurrentPlayer(ctx);
+    const siege = await ctx.db.get(args.siegeId);
+    if (!siege || siege.status !== "pending" || siege.targetType !== "player" || siege.siegeVersion !== SIEGE_V2.version || !siege.attackerId || !siege.defenderId) throw new Error("Choose an active player siege.");
+    const side = siege.attackerId === investigator._id ? "attacker" : siege.defenderId === investigator._id ? "defender" : null;
+    if (!side) throw new Error("Only siege participants can investigate.");
+    const targetPlayerId = side === "attacker" ? siege.defenderId : siege.attackerId;
+    const commitment = normalizeOperatives(args.operatives);
+    if (Object.values(commitment).reduce((sum, count) => sum + count, 0) < 1) throw new Error("Commit at least one operative.");
+    const remaining = subtractOperatives(investigator.operatives ?? {}, commitment);
+    const existing = (await ctx.db.query("siegeInvestigations").withIndex("by_investigatorId_and_siegeId", q => q.eq("investigatorId", investigator._id).eq("siegeId", siege._id)).take(20)).find(row => row.status === "pending");
+    if (existing) throw new Error("You already have a pending investigation in this siege.");
+    const resource = await siegeIntelResource(ctx, investigator._id, targetPlayerId);
+    if (militaryIntelAmount(resource) < SIEGE_V2.investigationCost) throw new Error("Siege Investigation requires 50 Military Intel against this rival.");
+    const now = Date.now();
+    const duration = side === "attacker" ? SIEGE_V2.attackerInvestigationMs : SIEGE_V2.defenderInvestigationMs;
+    const resolveAt = Math.max(now + duration, siege.encircleEndsAt ?? now);
+    await ctx.db.patch(investigator._id, { operatives: remaining, lastActiveAt: now });
+    await ctx.db.patch(resource!._id, { militaryAmount: militaryIntelAmount(resource) - SIEGE_V2.investigationCost, updatedAt: now });
+    const investigationId = await ctx.db.insert("siegeInvestigations", { siegeId: siege._id, investigatorId: investigator._id, targetPlayerId, side, operatives: commitment, spyPower: spyPower(commitment), militaryIntelSpent: SIEGE_V2.investigationCost, launchedAt: now, resolveAt, status: "pending" });
+    await ctx.scheduler.runAt(resolveAt, internal.plateaus.resolveSiegeInvestigation, { investigationId });
+    return { investigationId, resolveAt, side };
+  },
+});
+
+export const resolveSiegeInvestigation = internalMutation({
+  args: { investigationId: v.id("siegeInvestigations") },
+  handler: async (ctx, args) => {
+    const investigation = await ctx.db.get(args.investigationId);
+    if (!investigation || investigation.status !== "pending") return { resolved: false };
+    const siege = await ctx.db.get(investigation.siegeId);
+    const investigator = await ctx.db.get(investigation.investigatorId);
+    const target = await ctx.db.get(investigation.targetPlayerId);
+    const now = Date.now();
+    if (!siege || siege.status !== "pending" || siege.battleStartedAt || !investigator || !target) {
+      if (siege?.status === "pending" && investigator) await cancelPendingSiegeInvestigations(ctx, siege._id, now);
+      return { resolved: false };
+    }
+    const stormActive = (await activeHighstorm(ctx, now)).active;
+    const outcome = resolveEspionageOutcome(investigation.spyPower, stormCounterIntelligence(spyPower(target.defendingOperatives), stormActive));
+    const rateMultiplier = stormActive ? HIGHSTORM_RULES.failureCasualtyMultiplier : 1;
+    const losses = sphereHeistCasualties(investigation.operatives, outcome, rateMultiplier);
+    const targetSide = investigation.side === "attacker" ? "defender" : "attacker";
+    const currentUnits = targetSide === "attacker" ? normalizeUnits(siege.attackerUnits) : normalizeUnits(siege.defenderUnits ?? emptyUnits());
+    const currentPower = targetSide === "attacker" ? siege.attackerPower : siege.defenderPower ?? 0;
+    const incoming = (await ctx.db.query("siegeReinforcements").withIndex("by_siegeId", q => q.eq("siegeId", siege._id)).take(50))
+      .filter(row => row.status === "traveling" && row.side === targetSide)
+      .map(row => ({ arriveAt: row.arriveAt, power: row.power, units: row.units }));
+    const report = outcome === "failure" ? null : outcome === "partial"
+      ? { observedAt: now, power: presentIntelNumber(currentPower, 2), composition: "approximate", reinforcements: incoming.map(row => ({ arrivalWindowMinutes: Math.max(1, Math.ceil((row.arriveAt - now) / 3600000) * 60) })) }
+      : outcome === "success"
+        ? { observedAt: now, power: currentPower, units: currentUnits, reinforcements: incoming.map(row => ({ arriveAt: row.arriveAt, power: presentIntelNumber(row.power, 2) })) }
+        : { observedAt: now, power: currentPower, units: currentUnits, reinforcements: incoming };
+    await ctx.db.patch(investigator._id, { operatives: addOperatives(investigator.operatives, losses.survivors), lastActiveAt: now });
+    await ctx.db.patch(investigation._id, { status: "resolved", outcome, casualties: losses.casualties, ...(report ? { report } : {}), resolvedAt: now });
+    const summary = outcome === "failure" ? "The investigation failed to produce reliable battlefield information." : outcome === "partial" ? "A partial battlefield estimate is ready." : outcome === "success" ? "An exact snapshot of the present enemy force is ready." : "The enemy force and all inbound reinforcements were fully exposed.";
+    await createNotification(ctx, { playerId: investigator._id, category: "missions", eventType: "siege_investigation_resolved", title: `Siege Investigation: ${outcome[0].toUpperCase()}${outcome.slice(1)}`, body: `${summary} Operative casualties: ${Object.values(losses.casualties).reduce((sum, count) => sum + count, 0)}.`, destinationView: "plains", destinationTab: "sieges", entityId: String(siege._id), dedupeKey: `siege-investigation:${investigation._id}`, createdAt: now });
+    if (outcome === "failure" || outcome === "success") await createNotification(ctx, { playerId: target._id, category: "missions", eventType: "siege_investigation_detected", title: "Siege Espionage Detected", body: outcome === "success" ? `${investigator.name}'s agents penetrated your siege lines.` : "Your counter-intelligence disrupted an investigation around the siege.", destinationView: "plains", destinationTab: "sieges", entityId: String(siege._id), dedupeKey: `siege-investigation:${investigation._id}:target`, createdAt: now });
+    return { resolved: true, outcome };
   },
 });
 
@@ -911,6 +1115,17 @@ export const resolveSiege = internalMutation({
     }
 
     const now = Date.now();
+    const forcedAssault = siege.targetType === "player" && siege.siegeVersion === SIEGE_V2.version && !siege.battleStartedAt && now >= siege.resolveAt;
+    if (siege.targetType === "player" && siege.siegeVersion === SIEGE_V2.version) {
+      await cancelPendingSiegeInvestigations(ctx, siege._id, now);
+      if (forcedAssault) await ctx.db.patch(siege._id, { battleStartedAt: now, battleStartedBy: "deadline" });
+      const traveling = (await ctx.db.query("siegeReinforcements").withIndex("by_siegeId", q => q.eq("siegeId", siege._id)).take(100)).filter(row => row.status === "traveling");
+      for (const reinforcement of traveling) {
+        const owner = await ctx.db.get(reinforcement.playerId);
+        if (owner) await ctx.db.patch(owner._id, { units: addUnits(owner.units, reinforcement.units), lastActiveAt: now });
+        await ctx.db.patch(reinforcement._id, { status: "returned" });
+      }
+    }
     const attackerCompleted = attacker ? await completedResearch(ctx, attacker._id) : undefined;
     let won = false;
     let resultText = "";
@@ -1109,12 +1324,13 @@ export const resolveSiege = internalMutation({
         const defenderUnits = normalizeUnits(siege.defenderUnits ?? emptyUnits());
         const defenderCompleted = await completedResearch(ctx, defender._id);
         const emergencyDefensePercent = siege.emergencyDefensePercent ?? 0;
-        const defenderPower = committedDefensePower(
+        const baseDefenderPower = committedDefensePower(
           defenderUnits,
           plateau,
           emergencyDefensePercent,
           defenderCompleted,
         );
+        const defenderPower = forcedAssault ? baseDefenderPower * SIEGE_V2.forcedDefenseMultiplier : baseDefenderPower;
         won = siege.attackerPower > defenderPower;
         const rawAttackerLossResult = applyLossRate(
           siege.attackerUnits,

@@ -95,4 +95,21 @@ describe("post-overhaul shell", () => {
     expect(css).toContain("height: 42px");
   });
 
+  test("makes all four army stats explicitly tap-accessible", () => {
+    for (const stat of ["power", "speed", "plunder", "survivability"]) {
+      expect(client).toContain('statButton("' + stat + '"');
+    }
+    expect(client).toContain('data-stat-explanation="\' + stat + \'"');
+    expect(client).toContain('aria-label="Explain ');
+    expect(client).toContain('showTapTooltip(calculation.getAttribute("title"), calculation)');
+  });
+
+  test("uses the military recruitment card system for espionage operatives", () => {
+    expect(client).toContain('upgrade-card unit-card operative-card operative-');
+    expect(client).toContain("data-recruit-card=\"' + tier + '\"");
+    expect(css).toContain("#unit-roster .operative-informant");
+    expect(css).toContain("#unit-roster .operative-spy");
+    expect(css).toContain("#unit-roster .operative-ghostblood");
+  });
+
 });

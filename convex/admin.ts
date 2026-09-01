@@ -37,6 +37,8 @@ type GameplayTable =
   | "plateauRuns"
   | "raids"
   | "sieges"
+  | "siegeReinforcements"
+  | "siegeInvestigations"
   | "plateaus"
   | "messages"
   | "notifications"
@@ -143,6 +145,8 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
     plateauCommitments: await deleteGameplayTable(ctx, "plateauCommitments"),
     plateauRuns: await deleteGameplayTable(ctx, "plateauRuns"),
     raids: await deleteGameplayTable(ctx, "raids"),
+    siegeInvestigations: await deleteGameplayTable(ctx, "siegeInvestigations"),
+    siegeReinforcements: await deleteGameplayTable(ctx, "siegeReinforcements"),
     sieges: await deleteGameplayTable(ctx, "sieges"),
     plateaus: await deleteGameplayTable(ctx, "plateaus"),
     messages: await deleteGameplayTable(ctx, "messages"),

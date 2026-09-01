@@ -77,6 +77,9 @@
 #unit-roster .unit-spearman { --unit-accent: #d8ab67; --unit-tint: rgba(165, 112, 48, .15); }
 #unit-roster .unit-chull { --unit-accent: #93c17e; --unit-tint: rgba(85, 139, 67, .15); }
 #unit-roster .unit-shardbearer { --unit-accent: #c5b3f1; --unit-tint: rgba(115, 86, 168, .17); }
+#unit-roster .operative-informant { --unit-accent: #d1b278; --unit-tint: rgba(151, 111, 49, .15); }
+#unit-roster .operative-spy { --unit-accent: #7dc2b0; --unit-tint: rgba(45, 132, 112, .16); }
+#unit-roster .operative-ghostblood { --unit-accent: #b79ae4; --unit-tint: rgba(103, 70, 158, .18); }
 #unit-roster .unit-card > * { min-width: 0; max-width: 100%; }
 #unit-roster .card-heading { align-items: center; }
 #unit-roster .card-heading > div { min-width: 0; }
@@ -87,6 +90,7 @@
 #unit-roster .stat-cell { min-width: 0; min-height: 42px; overflow: hidden; padding: 5px 6px; }
 #unit-roster .stat-cell span { overflow: hidden; font-size: .66rem; text-overflow: ellipsis; white-space: nowrap; }
 #unit-roster .stat-cell strong { margin-top: 2px; color: var(--unit-accent); font-size: .95rem; }
+#unit-roster .operative-stat { display: block; border: 1px solid rgba(216, 229, 245, .16); border-radius: 6px; background: rgba(7, 17, 31, .62); }
 #unit-roster .research-stat-bonus { display: block; margin-top: 2px; color: #9fd5a5; font-size: .56rem; font-weight: 800; line-height: 1.15; white-space: normal; }
 #unit-roster .rule-callout { margin: 0; padding: 6px 9px; font-size: .76rem; line-height: 1.3; }
 .unit-costs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; border-top: 1px solid rgba(216, 229, 245, .12); padding-top: 8px; }

@@ -161,6 +161,10 @@ export default defineSchema({
     ),
     attackerHighstormExposureId: v.optional(v.string()),
     defenderHighstormExposureId: v.optional(v.string()),
+    siegeVersion: v.optional(v.number()),
+    encircleEndsAt: v.optional(v.number()),
+    battleStartedAt: v.optional(v.number()),
+    battleStartedBy: v.optional(v.union(v.literal("attacker"), v.literal("defender"), v.literal("deadline"))),
     fabrialKind: v.optional(v.union(v.literal("painrial"), v.literal("soulcaster"), v.literal("halfShard"))),
     fabrialResolvedAt: v.optional(v.number()),
     fabrialLost: v.optional(v.boolean()),
@@ -172,6 +176,41 @@ export default defineSchema({
     .index("by_defender", ["defenderId"])
     .index("by_defender_and_status", ["defenderId", "status"])
     .index("by_plateau", ["plateauId"]),
+
+  siegeReinforcements: defineTable({
+    siegeId: v.id("sieges"),
+    playerId: v.id("players"),
+    side: v.union(v.literal("attacker"), v.literal("defender")),
+    units: unitCounts,
+    power: v.number(),
+    speed: v.number(),
+    departAt: v.number(),
+    arriveAt: v.number(),
+    status: v.union(v.literal("traveling"), v.literal("arrived"), v.literal("returned")),
+    lastHighstormExposureId: v.optional(v.string()),
+  })
+    .index("by_siegeId", ["siegeId"])
+    .index("by_status_and_arriveAt", ["status", "arriveAt"]),
+
+  siegeInvestigations: defineTable({
+    siegeId: v.id("sieges"),
+    investigatorId: v.id("players"),
+    targetPlayerId: v.id("players"),
+    side: v.union(v.literal("attacker"), v.literal("defender")),
+    operatives: operativeCounts,
+    spyPower: v.number(),
+    militaryIntelSpent: v.number(),
+    launchedAt: v.number(),
+    resolveAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+    status: v.union(v.literal("pending"), v.literal("resolved"), v.literal("cancelled")),
+    outcome: v.optional(v.union(v.literal("failure"), v.literal("partial"), v.literal("success"), v.literal("overwhelm"))),
+    casualties: v.optional(operativeCounts),
+    report: v.optional(v.any()),
+  })
+    .index("by_siegeId", ["siegeId"])
+    .index("by_investigatorId_and_siegeId", ["investigatorId", "siegeId"])
+    .index("by_status_and_resolveAt", ["status", "resolveAt"]),
 
   kingdomWorldPressure: defineTable({
     playerId: v.id("players"),
@@ -474,6 +513,7 @@ export default defineSchema({
     targetPlayerId: v.id("players"),
     amount: v.number(),
     economyAmount: v.optional(v.number()),
+    militaryAmount: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_viewerPlayerId_and_targetPlayerId", ["viewerPlayerId", "targetPlayerId"]),
 
