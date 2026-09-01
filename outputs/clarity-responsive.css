@@ -53,6 +53,8 @@
   .quantity-adjust-row [data-quantity-max]:last-child { grid-column: 3 / 4; }
   .operative-card .card-heading > div { display: grid; min-width: 0; gap: 3px; }
   .operative-card .status-badge { flex: 0 0 auto; max-width: 46%; overflow-wrap: normal; word-break: normal; }
+  #unit-roster .card-heading { align-items: stretch; flex-direction: column; }
+  .roster-metrics { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid rgba(216, 229, 245, .14); border-left: 0; padding-top: 7px; padding-left: 0; }
   .fresh-player-dispatch { align-items: stretch; flex-direction: column; }
   .fresh-player-dispatch button { width: 100%; }
   .intel-model-grid { grid-template-columns: 1fr; }
@@ -97,6 +99,7 @@
   .split-heading { display: grid; }
   .pulse-grid, .outlook-grid, .unit-stat-grid, .effect-comparison, .recruit-preview, .attack-planner { grid-template-columns: 1fr; }
   #kingdom-pulse, #plateau-bonus-summary, .target-selector { grid-template-columns: 1fr; }
+  .target-selection-details { grid-column: 1; grid-template-columns: 1fr; }
   .section-heading, .inbox-controls, .message-item summary { align-items: stretch; display: grid; }
   .mode-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .priority-item, .operation-row { min-height: 60px; }

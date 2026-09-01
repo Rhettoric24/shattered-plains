@@ -326,7 +326,7 @@ async function expectEspionageLayouts(page: Page) {
   await page.locator("#close-kingdom-intel-dialog").click();
   await page.locator("#space-subnav").getByRole("button", { name: "Operations", exact: true }).click();
   await expect(page.locator("#view-intelligence-operations")).toBeVisible();
-  const card = page.locator("#espionage-roster .operative-card").first();
+  const card = page.locator("#espionage-mission-operatives .operative-input").first();
   const composer = page.locator("#espionage-mission-form");
   await expect(card).toBeVisible();
   await expect(composer).toBeVisible();
@@ -373,8 +373,7 @@ async function expectEspionageLayouts(page: Page) {
   await expect(page.locator("#heist-below-threshold-test button")).toBeDisabled();
   await expectContained(card);
   await expectContained(composer);
-  await expect(page.locator("#view-intelligence-operations").getByRole("button", { name: "Open Recruitment" })).toBeVisible();
-  await expect(page.locator("#espionage-roster [data-recruit-operative]")).toHaveCount(0);
+  await expect(page.locator("#espionage-roster")).toHaveCount(0);
   for (const form of [page.locator("#espionage-defense-form"), composer]) {
     const controls = form.locator(".operative-input, select, input, button");
     for (let index = 0; index < await controls.count(); index += 1) {
@@ -383,7 +382,7 @@ async function expectEspionageLayouts(page: Page) {
   }
   await expectNoMajorHorizontalOverflow(page);
 
-  const cardMasks = [card.locator(".status-badge"), card.locator(".operative-state-line")];
+  const cardMasks = [card.locator("small")];
   const composerMasks = [composer.locator("select"), composer.locator(".mission-unit-heading small"), composer.locator("#espionage-mission-preview")];
   await page.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : undefined));
   await page.waitForTimeout(750);
@@ -473,7 +472,8 @@ test("earned Watchtower intelligence is visible in military decision surfaces", 
   const hasNeutralTarget = await page.locator("#neutral-plateau-target").evaluate((select: HTMLSelectElement) => Boolean(select.value));
   if (hasNeutralTarget) {
     await expect(neutralOptions.first()).not.toHaveText(/Unsurveyed Plateau/);
-    await expect(neutralOptions.first()).toHaveText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau/);
+    await expect(page.locator("#neutral-plateau-selection")).toContainText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau/);
+    await expect(page.locator("#neutral-plateau-selection")).toContainText("Resistance");
     await expect(page.locator("#neutral-siege-preview")).toContainText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau/);
     await expect(page.locator("#neutral-siege-preview")).toContainText(/Parshendi resistance:/);
   } else {
@@ -485,7 +485,9 @@ test("earned Watchtower intelligence is visible in military decision surfaces", 
   const rivalOptions = page.locator("#player-plateau-target option");
   const hasRivalTarget = await page.locator("#player-plateau-target").evaluate((select: HTMLSelectElement) => Boolean(select.value));
   if (hasRivalTarget) {
-    await expect(rivalOptions.first()).toHaveText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau|Type unknown/);
+    await expect(rivalOptions.first()).toHaveText(/.+ — .+/);
+    await expect(page.locator("#player-plateau-selection")).toContainText("Held by");
+    await expect(page.locator("#player-plateau-selection")).toContainText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau|Unknown/);
   } else {
     await expect(rivalOptions).toHaveCount(1);
     await expect(rivalOptions.first()).toHaveText("No rival plateaus available");

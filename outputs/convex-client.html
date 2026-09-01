@@ -192,7 +192,7 @@
               <div class="mode-switcher expedition-switcher"><button type="button" class="mode-button active" data-expedition-mode="neutral">Explore Neutral</button><button type="button" class="mode-button" data-expedition-mode="rival">Siege Rival</button></div>
               <form id="neutral-siege-form" class="attack-planner expedition-panel active" data-expedition-panel="neutral" data-attack-planner="neutral">
                 <div class="mission-summary form-wide"><strong>Explore the neutral plateau pool</strong><span>Army Speed and Bridged Plateaus reduce this expedition's total duration. Plateau identity remains hidden until capture.</span></div>
-                <div class="target-selector form-wide"><label for="neutral-plateau-target">Target Plateau</label><select id="neutral-plateau-target"></select></div>
+                <div class="target-selector form-wide"><label for="neutral-plateau-target">Target Plateau</label><select id="neutral-plateau-target"></select><div id="neutral-plateau-selection" class="target-selection-details"></div></div>
                 <div class="form-wide">
                   <label>Select Units</label>
                   <div id="neutral-siege-units" class="unit-input-grid"></div>
@@ -204,7 +204,7 @@
               </form>
               <form id="player-siege-form" class="attack-planner expedition-panel" data-expedition-panel="rival" data-attack-planner="rival">
                 <div class="mission-summary form-wide"><strong>Challenge a rival holding</strong><span>Player sieges begin with a one-hour Encirclement and can remain active for up to 24 real hours.</span></div>
-                <div class="target-selector form-wide"><label for="player-plateau-target">Target Plateau</label><select id="player-plateau-target"></select></div>
+                <div class="target-selector form-wide"><label for="player-plateau-target">Target Plateau</label><select id="player-plateau-target"></select><div id="player-plateau-selection" class="target-selection-details"></div></div>
                 <div class="form-wide">
                   <label>Select Units</label>
                   <div id="player-siege-units" class="unit-input-grid"></div>
@@ -271,8 +271,6 @@
                 <div><strong>Ghostblood Network required</strong><span>Construct Network I in Buildings to recruit Informants and launch investigations.</span></div>
                 <button id="open-ghostblood-building" type="button">Open Buildings</button>
               </div>
-              <div class="section-heading operative-section-heading"><p class="eyebrow">Personnel</p><h3>Espionage operatives</h3><p class="hint">Operatives consume Provision whether available, defending, or away on a mission.</p><button type="button" class="secondary" data-route-view="warcamp" data-route-tab="recruitment">Open Recruitment</button></div>
-              <div id="espionage-roster" class="operative-roster"></div>
               <div id="espionage-controls" class="espionage-control-grid">
                 <form id="espionage-defense-form" class="contained-form espionage-form">
                   <div class="form-wide"><h3>Home defense</h3><p class="hint">Defending operatives are unavailable for investigations and contribute their Spy Power to Counter-Intelligence.</p></div>

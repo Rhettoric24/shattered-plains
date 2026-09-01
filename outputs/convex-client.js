@@ -1045,6 +1045,7 @@ function buildingEffectValues(key, level) {
 
 function renderUnits() {
   renderArmyStatus();
+  const rosterMetrics = (available, owned) => '<div class="roster-metrics"><span>Available<strong>' + number(available) + '</strong></span><span>Owned<strong>' + number(owned) + '</strong></span></div>';
   const unitCards = activeUnitEntries().map(([key, unit]) => {
     const unlocked = Boolean(state.config.unlockedUnits[key]);
     const available = state.me.availableUnits[key] || 0;
@@ -1069,7 +1070,7 @@ function renderUnits() {
       : '';
     const disband = key !== "shardbearer" && available > 0 ? '<button type="button" class="secondary" data-disband-unit="' + key + '" data-available="' + available + '">Disband available</button>' : '';
     const statButton = (stat, label, value, bonus = 0) => '<button type="button" class="stat-cell" data-stat-explanation="' + stat + '" aria-label="Explain ' + label + '" title="' + escapeHtml(statTitle(stat, value, bonus)) + '"><span>' + label + '</span><strong>' + statValue(value, bonus) + '</strong></button>';
-    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div><span class="status-badge">Available: ' + number(available) + ' · Owned: ' + number(count) + '</span></div><div class="unit-stat-grid">' + statButton("power", "Power", unit.power, researchBonuses.power) + statButton("speed", "Speed", unit.speed) + statButton("plunder", "Plunder", unit.plunder, researchBonuses.plunder) + statButton("survivability", "Survive", unit.survivability, researchBonuses.survivability) + '</div>' + breakthrough + gemheartWarning + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div>' + quantityControlMarkup('data-recruit-quantity aria-label="Recruitment quantity"', draft, maxRecruitable(key), { max: true }) + '<div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button>' + disband + '<details class="details-lore"><summary>Details &amp; Lore</summary><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div></details></article>';
+    return '<article class="upgrade-card unit-card unit-' + key + ' ' + (unlocked ? "" : "locked") + '" data-recruit-card="' + key + '"><div class="card-heading"><div><strong>' + escapeHtml(unit.name) + '</strong><span>' + escapeHtml(unit.role || "") + '</span></div>' + rosterMetrics(available, count) + '</div><div class="unit-stat-grid">' + statButton("power", "Power", unit.power, researchBonuses.power) + statButton("speed", "Speed", unit.speed) + statButton("plunder", "Plunder", unit.plunder, researchBonuses.plunder) + statButton("survivability", "Survive", unit.survivability, researchBonuses.survivability) + '</div>' + breakthrough + gemheartWarning + '<div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(resourceCost) + ' ' + escapeHtml(resourceName) + '</strong></span><span><small>Provision cost</small><strong>' + number(provisionCost) + ' each</strong></span></div>' + quantityControlMarkup('data-recruit-quantity aria-label="Recruitment quantity"', draft, maxRecruitable(key), { max: true }) + '<div data-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-submit>Recruit ' + escapeHtml(unit.name) + '</button>' + disband + '<details class="details-lore"><summary>Details &amp; Lore</summary><div class="unit-identity"><p>' + escapeHtml(unit.identity || "") + '</p><small><strong>Best for:</strong> ' + escapeHtml(unit.bestFor || "General operations.") + '</small></div></details></article>';
   }).join("");
   const monasteryLevel = Number(state.me.buildings.ardentMonastery || 0);
   const ardentia = state.ardentia;
@@ -1078,20 +1079,23 @@ function renderUnits() {
   const conclaveCombatReady = Number(state.research?.completedLevels?.religiousStudies || 0) >= 3;
   const conclaveRows = (ardentia.conclaves || []).map((entry) => '<div class="compact-status-row"><span><strong>' + escapeHtml(entry.name) + '</strong><small>' + (entry.missionId ? 'Away on mission' : 'Ready · Rank ' + number(entry.rank)) + '</small></span>' + (entry.missionId ? '<span class="status-badge blocked">Committed</span>' : '<button type="button" class="secondary compact-button" data-disband-conclave="' + entry._id + '" data-conclave-name="' + escapeHtml(entry.name) + '">Disband</button>') + '</div>').join('');
   const conclaveCard = monasteryLevel > 0
-    ? '<article class="upgrade-card unit-card conclave-card"><div class="card-heading"><div><strong>Ardentia Scout Conclave</strong><span>Field intelligence specialists</span></div><span class="status-badge">' + number(ardentia.ready) + ' ready / ' + number(ardentia.owned) + ' formed</span></div><div class="unit-identity"><p>' + (conclaveCombatReady ? 'May accompany an army as an unkillable support cohort, strengthening its Power and Survive. A deployed Conclave stops contributing Research speed until it returns.' : 'Accompanies an army to improve the resulting intelligence report. It does not add combat Power until the necessary Religious Studies are complete.') + '</p><small><strong>Capacity:</strong> ' + number(ardentia.owned) + ' / ' + number(ardentia.capacity) + ' supported by Ardent Monastery level ' + monasteryLevel + '.</small></div><div class="unit-costs"><span><small>Formation cost</small><strong>' + number(rules.recruitmentCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rules.provisionsCost) + '</strong></span></div><p class="rule-callout">One Conclave may accompany each expedition. It always has at least a 25% chance to complete its investigation and is never permanently destroyed.</p><button type="button" data-recruit-conclave' + (canRecruit ? '' : ' disabled') + '>' + (ardentia.owned >= ardentia.capacity ? 'Monastery capacity reached' : 'Form Scout Conclave') + '</button>' + conclaveRows + '</article>'
+    ? '<article class="upgrade-card unit-card conclave-card"><div class="card-heading"><div><strong>Ardentia Scout Conclave</strong><span>Field intelligence specialists</span></div>' + rosterMetrics(ardentia.ready, ardentia.owned) + '</div><div class="unit-identity"><p>' + (conclaveCombatReady ? 'May accompany an army as an unkillable support cohort, strengthening its Power and Survive score. A deployed Conclave stops contributing Research speed until it returns.' : 'Accompanies an army to improve the resulting intelligence report. It does not add combat Power until the necessary Religious Studies are complete.') + '</p><small><strong>Capacity:</strong> ' + number(ardentia.owned) + ' / ' + number(ardentia.capacity) + ' supported by Ardent Monastery level ' + monasteryLevel + '.</small></div><div class="unit-costs"><span><small>Formation cost</small><strong>' + number(rules.recruitmentCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rules.provisionsCost) + '</strong></span></div><p class="rule-callout">One Conclave may accompany each expedition. It always has at least a 25% chance to complete its investigation and is never permanently destroyed.</p><button type="button" data-recruit-conclave' + (canRecruit ? '' : ' disabled') + '>' + (ardentia.owned >= ardentia.capacity ? 'Monastery capacity reached' : 'Form Scout Conclave') + '</button>' + conclaveRows + '</article>'
     : '';
   const operativeRoles = { informant: "Rumor gatherers and local contacts", spy: "Trained covert field agents", ghostblood: "Elite clandestine operatives" };
-  const operativeCards = Object.entries(state.espionage?.rules?.operatives || {}).map(([tier, rule]) => { const unlocked = Number(state.espionage?.networkLevel || 0) >= Number(rule.networkLevel || 0); const available = Number(state.espionage?.available?.[tier] || 0); return '<article class="upgrade-card unit-card operative-card operative-' + tier + ' ' + (unlocked ? '' : 'locked') + '" data-recruit-card="' + tier + '"><div class="card-heading"><div><strong>' + escapeHtml(rule.name) + '</strong><span>' + escapeHtml(operativeRoles[tier] || "Espionage operative") + '</span></div><span class="status-badge ' + (unlocked ? 'ready' : 'blocked') + '">' + (unlocked ? 'Available: ' + number(available) : 'Network ' + number(rule.networkLevel) + ' required') + '</span></div><div class="unit-stat-grid"><div class="stat-cell operative-stat"><span>Spy Power</span><strong>' + number(rule.spyPower) + '</strong></div><div class="stat-cell operative-stat"><span>Network level</span><strong>' + number(rule.networkLevel) + '</strong></div></div><div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(rule.sphereCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rule.provisionsCost) + ' each</strong></span></div><div class="operative-recruit">' + quantityControlMarkup('data-operative-recruit-count="' + tier + '" aria-label="' + escapeHtml(rule.name) + ' recruitment count"' + (unlocked ? '' : ' disabled'), 1, unlocked ? Math.max(0, Math.floor(state.me.spheres / Number(rule.sphereCost || 1))) : 0, { max: true }) + '<button type="button" data-recruit-operative="' + tier + '"' + (unlocked ? '' : ' disabled') + '>Recruit ' + escapeHtml(rule.name) + '</button></div>' + (available ? '<button type="button" class="secondary" data-disband-operative="' + tier + '" data-available="' + available + '">Disband available</button>' : '') + '</article>'; }).join('');
+  const operativeCards = Object.entries(state.espionage?.rules?.operatives || {}).map(([tier, rule]) => { const unlocked = Number(state.espionage?.networkLevel || 0) >= Number(rule.networkLevel || 0); const available = Number(state.espionage?.available?.[tier] || 0); const owned = available + Number(state.espionage?.defending?.[tier] || 0) + Number(state.espionage?.onMission?.[tier] || 0); return '<article class="upgrade-card unit-card operative-card operative-' + tier + ' ' + (unlocked ? '' : 'locked') + '" data-recruit-card="' + tier + '"><div class="card-heading"><div><strong>' + escapeHtml(rule.name) + '</strong><span>' + escapeHtml(operativeRoles[tier] || "Espionage operative") + '</span></div>' + (unlocked ? rosterMetrics(available, owned) : '<span class="status-badge blocked">Network ' + number(rule.networkLevel) + ' required</span>') + '</div><div class="unit-stat-grid"><div class="stat-cell operative-stat"><span>Spy Power</span><strong>' + number(rule.spyPower) + '</strong></div><div class="stat-cell operative-stat"><span>Network level</span><strong>' + number(rule.networkLevel) + '</strong></div></div><div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(rule.sphereCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rule.provisionsCost) + ' each</strong></span></div><div class="operative-recruit">' + quantityControlMarkup('data-operative-recruit-count="' + tier + '" aria-label="' + escapeHtml(rule.name) + ' recruitment count"' + (unlocked ? '' : ' disabled'), 1, unlocked ? Math.max(0, Math.floor(state.me.spheres / Number(rule.sphereCost || 1))) : 0, { max: true }) + '<button type="button" data-recruit-operative="' + tier + '"' + (unlocked ? '' : ' disabled') + '>Recruit ' + escapeHtml(rule.name) + '</button></div>' + (available ? '<button type="button" class="secondary" data-disband-operative="' + tier + '" data-available="' + available + '">Disband available</button>' : '') + '</article>'; }).join('');
   const groupOpen = (key) => localStorage.getItem("sp-recruitment-group-v1-" + key) !== "closed";
   const group = (key, title, summary, content, contentClass) => '<details class="recruitment-group form-wide" data-recruitment-group="' + key + '"' + (groupOpen(key) ? ' open' : '') + '><summary><span><strong>' + title + '</strong><small>' + summary + '</small></span><span class="recruitment-group-affordance" aria-hidden="true"></span></summary><div id="recruitment-group-' + key + '" class="recruitment-group-content ' + contentClass + '">' + content + '</div></details>';
+  const countSummary = (available, owned) => '<span>Available ' + number(available) + '</span><span>Owned ' + number(owned) + '</span>';
+  const militaryAvailable = activeUnitEntries().reduce((sum, [key]) => sum + Number(state.me.availableUnits[key] || 0), 0);
   const militaryOwned = activeUnitEntries().reduce((sum, [key]) => sum + Number(state.me.availableUnits[key] || 0) + Number(state.me.unitsAway[key] || 0), 0);
+  const operativeAvailable = Object.keys(state.espionage?.rules?.operatives || {}).reduce((sum, tier) => sum + Number(state.espionage?.available?.[tier] || 0), 0);
   const operativeOwned = Object.keys(state.espionage?.rules?.operatives || {}).reduce((sum, tier) => sum + Number(state.espionage?.available?.[tier] || 0) + Number(state.espionage?.defending?.[tier] || 0) + Number(state.espionage?.onMission?.[tier] || 0), 0);
   const expeditionHintKey = "sp-first-neutral-expedition-v1-" + state.me.id;
   const hasNeutralHolding = state.plateaus.mine.some((plateau) => plateau.origin === "neutral");
   if (hasNeutralHolding) localStorage.setItem(expeditionHintKey, "complete");
   const showExpeditionHint = localStorage.getItem(expeditionHintKey) !== "complete";
   const expeditionHint = showExpeditionHint ? '<aside class="fresh-player-dispatch"><div><span>Orders from the warcamp</span><strong>The Plains wait beyond the warcamp.</strong><p>Recruit a force suited to the crossing, then send it to survey an unclaimed plateau. Strength may win the ground, but Speed, Plunder, and Survive shape what returns.</p></div><button type="button" data-route-view="plains" data-route-tab="sieges">Survey the Plains</button></aside>' : '';
-  $("unit-roster").innerHTML = expeditionHint + group("military", "Military Units", number(militaryOwned) + " owned", unitCards, "building-grid") + group("ardents", "Ardents", number(ardentia.ready) + " ready · " + number(ardentia.owned) + " formed", conclaveCard || '<div class="empty">Construct an Ardent Monastery to form Scout Conclaves.</div>', "building-grid") + group("espionage", "Espionage Operatives", number(operativeOwned) + " owned", '<p class="hint">Recruit here; assign defenders and launch missions from Intelligence.</p><div class="operative-roster">' + operativeCards + '</div>', "personnel-group");
+  $("unit-roster").innerHTML = expeditionHint + group("military", "Military Units", countSummary(militaryAvailable, militaryOwned), unitCards, "building-grid") + group("ardents", "Ardents", countSummary(ardentia.ready, ardentia.owned), conclaveCard || '<div class="empty">Construct an Ardent Monastery to form Scout Conclaves.</div>', "building-grid") + group("espionage", "Espionage Operatives", countSummary(operativeAvailable, operativeOwned), '<p class="hint">Recruit here; assign defenders and launch missions from Intelligence.</p><div class="operative-roster">' + operativeCards + '</div>', "personnel-group");
   $("unit-roster").querySelectorAll("[data-recruitment-group]").forEach((details) => details.addEventListener("toggle", () => localStorage.setItem("sp-recruitment-group-v1-" + details.dataset.recruitmentGroup, details.open ? "open" : "closed")));
   attachRecruitmentControls();
   const recruitConclave = document.querySelector("[data-recruit-conclave]");
@@ -1452,9 +1456,7 @@ function renderSelects() {
   }
   if ($("neutral-plateau-target")) {
     const neutralOptions = state.plateaus.neutral.map((plateau) => {
-      const identity = plateauIdentityPresentation(plateau);
-      const gameplayIdentity = identity.known ? " · " + identity.type + (identity.traits.length ? " · " + identity.traits.join(" • ") : "") : "";
-      return '<option value="' + plateau.id + '">' + escapeHtml(plateau.name + gameplayIdentity + " · " + formatIntelValue(plateau.resistance)) + '</option>';
+      return '<option value="' + plateau.id + '">' + escapeHtml(plateau.name) + '</option>';
     });
     $("neutral-plateau-target").innerHTML = neutralOptions.length ? neutralOptions.join("") : '<option value="">No neutral plateaus available</option>';
     $("neutral-plateau-target").disabled = neutralOptions.length < 1;
@@ -1462,13 +1464,31 @@ function renderSelects() {
   }
   if ($("player-plateau-target")) {
     const rivalOptions = state.plateaus.rivals.map((plateau) => {
-      const typeLabel = plateau.type === "unknown" ? "Type unknown" : plateau.typeName;
-      const label = plateau.ownerName + " - " + plateau.name + " · " + typeLabel;
-      return '<option value="' + plateau.id + '"' + (plateau.gemheartProgress ? ' data-gemheart-at="' + plateau.gemheartProgress.nextGemheartAt + '" data-countdown-label="' + escapeHtml(label) + '"' : '') + '>' + escapeHtml(label + (plateau.gemheartProgress ? " · Next Gemheart: " + formatCountdownAt(plateau.gemheartProgress.nextGemheartAt) : "")) + '</option>';
+      return '<option value="' + plateau.id + '">' + escapeHtml(plateau.ownerName + " — " + plateau.name) + '</option>';
     });
     $("player-plateau-target").innerHTML = rivalOptions.length ? rivalOptions.join("") : '<option value="">No rival plateaus available</option>';
     $("player-plateau-target").disabled = rivalOptions.length < 1;
     if (lastSelections.playerPlateau && state.plateaus.rivals.some((plateau) => plateau.id === lastSelections.playerPlateau)) $("player-plateau-target").value = lastSelections.playerPlateau;
+  }
+  renderPlateauSelectionDetails();
+}
+
+function selectionFact(label, value) {
+  return '<span>' + escapeHtml(label) + '<strong>' + escapeHtml(value) + '</strong></span>';
+}
+
+function renderPlateauSelectionDetails() {
+  const neutral = state.plateaus.neutral.find((plateau) => plateau.id === $("neutral-plateau-target")?.value);
+  const neutralDetails = $("neutral-plateau-selection");
+  if (neutralDetails) {
+    const identity = neutral ? plateauIdentityPresentation(neutral) : null;
+    neutralDetails.innerHTML = neutral ? selectionFact("Type", identity.known ? identity.type : "Unknown") + selectionFact("Traits", identity.known && identity.traits.length ? identity.traits.join(", ") : identity?.known ? "Standard terrain" : "Unknown") + selectionFact("Resistance", formatIntelValue(neutral.resistance)) : "";
+  }
+  const rival = state.plateaus.rivals.find((plateau) => plateau.id === $("player-plateau-target")?.value);
+  const rivalDetails = $("player-plateau-selection");
+  if (rivalDetails) {
+    const type = rival ? (rival.type === "unknown" ? "Unknown" : rival.typeName) : "";
+    rivalDetails.innerHTML = rival ? selectionFact("Held by", rival.ownerName) + selectionFact("Type", type) + (rival.highground ? selectionFact("Terrain", "Highground") : "") + (rival.gemheartProgress ? selectionFact("Next Gemheart", formatCountdownAt(rival.gemheartProgress.nextGemheartAt)) : "") : "";
   }
 }
 
@@ -1538,6 +1558,7 @@ function attachPreviewListeners() {
 
 function renderRaidPreviews() {
   if (!state) return;
+  renderPlateauSelectionDetails();
   if ($("sphere-mission-summary")) $("sphere-mission-summary").innerHTML = '<strong>Raid Parshendi sphere stores</strong><span>Resistance and reward are estimates. Your force is committed for the full displayed duration.</span>';
   Object.entries(ATTACK_PLANNERS).forEach(([type, planner]) => {
     const units = readRaidUnits(planner.unitsId);
@@ -2687,7 +2708,8 @@ function renderEspionage() {
       ? (mission.outcome || "resolved").replace(/^./, (letter) => letter.toUpperCase()) + ' · ' + number(mission.spheresStolen || 0) + ' Spheres stolen · ' + number(casualties) + ' lost · Identity ' + (mission.identityExposed ? 'exposed' : 'hidden')
       : (mission.outcome || 'resolved').replace(/^./, (letter) => letter.toUpperCase()) + (mission.incidentalCategory ? ' · Incidental ' + mission.incidentalCategory : '') + (mission.bonusDiscoveryId ? ' · Bonus Discovery' : '');
     const missionName = mission.operation === "sphere_heist" ? "Sphere Heist" : mission.category[0].toUpperCase() + mission.category.slice(1) + " Investigation";
-    return '<article class="list-item espionage-mission-row"><strong>' + escapeHtml(mission.targetName) + ' — ' + escapeHtml(missionName) + '</strong><span>' + escapeHtml(result) + '</span><small>' + time + '</small></article>';
+    const committed = Object.entries(mission.operatives || {}).filter(([, count]) => Number(count || 0) > 0).map(([tier, count]) => '<span>' + escapeHtml(rules.operatives?.[tier]?.name || tier) + '<b>' + number(count) + '</b></span>').join("");
+    return '<article class="list-item espionage-mission-row"><strong>' + escapeHtml(mission.targetName) + ' — ' + escapeHtml(missionName) + '</strong><span>' + escapeHtml(result) + '</span>' + (committed ? '<div class="operative-state-line operation-personnel">' + committed + '</div>' : '') + '<small>' + time + '</small></article>';
   }).join("") || '<div class="empty">No espionage missions launched yet.</div>';
   const controls = $("espionage-controls");
   syncEspionageControlLock(controls, networkLocked);
@@ -2718,7 +2740,7 @@ function renderIntelligence() {
     const actionHint = report.plateauId ? ' · Open in Plateaus' : '';
     const bonusFact = report.bonusFactText ? '<p class="rule-callout"><strong>Spren observation:</strong> ' + escapeHtml(report.bonusFactText) + '</p>' : '';
     return '<article class="dossier-card territory-report-link" tabindex="0"' + destination + ' title="' + escapeHtml(intelligenceTooltip(report)) + '"><div class="card-heading"><div><strong>' + escapeHtml(report.targetName) + '</strong><span>' + escapeHtml(intelLevelName(report.effectiveLevel)) + '</span></div><span class="freshness-badge ' + report.freshness + '">' + intelligenceReportAge(report.observedAt) + '</span></div><p>' + escapeHtml(narrative) + '</p>' + bonusFact + '<div class="dossier-facts"><span>Resistance</span><strong>' + escapeHtml(resistance) + '</strong><span>Observed identity</span><strong>' + escapeHtml(report.plateauType || "Unknown") + '</strong><span>Attributes</span><strong>' + escapeHtml(attributes) + '</strong></div><small>Source: ' + escapeHtml(intelligenceSourceName(report.source)) + actionHint + '</small></article>';
-  }).join("") : '<div class="empty-intelligence"><strong>No territory reports yet.</strong><span>Completed neutral expeditions will be recorded here.</span></div>';
+  }).join("") : '<div class="empty-intelligence"><strong>No neutral territory reports.</strong><span>Neutral plateaus appear here while they remain available. Captured rival holdings move to Rival Sieges and the Kingdom Ledger.</span></div>';
 
   territoryContainer.querySelectorAll("[data-territory-plateau]").forEach((card) => {
     const openReport = (event) => {

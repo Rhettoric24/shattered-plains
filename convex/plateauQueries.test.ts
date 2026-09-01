@@ -142,6 +142,31 @@ describe("scoped plateau queries", () => {
     });
   });
 
+  test("territory dossiers stop listing a plateau after a rival captures it", async () => {
+    const t = convexTest(schema, modules);
+    const subject = "captured-territory-viewer";
+    const viewerId = await addPlayer(t, subject, "Viewer", 1);
+    const rivalId = await addPlayer(t, undefined, "Rival");
+    const plateauId = await addPlateau(t, "Former Frontier", "neutral");
+    await t.run((ctx) => ctx.db.insert("intelligenceReports", {
+      viewerPlayerId: viewerId,
+      targetType: "territory",
+      plateauId,
+      source: "neutral_expedition",
+      level: 1,
+      observedAt: Date.now(),
+      resistance: 287,
+      plateauType: "sphere",
+      highground: true,
+      large: true,
+    }));
+    const player = t.withIdentity({ subject });
+    expect((await player.query(api.intelligence.listDossiers, {})).territories).toHaveLength(1);
+
+    await t.run((ctx) => ctx.db.patch(plateauId, { status: "owned", ownerPlayerId: rivalId }));
+    expect((await player.query(api.intelligence.listDossiers, {})).territories).toHaveLength(0);
+  });
+
   test("Siege and Territory Intelligence share the same best valid resistance report", async () => {
     const t = convexTest(schema, modules);
     const subject = "shared-territory-disclosure";

@@ -31,7 +31,8 @@ describe("post-overhaul shell", () => {
   });
 
   test("teaches Watchtower forecasts and consolidates personnel acquisition", () => {
-    expect(html).toContain("Open Recruitment");
+    expect(html).not.toContain('id="espionage-roster"');
+    expect(client).toContain('class="operative-state-line operation-personnel"');
     expect(html).toContain("Recruit Scout Conclaves");
     expect(css).toContain("safe-area-inset-bottom");
     expect(client).toContain("Highstorm arrival within about 4 hours");
@@ -112,9 +113,11 @@ describe("post-overhaul shell", () => {
     expect(css).toContain("#unit-roster .operative-ghostblood");
   });
 
-  test("includes intelligence-aware plateau types in rival siege targets", () => {
-    expect(client).toContain('const typeLabel = plateau.type === "unknown" ? "Type unknown" : plateau.typeName;');
-    expect(client).toContain('plateau.ownerName + " - " + plateau.name + " · " + typeLabel');
+  test("moves rival siege target facts below concise selector labels", () => {
+    expect(client).toContain('plateau.ownerName + " — " + plateau.name');
+    expect(client).toContain('selectionFact("Held by", rival.ownerName)');
+    expect(client).toContain('selectionFact("Type", type)');
+    expect(html).toContain('id="player-plateau-selection"');
   });
 
   test("gives empty siege target selectors an explicit disabled state", () => {

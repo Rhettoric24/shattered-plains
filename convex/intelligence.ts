@@ -36,8 +36,9 @@ export const listDossiers = query({
       .order("desc")
       .take(100);
 
-    const territories = await Promise.all(territoryReports.map(async (report) => {
+    const territories = (await Promise.all(territoryReports.map(async (report) => {
       const plateau = report.plateauId ? await ctx.db.get(report.plateauId) : null;
+      if (!plateau || plateau.status !== "neutral") return null;
       const disclosure = territoryResistanceDisclosure({
         currentResistance: plateau?.neutralDefenseRemaining,
         report,
@@ -58,7 +59,7 @@ export const listDossiers = query({
         large: level >= 1 ? report.large ?? false : false,
         bonusFactText: report.bonusObservedAt && effectiveIntelLevel(1, report.bonusObservedAt, now) >= 1 ? report.bonusFactText ?? null : null,
       };
-    }));
+    }))).filter((report): report is NonNullable<typeof report> => report !== null);
 
     if (watchtowerLevel > 0) {
       const knownPlateauIds = new Set(territoryReports.map((report) => String(report.plateauId)));
