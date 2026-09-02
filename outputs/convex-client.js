@@ -2590,8 +2590,21 @@ function intelligenceTooltip(report) {
     "Reports lose one precision level every 6 hours. Opposing counter-intelligence is not disclosed.";
 }
 
-function intelMarkers(level) {
-  return '<span class="intel-markers" aria-label="Intel level ' + level + ' of 2"><i class="' + (level >= 1 ? 'filled' : '') + '"></i><i class="' + (level >= 2 ? 'filled' : '') + '"></i></span>';
+function persistentIntelTier(amount) {
+  if (Number(amount || 0) >= 75) return "Exact";
+  if (Number(amount || 0) >= 25) return "Estimate";
+  return "Qualitative";
+}
+
+function kingdomIntelCellStatus(row, category, cell) {
+  if (row.own) return "";
+  if (category === "military" || category === "economy") {
+    const label = category === "military" ? "Military" : "Economy";
+    const amount = Number(cell[category + "Intel"] || 0);
+    const cap = Number(cell[category + "IntelCap"] || 100);
+    return '<small class="persistent-intel-status ' + (amount >= 50 ? "operation-ready" : "") + '"><span>' + label + '</span><strong>' + number(amount) + '/' + number(cap) + '</strong><em>' + persistentIntelTier(amount) + '</em></small>';
+  }
+  return '<small class="report-intel-status">Report ' + number(cell.currentLevel) + '/2 — ' + escapeHtml(intelLevelName(cell.currentLevel)) + '</small>';
 }
 
 function renderKingdomIntelligence() {
@@ -2610,10 +2623,10 @@ function renderKingdomIntelligence() {
   container.innerHTML = '<table class="kingdom-intelligence-table"><thead><tr><th>Kingdom</th>' + categoryKeys.map((category) => '<th>' + escapeHtml(category[0].toUpperCase() + category.slice(1)) + '</th>').join("") + '<th>Total</th></tr></thead><tbody>' + rows.map((row) => {
     const cells = categoryKeys.map((category) => {
       const cell = row.cells[category];
-      const body = '<strong>' + escapeHtml(cell.presentation.display) + '</strong>' + (row.own && cell.presentation.label ? '<small class="score-quality">' + escapeHtml(cell.presentation.label) + '</small>' : '') + intelMarkers(cell.currentLevel);
+      const body = '<strong>' + escapeHtml(cell.presentation.display) + '</strong>' + (row.own && cell.presentation.label ? '<small class="score-quality">' + escapeHtml(cell.presentation.label) + '</small>' : '') + kingdomIntelCellStatus(row, category, cell);
       return '<td>' + (row.own ? '<div class="intel-cell own">' + body + '</div>' : '<button type="button" class="intel-cell" data-kingdom-intel-player="' + escapeHtml(row.playerId) + '" data-kingdom-intel-category="' + category + '">' + body + '</button>') + '</td>';
     }).join("");
-    const totalBody = '<strong>' + escapeHtml(row.total.display) + '</strong>' + intelMarkers(row.total.currentLevel);
+    const totalBody = '<strong>' + escapeHtml(row.total.display) + '</strong>' + (row.own ? '' : '<small class="report-intel-status">Report ' + number(row.total.currentLevel) + '/2</small>');
     const total = row.own ? '<div class="intel-cell own">' + totalBody + '</div>' : '<button type="button" class="intel-cell" data-kingdom-intel-player="' + escapeHtml(row.playerId) + '" data-kingdom-intel-category="total">' + totalBody + '</button>';
     return '<tr class="' + (row.own ? 'own-row' : '') + '"><th scope="row">' + escapeHtml(row.kingdomName) + (row.own ? '<small>Your kingdom</small>' : '') + '</th>' + cells + '<td>' + total + '</td></tr>';
   }).join("") + '</tbody></table>';
@@ -2637,8 +2650,10 @@ function openKingdomIntelDetail(playerId, category) {
       .join("");
     const discoveries = (cell.discoveries || []).map((fact) => '<article class="bonus-discovery"><strong>Bonus Discovery</strong><p>' + escapeHtml(fact.text) + '</p><small>Observed ' + escapeHtml(new Date(fact.observedAt).toLocaleString()) + '</small></article>').join("");
     $("kingdom-intel-dialog-title").textContent = row.kingdomName + " — " + cell.categoryName + " Intelligence";
-    const economyResource = category === "economy" && !row.own ? '<span>Economy Intel</span><strong>' + number(cell.economyIntel || 0) + '/' + number(cell.economyIntelCap || 100) + '</strong>' : '';
-    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid"><span>Current Intel</span><strong>Level ' + cell.currentLevel + ' / 2</strong><span>Best achieved</span><strong>Level ' + cell.bestLevel + ' / 2</strong>' + economyResource + '<span>Current information</span><strong>' + escapeHtml(cell.presentation.display) + '</strong>' + timingRows + '<span>Source</span><strong>' + escapeHtml(cell.source) + '</strong></div>' + discoveries + (row.own ? '' : '<button type="button" class="investigate-category" data-investigate-kingdom="' + escapeHtml(row.playerId) + '" data-investigate-category="' + escapeHtml(category) + '">Investigate this category</button>');
+    const persistentResource = (category === "military" || category === "economy") && !row.own
+      ? '<span>' + escapeHtml(category === "military" ? "Military Intel" : "Economy Intel") + '</span><strong>' + number(cell[category + "Intel"] || 0) + '/' + number(cell[category + "IntelCap"] || 100) + ' · ' + persistentIntelTier(cell[category + "Intel"]) + '</strong>'
+      : '';
+    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid"><span>Current Intel</span><strong>Level ' + cell.currentLevel + ' / 2</strong><span>Best achieved</span><strong>Level ' + cell.bestLevel + ' / 2</strong>' + persistentResource + '<span>Current information</span><strong>' + escapeHtml(cell.presentation.display) + '</strong>' + timingRows + '<span>Source</span><strong>' + escapeHtml(cell.source) + '</strong></div>' + discoveries + (row.own ? '' : '<button type="button" class="investigate-category" data-investigate-kingdom="' + escapeHtml(row.playerId) + '" data-investigate-category="' + escapeHtml(category) + '">Investigate this category</button>');
     $("kingdom-intel-dialog-content").querySelector("[data-investigate-kingdom]")?.addEventListener("click", (event) => {
       dialog.close();
       showRoute({ view: "intelligence", tab: "operations", kingdom: event.currentTarget.dataset.investigateKingdom, category: event.currentTarget.dataset.investigateCategory });

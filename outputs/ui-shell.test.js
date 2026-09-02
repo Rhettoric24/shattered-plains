@@ -183,6 +183,17 @@ describe("post-overhaul shell", () => {
     expect(html).toContain("spending it does not lower persistent Military disclosure");
   });
 
+  test("shows exact persistent Intel in ledger cells instead of level pips", () => {
+    expect(client).toContain('cell[category + "Intel"]');
+    expect(client).toContain('cell[category + "IntelCap"]');
+    expect(client).toContain('amount >= 50 ? "operation-ready"');
+    expect(client).toContain('return "Exact"');
+    expect(client).toContain('return "Estimate"');
+    expect(client).toContain('return "Qualitative"');
+    expect(client).not.toContain('class="intel-markers"');
+    expect(css).not.toContain(".intel-markers");
+  });
+
   test("uses Survive as the canonical player-facing stat name", () => {
     expect(client).toContain('statButton("survivability", "Survive"');
     expect(client).toContain('outlookCell("Survive"');
