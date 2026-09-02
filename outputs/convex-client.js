@@ -1756,11 +1756,7 @@ function sphereTargetPreview() {
 
 function plateauTargetPreview(stats) {
   if (!state.plateauRun) return "No plateau run is open";
-  const participantCount = state.plateauRun.participants.length;
-  const bonus = state.config.plateauRuns.joinOrderSpeedBonuses[participantCount] || 0;
-  const effectiveSpeed = stats.speed + bridgedTravelReductionPercent();
-  const speedScore = effectiveSpeed * (1 + bonus);
-  return "Difficulty " + plateauRunDifficultyLabel(state.plateauRun.difficultyPower) + ", loot " + number(state.plateauRun.spherePool) + " Spheres. Your speed score " + formatStat(speedScore) + " with " + Math.round(bonus * 100) + "% join bonus and " + number(bridgedTravelReductionPercent()) + "% Bridged travel reduction";
+  return "Hunt difficulty: " + plateauRunDifficultyLabel(state.plateauRun.difficultyPower) + ". Total Sphere pool: " + number(state.plateauRun.spherePool) + ".";
 }
 
 function neutralSiegePreview(stats) {

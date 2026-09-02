@@ -18,6 +18,10 @@ describe("post-overhaul shell", () => {
     expect(client).toContain('return "Legendary Chasmfiend"');
     expect(client).toContain("number(run.spherePool) + ' Spheres.");
     expect(client).not.toContain("a ' + plateauRunLootLabel(run.spherePool) + ' sphere pool");
+    expect(html).toContain("Work together to take on the mighty Chasmfiend.");
+    expect(html).toContain("The fastest army claims the Gemheart");
+    expect(client).toContain("Total Sphere pool:");
+    expect(client).not.toContain("Your speed score");
   });
 
   test("places branding, global controls, resources, and subnavigation in one shell", () => {

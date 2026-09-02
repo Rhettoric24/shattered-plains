@@ -225,6 +225,9 @@ h3 { font-size: 1rem; color: var(--accent); }
 .siege-defense-preview strong { display: block; margin-top: 4px; color: var(--accent); font-size: 0.95rem; }
 .plateau-status { display: grid; gap: 10px; }
 .plateau-card { border: 1px solid rgba(127, 183, 255, 0.32); border-radius: 6px; background: rgba(127, 183, 255, 0.08); padding: 14px; }
+.mission-brief { margin: 12px 0 16px; border-left: 3px solid var(--accent); padding: 10px 12px; background: rgba(127, 183, 255, 0.07); }
+.mission-brief strong { color: var(--accent); }
+.mission-brief p { margin: 5px 0 0; color: var(--muted); line-height: 1.5; }
 .ledger-total { display: block; margin: 8px 0; padding: 10px 16px; border-radius: 50%; color: #f3dda0; background: radial-gradient(circle, rgba(215,195,123,.28) 0%, rgba(215,195,123,.1) 42%, transparent 72%); text-shadow: 0 0 12px rgba(255,223,130,.78), 0 0 30px rgba(215,195,123,.42); font-size: clamp(3rem, 10vw, 6rem); line-height: 1; }
 .ledger-category-grid, .ledger-badge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
 .ledger-category-card, .ledger-badge-card { border: 1px solid rgba(216,229,245,.16); border-radius: 6px; background: #09182a; padding: 16px; }

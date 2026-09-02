@@ -96,12 +96,12 @@ describe("Plateau Run join order and winner selection", () => {
     ]);
   });
 
-  test("ramps a four-player Sphere pool from 7000 to 10500 before variance", () => {
+  test("ramps a four-player Sphere pool from 18000 to 27000 before variance", () => {
     const startsAt = 1_000_000;
     const fullStrengthAt = startsAt + 14 * 24 * 60 * 60 * 1000;
-    const fourPlayerPool = 3000 + 4 * 1000;
-    expect(fourPlayerPool * plateauRunRewardMultiplier(startsAt, startsAt)).toBe(7000);
-    expect(fourPlayerPool * plateauRunRewardMultiplier(startsAt, fullStrengthAt)).toBe(10500);
+    const fourPlayerPool = 6000 + 4 * 3000;
+    expect(fourPlayerPool * plateauRunRewardMultiplier(startsAt, startsAt)).toBe(18000);
+    expect(fourPlayerPool * plateauRunRewardMultiplier(startsAt, fullStrengthAt)).toBe(27000);
   });
 
   test("uses 10%, 7%, 5%, then 0% join-order Speed bonuses", () => {
