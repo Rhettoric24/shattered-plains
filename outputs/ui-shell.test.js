@@ -152,7 +152,7 @@ describe("post-overhaul shell", () => {
     expect(client).toContain("Army Speed does not shorten this opening phase; it does affect later reinforcements");
     expect(client).toContain("Commit your initial defense before Encirclement ends");
     expect(client).toContain("Initial defense closed");
-    expect(client).toContain("Estimated arrival:");
+    expect(client).toContain('outlookCell("Time to arrival"');
     expect(client).toContain("Only forces that arrive before battle begins will participate");
     expect(client).toContain("Spend 50 Military Intel and commit at least one operative");
     expect(client).toContain('entry.status === "resolved"');

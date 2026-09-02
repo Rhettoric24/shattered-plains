@@ -20,6 +20,7 @@ describe("intelligence UI presentation", () => {
       { label: "Enemy Power", value: "163", exact: true },
     ]);
     expect(formatDisclosedPower({ mode: "label", label: "Fortified" })).toBe("Fortified");
+    expect(formatDisclosedPower({ mode: "range", min: 601, max: null })).toBe("601+");
     expect(raidDefenseMarkup(disclosures[2])).toContain('data-raid-defense-intel="estimate"');
     expect(raidDefenseMarkup(disclosures[2])).toContain("143–183");
   });

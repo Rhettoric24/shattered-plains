@@ -1790,8 +1790,10 @@ function renderPlateaus() {
   renderPlateauBonusSummary();
   renderGroupedHoldings();
   renderRaidPreviews();
-  const urgent = state.plateaus.sieges.filter((siege) => siege.defenderId === state.me.id);
-  const routine = state.plateaus.sieges.filter((siege) => siege.defenderId !== state.me.id);
+  const urgent = state.plateaus.sieges.filter((siege) => siege.defenderId === state.me.id || (siege.targetType === "player" && siege.attackerId === state.me.id));
+  const routine = state.plateaus.sieges.filter((siege) => !urgent.includes(siege));
+  const urgentHeading = $("urgent-sieges-panel")?.querySelector("h2");
+  if (urgentHeading) urgentHeading.textContent = "⚔ Your active sieges";
   $("active-sieges").innerHTML = routine.length ? routine.map(siegeCard).join("") : '<div class="empty">No other active plateau sieges.</div>';
   $("urgent-sieges-panel").classList.toggle("hidden", urgent.length < 1);
   $("urgent-sieges").innerHTML = urgent.map(siegeCard).join("");
@@ -1914,8 +1916,11 @@ function siegeCard(siege) {
     : siege.targetType === "player"
       ? escapeHtml(siege.attackerName) + " vs " + escapeHtml(siege.defenderName)
       : escapeHtml(siege.attackerName) + " vs Parshendi";
+  const investigatedPower = latestSiegeInvestigationPower(siege);
   const attackerText = isAttacker
     ? "Your attack power " + formatStat(siege.attackerPower)
+    : isDefender && investigatedPower
+      ? "Investigated attacker Power " + investigatedPower
     : "Attacker force " + formatIntelValue(siege.attackerIntel);
   const committedText = siege.targetType === "player" || siege.targetType === "parshendi_retaliation"
     ? isDefender
@@ -1926,6 +1931,8 @@ function siegeCard(siege) {
   const finalDefense = siegeFinalDefense(siege, plateau, siege.emergencyDefensePercent);
   const defenseText = isDefender
     ? "Committed defense " + formatStat(defensePower) + ", Emergency +" + number(siege.emergencyDefensePercent) + "%, Final " + formatStat(finalDefense)
+    : isAttacker && investigatedPower
+      ? "Investigated defender Power " + investigatedPower
     : siege.targetType === "player" || siege.targetType === "parshendi_retaliation"
       ? "Defenses unknown"
       : "Parshendi hold " + neutralDefenseLabel(plateau?.neutralDefenseRemaining || 0);
@@ -1933,6 +1940,13 @@ function siegeCard(siege) {
   const v2Panel = siege.siegeVersion >= 2 && siege.targetType === "player" ? siegeV2Panel(siege) : "";
   const conclaveText = isAttacker && siege.ardentiaConclave ? ' Ardentia Scout Conclave attached.' : '';
   return '<article class="list-item raid-item siege-card" data-entity-id="' + escapeHtml(siege.id) + '"><strong>' + title + '</strong><span>' + escapeHtml(plateauName) + '</span><small>' + attackerText + '. ' + committedText + '. ' + defenseText + '.' + conclaveText + ' Resolves in <span data-local-countdown-at="' + Number(siege.resolveAt) + '">' + formatDuration(remaining) + '</span>.</small>' + defenderPanel + v2Panel + '</article>';
+}
+
+function latestSiegeInvestigationPower(siege) {
+  const entry = [...(siege.investigations || [])].reverse().find((investigation) => investigation.status === "resolved" && investigation.report?.power !== undefined);
+  if (!entry) return "";
+  const power = typeof entry.report.power === "object" ? formatIntelValue(entry.report.power) : formatStat(entry.report.power);
+  return (entry.outcome === "partial" ? "approximately " : "") + power + (entry.outcome === "partial" ? "" : " (exact snapshot)");
 }
 
 function siegeV2Panel(siege) {
@@ -1949,7 +1963,7 @@ function siegeV2Panel(siege) {
   const battleLabel = siege.role === "defender" ? "Sally Forth" : "Launch Assault";
   const battle = !encircling ? '<div class="siege-action"><button type="button" data-begin-siege-battle="' + siege.id + '">' + battleLabel + '</button><small>Begin battle now using forces that have arrived. Traveling forces return home.</small></div>' : '';
   const mayReinforce = siege.role !== "defender" || Boolean(siege.defenderCommittedAt);
-  const reinforcement = !encircling && mayReinforce ? '<details><summary>Send reinforcements</summary><div class="unit-input-grid siege-defense-grid">' + siegeActionUnitInputs(siege.id) + '</div><small data-siege-reinforcement-estimate="' + siege.id + '">Select a force to estimate its arrival.</small><small>Only forces that arrive before battle begins will participate. Traveling forces return if battle begins early.</small><button type="button" data-reinforce-siege="' + siege.id + '" disabled>Dispatch reinforcements</button></details>' : '';
+  const reinforcement = !encircling && mayReinforce ? '<details><summary>Send reinforcements</summary><div class="unit-input-grid siege-defense-grid">' + siegeActionUnitInputs(siege.id) + '</div><div class="attack-outlook" data-siege-reinforcement-outlook="' + siege.id + '"></div><small>Only forces that arrive before battle begins will participate. Traveling forces return if battle begins early.</small><button type="button" data-reinforce-siege="' + siege.id + '" disabled>Dispatch reinforcements</button></details>' : '';
   const pending = (siege.investigations || []).find((entry) => entry.status === "pending");
   const report = [...(siege.investigations || [])].reverse().find((entry) => entry.status === "resolved");
   const investigation = pending
@@ -1967,22 +1981,37 @@ function updateSiegeActionControls(siegeId) {
   document.querySelectorAll('[data-siege-reinforcement-unit][data-siege-id="' + siegeId + '"]').forEach((input) => { units[input.dataset.unit] = Math.max(0, Math.floor(Number(input.value) || 0)); });
   const reinforcementButton = document.querySelector('[data-reinforce-siege="' + siegeId + '"]');
   if (reinforcementButton) reinforcementButton.disabled = sumUnits(units) < 1;
-  const estimate = document.querySelector('[data-siege-reinforcement-estimate="' + siegeId + '"]');
-  if (estimate) {
-    const count = sumUnits(units);
-    const baseMinutes = siege.role === "defender" ? 30 : 60;
-    const minutes = count ? travelMinutesForBase(raidStats(units, "playerSiege").speed, baseMinutes, true) : 0;
-    estimate.textContent = count ? "Estimated arrival: " + formatDuration(minutes) + ". Speed and Bridged Plateau bonuses are included." : "Select a force to estimate its arrival.";
-  }
+  renderSiegeReinforcementOutlook(siege, units);
   const operativeCount = [...document.querySelectorAll('[data-siege-operative][data-siege-id="' + siegeId + '"]')].reduce((sum, input) => sum + Math.max(0, Math.floor(Number(input.value) || 0)), 0);
   const investigationButton = document.querySelector('[data-investigate-siege="' + siegeId + '"]');
   if (investigationButton) investigationButton.disabled = Number(siege.militaryIntel || 0) < 50 || operativeCount < 1;
 }
 
+function renderSiegeReinforcementOutlook(siege, units) {
+  const outlook = document.querySelector('[data-siege-reinforcement-outlook="' + siege.id + '"]');
+  if (!outlook) return;
+  const count = sumUnits(units);
+  if (!count) {
+    outlook.innerHTML = '<div class="outlook-heading"><span>Reinforcement outlook</span><strong>Select a force</strong></div>';
+    return;
+  }
+  const stats = raidStats(units, "playerSiege");
+  const baseMinutes = siege.role === "defender" ? 30 : 60;
+  const minutes = travelMinutesForBase(stats.speed, baseMinutes, true);
+  const arriveAt = Date.now() + minutes * 60000;
+  outlook.innerHTML = '<div class="outlook-heading"><span>Reinforcement outlook</span><strong>' + number(count) + ' units selected</strong></div><div class="outlook-grid">' +
+    outlookCell("Power", formatStat(stats.power), powerBreakdown(units, stats)) +
+    outlookCell("Speed", signedStat(stats.speed), speedBreakdown(units, stats, minutes, baseMinutes)) +
+    outlookCell("Time to arrival", formatDuration(minutes), "Includes army Speed and Bridged Plateau travel bonuses.") +
+    outlookCell("Arrival", new Date(arriveAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), "Estimated local arrival time. Only arrived forces participate in battle.") +
+    outlookCell("Survive", signedStat(stats.survivability), survivabilityBreakdown(units, stats)) +
+    '</div>';
+}
+
 function siegeInvestigationReportMarkup(entry) {
   const report = entry.report || {};
   const lines = [];
-  if (report.power !== undefined) lines.push("Enemy Power: " + (entry.outcome === "partial" ? "approximately " : "") + formatStat(report.power));
+  if (report.power !== undefined) lines.push("Enemy Power: " + (entry.outcome === "partial" ? "approximately " : "") + (typeof report.power === "object" ? formatIntelValue(report.power) : formatStat(report.power)));
   if (report.units) lines.push("Enemy force: " + unitSummary(report.units, state.config.units));
   if (Array.isArray(report.reinforcements)) {
     if (!report.reinforcements.length) lines.push("Incoming reinforcements: none detected");
@@ -2000,7 +2029,10 @@ function siegeInvestigationReportMarkup(entry) {
 }
 
 function siegeActionUnitInputs(siegeId) {
-  return Object.entries(state.config.unlockedUnits).map(([key, unit]) => '<div class="unit-input mission-unit-input"><strong>' + escapeHtml(unit.name) + '</strong>' + quantityControlMarkup('data-siege-reinforcement-unit data-siege-id="' + siegeId + '" data-unit="' + key + '"', '0', state.me.availableUnits[key] || 0, { half: true, max: true }) + '</div>').join('');
+  return Object.entries(state.config.unlockedUnits).map(([key, unit]) => {
+    const available = state.me.availableUnits[key] || 0;
+    return '<div class="unit-input mission-unit-input"><div class="mission-unit-heading"><strong>' + escapeHtml(unit.name) + '</strong><small>Available ' + number(available) + ' · Power ' + formatStat(unit.power) + ' · Speed ' + signedStat(unit.speed) + ' · Plunder ' + formatStat(unit.plunder || 0) + ' · Survive ' + signedStat(unit.survivability) + '</small></div>' + quantityControlMarkup('data-siege-reinforcement-unit data-siege-id="' + siegeId + '" data-unit="' + key + '" aria-label="' + escapeHtml(unit.name) + ' reinforcements"', '0', available, { half: true, max: true }) + '</div>';
+  }).join('');
 }
 
 function siegeOperativeInputs(siegeId) {
@@ -2595,10 +2627,9 @@ function persistentIntelTier(amount) {
 function kingdomIntelCellStatus(row, category, cell) {
   if (row.own) return "";
   if (category === "military" || category === "economy") {
-    const label = category === "military" ? "Military" : "Economy";
     const amount = Number(cell[category + "Intel"] || 0);
     const cap = Number(cell[category + "IntelCap"] || 100);
-    return '<small class="persistent-intel-status ' + (amount >= 50 ? "operation-ready" : "") + '"><span>' + label + '</span><strong>' + number(amount) + '/' + number(cap) + '</strong><em>' + persistentIntelTier(amount) + '</em></small>';
+    return '<small class="persistent-intel-status ' + (amount >= 50 ? "operation-ready" : "") + '"><span>Intel</span><strong>' + number(amount) + '/' + number(cap) + '</strong><em>' + persistentIntelTier(amount) + '</em></small>';
   }
   return '<small class="report-intel-status">Report ' + number(cell.currentLevel) + '/2 — ' + escapeHtml(intelLevelName(cell.currentLevel)) + '</small>';
 }
