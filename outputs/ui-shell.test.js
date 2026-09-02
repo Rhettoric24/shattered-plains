@@ -20,6 +20,7 @@ describe("post-overhaul shell", () => {
     expect(client).not.toContain("a ' + plateauRunLootLabel(run.spherePool) + ' sphere pool");
     expect(html).toContain("Work together to take on the mighty Chasmfiend.");
     expect(html).toContain("The fastest army claims the Gemheart");
+    expect(html).toContain("If the Chasmfiend bests your combined might, you will return to your warcamp with nothing but heavy casualties.");
     expect(client).toContain("Total Sphere pool:");
     expect(client).not.toContain("Your speed score");
   });
