@@ -140,6 +140,22 @@ describe("post-overhaul shell", () => {
     expect(client).toContain('$("player-plateau-target").disabled = rivalOptions.length < 1;');
   });
 
+  test("teaches consequential PvP siege rules where players act", () => {
+    expect(html).toContain("unresolved sieges are forced to battle at the 24-hour deadline");
+    expect(html).toContain("Ties favor the defender");
+    expect(html).toContain("A deadline battle grants the defender +10% Power");
+    expect(client).toContain("Army Speed does not shorten this opening phase; it does affect later reinforcements");
+    expect(client).toContain("Commit your initial defense before Encirclement ends");
+    expect(client).toContain("Initial defense closed");
+    expect(client).toContain("Estimated arrival:");
+    expect(client).toContain("Only forces that arrive before battle begins will participate");
+    expect(client).toContain("Spend 50 Military Intel and commit at least one operative");
+    expect(client).toContain('entry.status === "resolved"');
+    expect(client).toContain("row.side === \"defender\" ? \"Defender\" : \"Attacker\"");
+    expect(client).not.toContain("Player sieges are fixed at one real hour");
+    expect(client).not.toContain("JSON.stringify(report.report)");
+  });
+
   test("guides fresh recruits toward a first neutral expedition", () => {
     expect(client).toContain("The Plains wait beyond the warcamp.");
     expect(client).toContain("Survey the Plains");

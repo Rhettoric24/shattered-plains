@@ -1633,7 +1633,7 @@ function previewMarkup(units, type, planner) {
   const deepRange = isDeepPlains ? deepPlainsTravelRange(stats.speed) : null;
   const travel = isPlayerSiege ? fixedSiegeTravelMinutes() : isDeepPlains ? deepRange.average : travelMinutes(stats.speed, true);
   const target = type === "spheres" ? sphereTargetPreview() : type === "deepPlains" ? deepPlainsTargetPreview() : type === "plateau" ? plateauTargetPreview(stats) : type === "neutralSiege" ? neutralSiegePreview(stats) : type === "playerSiege" ? playerSiegePreview(stats) : "Choose a target";
-  const timingTitle = isPlayerSiege ? "Player sieges are fixed at one real hour. Army Speed does not shorten them." : isDeepPlains ? speedBreakdown(units, stats, travel, deepRange.baseAverage) + "\nRandomized base range: " + formatDuration(deepRange.baseMin) + "–" + formatDuration(deepRange.baseMax) + "\nAdjusted range: " + formatDuration(deepRange.min) + "–" + formatDuration(deepRange.max) : speedBreakdown(units, stats, travel);
+  const timingTitle = isPlayerSiege ? "Initial deployment and Encirclement take one real hour. Army Speed does not shorten this opening phase; it does affect later reinforcements." : isDeepPlains ? speedBreakdown(units, stats, travel, deepRange.baseAverage) + "\nRandomized base range: " + formatDuration(deepRange.baseMin) + "–" + formatDuration(deepRange.baseMax) + "\nAdjusted range: " + formatDuration(deepRange.min) + "–" + formatDuration(deepRange.max) : speedBreakdown(units, stats, travel);
   const rewardLabel = type === "plateau" ? "Reward capacity" : "Max Plunder";
   const conclaveAttached = Boolean(({ spheres: $("sphere-conclave"), deepPlains: $("deep-plains-conclave"), neutralSiege: $("neutral-conclave-select"), playerSiege: $("player-conclave-select"), plateau: $("plateau-conclave") })[type]?.value);
   const intelOutlook = type === "playerSiege" ? playerSiegeIntelOutlook(conclaveAttached) : null;
@@ -1820,6 +1820,7 @@ function renderPlateaus() {
     document.querySelectorAll('[data-siege-reinforcement-unit][data-siege-id="' + siegeId + '"]').forEach(input => { units[input.dataset.unit] = Math.max(0, Math.floor(Number(input.value) || 0)); });
     action(() => client.mutation(refs.reinforcePlayerSiege, { siegeId, units }));
   }));
+  document.querySelectorAll("[data-siege-reinforcement-unit]").forEach((input) => input.addEventListener("input", () => updateSiegeActionControls(input.dataset.siegeId)));
   document.querySelectorAll("[data-begin-siege-battle]").forEach((button) => button.addEventListener("click", async () => {
     const siegeId = button.dataset.beginSiegeBattle;
     if (!await confirmConsequentialMission({ title: button.textContent + "?", html: '<span>Combat will resolve immediately using all forces that have arrived.</span><span>Traveling reinforcements return home and pending investigations are refunded.</span>' })) return;
@@ -1832,6 +1833,8 @@ function renderPlateaus() {
     if (!await confirmConsequentialMission({ title: "Launch Siege Investigation?", html: '<span>50 Military Intel will be consumed.</span><span>Failure or partial success can permanently kill operatives.</span>' })) return;
     action(() => client.mutation(refs.launchSiegeInvestigation, { siegeId, operatives }));
   }));
+  document.querySelectorAll("[data-siege-operative]").forEach((input) => input.addEventListener("input", () => updateSiegeActionControls(input.dataset.siegeId)));
+  state.plateaus.sieges.filter((siege) => siege.siegeVersion >= 2 && siege.targetType === "player").forEach((siege) => updateSiegeActionControls(siege.id));
   document.querySelectorAll("[data-siege-defense-unit]").forEach((input) => {
     input.addEventListener("input", () => {
       lastSelections.siegeDefenders = lastSelections.siegeDefenders || {};
@@ -1939,18 +1942,65 @@ function siegeCard(siege) {
 function siegeV2Panel(siege) {
   const now = Date.now();
   const encircling = now < Number(siege.encircleEndsAt || 0);
-  const phase = encircling ? 'Encirclement ends in <span data-local-countdown-at="' + Number(siege.encircleEndsAt) + '">' + formatCountdownAt(siege.encircleEndsAt) + '</span>' : 'Active Siege · deadline <span data-local-countdown-at="' + Number(siege.resolveAt) + '">' + formatCountdownAt(siege.resolveAt) + '</span>';
+  const phase = encircling
+    ? (siege.role === "defender" ? 'Defensive response — ' : 'Encirclement — ') + '<span data-local-countdown-at="' + Number(siege.encircleEndsAt) + '">' + formatCountdownAt(siege.encircleEndsAt) + '</span> remaining'
+    : 'Active Siege — <span data-local-countdown-at="' + Number(siege.resolveAt) + '">' + formatCountdownAt(siege.resolveAt) + '</span> until forced battle';
+  const phaseGuidance = encircling
+    ? siege.role === "defender"
+      ? "Commit your initial defense before Encirclement ends. This commitment cannot be changed."
+      : "The defender may make one permanent defensive commitment during this window."
+    : "Either side may begin battle now. At the deadline, battle begins automatically with +10% defender Power.";
   const battleLabel = siege.role === "defender" ? "Sally Forth" : "Launch Assault";
-  const battle = !encircling ? '<button type="button" data-begin-siege-battle="' + siege.id + '">' + battleLabel + '</button>' : '';
-  const reinforcement = !encircling ? '<details><summary>Send reinforcements</summary><div class="unit-input-grid siege-defense-grid">' + siegeActionUnitInputs(siege.id) + '</div><button type="button" data-reinforce-siege="' + siege.id + '">Dispatch reinforcements</button></details>' : '';
+  const battle = !encircling ? '<div class="siege-action"><button type="button" data-begin-siege-battle="' + siege.id + '">' + battleLabel + '</button><small>Begin battle now using forces that have arrived. Traveling forces return home.</small></div>' : '';
+  const mayReinforce = siege.role !== "defender" || Boolean(siege.defenderCommittedAt);
+  const reinforcement = !encircling && mayReinforce ? '<details><summary>Send reinforcements</summary><div class="unit-input-grid siege-defense-grid">' + siegeActionUnitInputs(siege.id) + '</div><small data-siege-reinforcement-estimate="' + siege.id + '">Select a force to estimate its arrival.</small><small>Only forces that arrive before battle begins will participate. Traveling forces return if battle begins early.</small><button type="button" data-reinforce-siege="' + siege.id + '" disabled>Dispatch reinforcements</button></details>' : '';
   const pending = (siege.investigations || []).find((entry) => entry.status === "pending");
-  const report = [...(siege.investigations || [])].reverse().find((entry) => entry.report);
+  const report = [...(siege.investigations || [])].reverse().find((entry) => entry.status === "resolved");
   const investigation = pending
     ? '<small>Siege Investigation resolves in <span data-local-countdown-at="' + Number(pending.resolveAt) + '">' + formatCountdownAt(pending.resolveAt) + '</span>.</small>'
-    : '<details><summary>Siege Investigation · 50 Military Intel</summary><div class="operative-input-grid">' + siegeOperativeInputs(siege.id) + '</div><button type="button" data-investigate-siege="' + siege.id + '"' + (siege.militaryIntel < 50 ? ' disabled' : '') + '>Investigate enemy force</button></details>';
-  const reportText = report ? '<small><strong>' + escapeHtml(String(report.outcome || "Report")) + ':</strong> ' + escapeHtml(JSON.stringify(report.report)) + '</small>' : '';
-  const inbound = (siege.reinforcements || []).map(row => '<small>Reinforcements arrive <span data-local-countdown-at="' + Number(row.arriveAt) + '">' + formatCountdownAt(row.arriveAt) + '</span>' + (row.power !== undefined ? ' · Power ' + formatStat(row.power) : '') + '.</small>').join('');
-  return '<div class="siege-defense-panel"><strong>' + phase + '</strong><small>Military Intel against this rival: ' + number(siege.militaryIntel) + '/100.</small>' + inbound + reinforcement + investigation + reportText + battle + '</div>';
+    : '<details><summary>Siege Investigation · 50 Military Intel</summary><small>Spend 50 Military Intel and commit at least one operative. Operatives may be killed.</small><div class="operative-input-grid">' + siegeOperativeInputs(siege.id) + '</div><button type="button" data-investigate-siege="' + siege.id + '" disabled>Investigate enemy force</button></details>';
+  const reportText = report ? siegeInvestigationReportMarkup(report) : '';
+  const inbound = (siege.reinforcements || []).map(row => '<small><strong>' + escapeHtml(String(row.side === "defender" ? "Defender" : "Attacker")) + ' reinforcements</strong> arrive <span data-local-countdown-at="' + Number(row.arriveAt) + '">' + formatCountdownAt(row.arriveAt) + '</span>' + (row.power !== undefined ? ' · Power ' + formatStat(row.power) : '') + '.</small>').join('');
+  return '<div class="siege-defense-panel"><strong>' + phase + '</strong><small>' + escapeHtml(phaseGuidance) + '</small><small>The attacker must exceed the defender; ties hold the plateau.</small><small>Military Intel against this rival: ' + number(siege.militaryIntel) + '/100.</small>' + inbound + reinforcement + investigation + reportText + battle + '</div>';
+}
+
+function updateSiegeActionControls(siegeId) {
+  const siege = state.plateaus.sieges.find((entry) => entry.id === siegeId);
+  if (!siege) return;
+  const units = emptyUnits();
+  document.querySelectorAll('[data-siege-reinforcement-unit][data-siege-id="' + siegeId + '"]').forEach((input) => { units[input.dataset.unit] = Math.max(0, Math.floor(Number(input.value) || 0)); });
+  const reinforcementButton = document.querySelector('[data-reinforce-siege="' + siegeId + '"]');
+  if (reinforcementButton) reinforcementButton.disabled = sumUnits(units) < 1;
+  const estimate = document.querySelector('[data-siege-reinforcement-estimate="' + siegeId + '"]');
+  if (estimate) {
+    const count = sumUnits(units);
+    const baseMinutes = siege.role === "defender" ? 30 : 60;
+    const minutes = count ? travelMinutesForBase(raidStats(units, "playerSiege").speed, baseMinutes, true) : 0;
+    estimate.textContent = count ? "Estimated arrival: " + formatDuration(minutes) + ". Speed and Bridged Plateau bonuses are included." : "Select a force to estimate its arrival.";
+  }
+  const operativeCount = [...document.querySelectorAll('[data-siege-operative][data-siege-id="' + siegeId + '"]')].reduce((sum, input) => sum + Math.max(0, Math.floor(Number(input.value) || 0)), 0);
+  const investigationButton = document.querySelector('[data-investigate-siege="' + siegeId + '"]');
+  if (investigationButton) investigationButton.disabled = Number(siege.militaryIntel || 0) < 50 || operativeCount < 1;
+}
+
+function siegeInvestigationReportMarkup(entry) {
+  const report = entry.report || {};
+  const lines = [];
+  if (report.power !== undefined) lines.push("Enemy Power: " + (entry.outcome === "partial" ? "approximately " : "") + formatStat(report.power));
+  if (report.units) lines.push("Enemy force: " + unitSummary(report.units, state.config.units));
+  if (Array.isArray(report.reinforcements)) {
+    if (!report.reinforcements.length) lines.push("Incoming reinforcements: none detected");
+    else {
+      lines.push("Incoming reinforcements: " + number(report.reinforcements.length) + " detected");
+      const arrivalMinutes = report.reinforcements.map((row) => Number(row.arrivalWindowMinutes)).filter(Number.isFinite);
+      const exactArrivals = report.reinforcements.map((row) => Number(row.arriveAt)).filter(Number.isFinite);
+      if (arrivalMinutes.length) lines.push("Arrival estimate: about " + formatDuration(Math.min(...arrivalMinutes)));
+      else if (exactArrivals.length) lines.push("Next arrival: " + formatCountdownAt(Math.min(...exactArrivals)));
+    }
+  }
+  if (!lines.length) lines.push(entry.outcome === "failure" ? "No reliable battlefield information recovered." : "Battlefield report recovered.");
+  const outcome = String(entry.outcome || "report");
+  return '<div class="siege-investigation-report"><strong>Siege Investigation — ' + escapeHtml(outcome[0].toUpperCase() + outcome.slice(1)) + '</strong>' + lines.map((line) => '<small>' + escapeHtml(line) + '</small>').join('') + '</div>';
 }
 
 function siegeActionUnitInputs(siegeId) {
@@ -1962,9 +2012,12 @@ function siegeOperativeInputs(siegeId) {
 }
 
 function siegeDefenderPanel(siege, plateau) {
+  const encirclementClosed = siege.targetType === "player" && siege.siegeVersion >= 2 && Date.now() >= Number(siege.encircleEndsAt || 0);
   const commitPanel = siege.defenderCommittedAt
     ? '<div class="siege-defense-note">Defending army locked: ' + escapeHtml(unitSummary(siege.defenderUnits, state.config.units)) + '.</div>'
-    : '<div class="siege-defense-panel"><strong>Commit defenders</strong><div class="unit-input-grid siege-defense-grid">' + siegeDefenderUnitInputs(siege) + '</div><div class="attack-outlook" data-siege-defense-outlook="' + siege.id + '"></div><button type="button" data-commit-siege-defenders="' + siege.id + '">Commit defending army</button></div>';
+    : encirclementClosed
+      ? '<div class="siege-defense-note"><strong>Initial defense closed</strong><small>Encirclement has ended without a defensive commitment. No initial defense or reinforcements may now be committed.</small></div>'
+      : '<div class="siege-defense-panel"><strong>Commit defenders</strong><small>Commit before Encirclement ends. This force cannot be changed during the siege.</small><div class="unit-input-grid siege-defense-grid">' + siegeDefenderUnitInputs(siege) + '</div><div class="attack-outlook" data-siege-defense-outlook="' + siege.id + '"></div><button type="button" data-commit-siege-defenders="' + siege.id + '">Commit defending army</button></div>';
   const currentPercent = Math.max(0, Number(siege.emergencyDefensePercent || 0));
   const storedTarget = Number(lastSelections.emergencyDefense?.[siege.id]);
   const targetPercent = Number.isFinite(storedTarget) && storedTarget >= currentPercent ? storedTarget : currentPercent;
@@ -3358,7 +3411,7 @@ $("launch-player-siege").addEventListener("click", async () => {
     const conclaveId = $("player-conclave-select")?.value || "";
     const fabrial = selectedFabrial("player-fabrial");
     const target = state.plateaus.rivals.find((plateau) => plateau.id === plateauId);
-    if (!await confirmConsequentialMission(consequentialMissionSummary("Initiate rival siege?", target ? target.ownerName + " · " + target.name : "Rival plateau", units, conclaveId, "Encirclement lasts one hour; either side may then begin battle before the 24-hour deadline." + (fabrial.summary ? " " + fabrial.summary : "")))) return;
+    if (!await confirmConsequentialMission(consequentialMissionSummary("Initiate rival siege?", target ? target.ownerName + " · " + target.name : "Rival plateau", units, conclaveId, "Encirclement lasts one hour; either side may then begin battle. If neither side acts, battle is forced at the 24-hour deadline with +10% defender Power. The attacker must exceed the defender; ties hold the plateau." + (fabrial.summary ? " " + fabrial.summary : "")))) return;
     action(() => client.mutation(refs.launchPlayerSiege, { plateauId, units, ...(conclaveId ? { conclaveId } : {}), ...(fabrial.kind ? { fabrial: fabrial.kind } : {}) }));
   } catch (error) { alert(friendlyError(error)); }
 });
