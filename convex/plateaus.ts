@@ -266,6 +266,9 @@ async function purchaseEmergencyDefense(
   if (Date.now() >= siege.resolveAt) {
     throw new Error("This siege is already resolving.");
   }
+  if (siege.targetType !== "player" || siege.siegeVersion !== SIEGE_V2.version || !siege.encircleEndsAt || Date.now() >= siege.encircleEndsAt) {
+    throw new Error("Emergency Defenses can only be prepared during Encirclement.");
+  }
 
   const currentPercent = Math.max(0, siege.emergencyDefensePercent ?? 0);
   const targetPercent = Math.max(
@@ -509,8 +512,21 @@ export const getSiegeBoard = query({
         const militaryIntel = opponentId ? militaryIntelAmount(intelResources.find(row => row.targetPlayerId === opponentId)) : 0;
         const ownInvestigations = allInvestigations.filter(row => row.siegeId === siege._id && row.investigatorId === viewer._id);
         const reinforcements = allReinforcements.filter(row => row.siegeId === siege._id && row.status === "traveling");
-        const visibleReinforcements = reinforcements.filter(row => row.playerId === viewer._id).map(row => ({ id: row._id, side: row.side, arriveAt: row.arriveAt, units: row.units, power: row.power }));
-        if (militaryIntel >= 25) for (const row of reinforcements.filter(row => row.playerId !== viewer._id)) visibleReinforcements.push({ id: row._id, side: row.side, arriveAt: militaryIntel >= 75 ? row.arriveAt : Math.ceil(row.arriveAt / 3600000) * 3600000, units: undefined as any, power: undefined as any });
+        const visibleReinforcements: Array<{
+          id: Id<"siegeReinforcements">;
+          side: "attacker" | "defender";
+          arriveAt?: number;
+          arrivalWindowMinutes?: number;
+          units?: Doc<"siegeReinforcements">["units"];
+          power?: number;
+        }> = reinforcements.filter(row => row.playerId === viewer._id).map(row => ({ id: row._id, side: row.side, arriveAt: row.arriveAt, units: row.units, power: row.power }));
+        if (militaryIntel >= 25) {
+          for (const row of reinforcements.filter(row => row.playerId !== viewer._id)) {
+            visibleReinforcements.push(militaryIntel >= 75
+              ? { id: row._id, side: row.side, arriveAt: row.arriveAt }
+              : { id: row._id, side: row.side, arrivalWindowMinutes: Math.max(1, Math.ceil((row.arriveAt - now) / 3600000) * 60) });
+          }
+        }
         return {
           _id: siege._id,
           plateauId: siege.plateauId,

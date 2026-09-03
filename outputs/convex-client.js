@@ -112,6 +112,8 @@ let lastSelections = { trainUnit: "", target: "", attackUnits: {}, recruitment: 
 let previewListenersReady = false;
 let activePopoverAnchor = null;
 let inboxFilter = "all";
+const expandedInboxMessageIds = new Set();
+let activeSiegeResultMessage = null;
 let holdingsExpanded = false;
 let latestLoadRequest = 0;
 let loadedPlateauCommitmentId = null;
@@ -739,6 +741,7 @@ function render() {
   renderPlateaus();
   renderPlateau();
   renderInbox();
+  renderSiegeResultPopup();
   renderIntelligence();
   renderLog();
   renderOverview();
@@ -1970,7 +1973,12 @@ function siegeV2Panel(siege) {
     ? '<small>Siege Investigation resolves in <span data-local-countdown-at="' + Number(pending.resolveAt) + '">' + formatCountdownAt(pending.resolveAt) + '</span>.</small>'
     : '<details><summary>Siege Investigation · 50 Military Intel</summary><small>Spend 50 Military Intel and commit at least one operative. Operatives may be killed.</small><div class="operative-input-grid">' + siegeOperativeInputs(siege.id) + '</div><button type="button" data-investigate-siege="' + siege.id + '" disabled>Investigate enemy force</button></details>';
   const reportText = report ? siegeInvestigationReportMarkup(report) : '';
-  const inbound = (siege.reinforcements || []).map(row => '<small><strong>' + escapeHtml(String(row.side === "defender" ? "Defender" : "Attacker")) + ' reinforcements</strong> arrive <span data-local-countdown-at="' + Number(row.arriveAt) + '">' + formatCountdownAt(row.arriveAt) + '</span>' + (row.power !== undefined ? ' · Power ' + formatStat(row.power) : '') + '.</small>').join('');
+  const inbound = (siege.reinforcements || []).map(row => {
+    const timing = row.arriveAt !== undefined
+      ? 'arrive <span data-local-countdown-at="' + Number(row.arriveAt) + '">' + formatCountdownAt(row.arriveAt) + '</span>'
+      : 'are estimated to arrive in about ' + formatDuration(Number(row.arrivalWindowMinutes || 0));
+    return '<small><strong>' + escapeHtml(String(row.side === "defender" ? "Defender" : "Attacker")) + ' reinforcements</strong> ' + timing + (row.power !== undefined ? ' · Power ' + formatStat(row.power) : '') + '.</small>';
+  }).join('');
   return '<div class="siege-defense-panel"><strong>' + phase + '</strong><small>' + escapeHtml(phaseGuidance) + '</small><small>The attacker must exceed the defender; ties hold the plateau.</small><small>Military Intel against this rival: ' + number(siege.militaryIntel) + '/100.</small>' + inbound + reinforcement + investigation + reportText + battle + '</div>';
 }
 
@@ -2051,7 +2059,8 @@ function siegeDefenderPanel(siege, plateau) {
   const targetPercent = Number.isFinite(storedTarget) && storedTarget >= currentPercent ? storedTarget : currentPercent;
   const basePower = siegeDefensePower(siege, plateau);
   const currentFinal = siegeFinalDefense(siege, plateau, currentPercent);
-  return commitPanel +
+  const emergencyPanel = !encirclementClosed && siege.targetType === "player" && siege.siegeVersion >= 2
+    ?
     '<div class="siege-defense-panel emergency-defense-panel">' +
     '<strong>Emergency Defenses</strong>' +
     '<small>Temporary bonus for this siege only. It multiplies your committed defending army, so no defenders still means 0 defense.</small>' +
@@ -2062,7 +2071,9 @@ function siegeDefenderPanel(siege, plateau) {
     '<span>Sphere Cost <strong>0</strong></span>' +
     '</div>' +
     '<button type="button" data-set-emergency-defense="' + siege.id + '">Prepare Emergency Defenses</button>' +
-    '</div>';
+    '</div>'
+    : '';
+  return commitPanel + emergencyPanel;
 }
 
 function siegeDefenderUnitInputs(siege) {
@@ -2242,9 +2253,9 @@ function routeForMessage(message) {
 function renderInbox() {
   const list = $("inbox-list");
   if (!list) return;
-  const expandedMessageIds = new Set(
-    [...list.querySelectorAll("details[open][data-message-id]")].map((details) => details.dataset.messageId),
-  );
+  for (const details of list.querySelectorAll("details[open][data-message-id]")) {
+    expandedInboxMessageIds.add(details.dataset.messageId);
+  }
   const inbox = (state.inbox || []).filter((message) => inboxFilter === "all" || (inboxFilter === "players" ? message.kind === "player" : message.kind !== "player")).sort((a, b) => Number(a.read) - Number(b.read) || b.at - a.at);
   $("toggle-compose").classList.toggle("secondary", inboxFilter !== "players");
   list.innerHTML = inbox.length ? inbox.map((message) => {
@@ -2257,7 +2268,11 @@ function renderInbox() {
     return '<details class="list-item message-item ' + readClass + '" data-message-id="' + message.id + '"' + (message.read ? '' : ' data-unread="true"') + '><summary><div><span class="event-kind">' + category + '</span><strong>' + escapeHtml(message.subject) + '</strong><small>' + escapeHtml(preview) + '</small></div><time>' + relativeTime(message.at) + '</time></summary><div class="message-body"><p>' + escapeHtml(message.text) + '</p><small>From ' + escapeHtml(from) + ' · ' + new Date(message.at).toLocaleString() + '</small>' + action + '</div></details>';
   }).join("") : '<div class="empty">No messages yet.</div>';
   list.querySelectorAll("details[data-message-id]").forEach((details) => {
-    if (expandedMessageIds.has(details.dataset.messageId)) details.open = true;
+    if (expandedInboxMessageIds.has(details.dataset.messageId)) details.open = true;
+    details.addEventListener("toggle", () => {
+      if (details.open) expandedInboxMessageIds.add(details.dataset.messageId);
+      else expandedInboxMessageIds.delete(details.dataset.messageId);
+    });
   });
   list.querySelectorAll("[data-message-action]").forEach((button) => button.addEventListener("click", (event) => {
     event.preventDefault();
@@ -2293,6 +2308,42 @@ function renderInbox() {
       alert(friendlyError(error));
     }
   }, { once: true }));
+}
+
+function renderSiegeResultPopup() {
+  const dialog = $("siege-result-dialog");
+  if (!dialog || dialog.open || activeSiegeResultMessage) return;
+  const message = (state.inbox || []).find((entry) =>
+    (entry.eventType === "siege_resolved_attacker" || entry.eventType === "siege_resolved_defender") &&
+    !entry.read &&
+    localStorage.getItem("sp-siege-result-seen:" + entry.id) !== "1"
+  );
+  if (!message) return;
+
+  activeSiegeResultMessage = message;
+  localStorage.setItem("sp-siege-result-seen:" + message.id, "1");
+  const result = String(message.text || "The siege has ended.").match(/^(.+?\.)\s*([\s\S]*)$/);
+  $("siege-result-title").textContent = message.subject || "Siege resolved";
+  $("siege-result-narrative").textContent = result?.[1] || message.text || "The siege has ended.";
+  $("siege-result-details").innerHTML = result?.[2]
+    ? '<strong>Outcome details</strong><p>' + escapeHtml(result[2]) + '</p>'
+    : '<p>Your complete report is available in Spanreeds.</p>';
+  if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
+}
+
+function closeSiegeResult(openSieges = false) {
+  const message = activeSiegeResultMessage;
+  activeSiegeResultMessage = null;
+  const dialog = $("siege-result-dialog");
+  if (dialog?.open && typeof dialog.close === "function") dialog.close(); else dialog?.removeAttribute("open");
+  if (message && !message.read) {
+    message.read = true;
+    state.unreadCount = Math.max(0, Number(state.unreadCount || 0) - 1);
+    renderInboxBadge();
+    client.mutation(refs.markMessageRead, { messageId: message.id }).catch(() => null);
+  }
+  if (openSieges) showRoute({ view: "plains", tab: "sieges", focus: message?.entityId || null });
+  window.setTimeout(renderSiegeResultPopup, 0);
 }
 
 function notificationRelativeTime(at) {
@@ -2427,7 +2478,8 @@ function renderOverview() {
     '<button type="button" class="compact-status-row" data-route-view="warcamp" data-route-tab="recruitment"><span><strong>' + number(state.me.totalAvailableUnits) + ' units ready</strong><small>' + formatStat(state.me.power) + ' ready Power · ' + number(sumUnits(state.me.unitsAway)) + ' units away</small></span><span class="status-badge">Recruitment</span></button>' +
     '<button type="button" class="compact-status-row" data-route-view="warcamp" data-route-tab="buildings"><span><strong>' + number(state.me.totalIncomePerDay) + ' Spheres / day</strong><small>' + number(establishedBuildings) + ' established building levels · ' + modifierLabel(state.me.plateauBonuses.sphereIncomeBonusPercent, "+") + ' plateau income</small></span><span class="status-badge">Warcamp</span></button>' +
     '<button type="button" class="compact-status-row" data-route-view="research" data-route-tab="ardents"><span><strong>' + number(state.ardentia?.owned || 0) + ' Scout Conclave' + (Number(state.ardentia?.owned || 0) === 1 ? '' : 's') + '</strong><small>' + number(state.ardentia?.ready || 0) + ' ready · +' + number(state.research?.speed?.conclave || 0) + '% active Research speed</small></span><span class="status-badge">Ardents</span></button>' +
-    '<button type="button" class="compact-status-row" data-route-view="home" data-focus="owned-plateaus"><span><strong>' + number(state.plateaus.mine.length) + ' plateaus held</strong><small>' + bonusLines.map(([name, value]) => name + ' ' + value).join(' · ') + '</small></span><span class="status-badge">Territory</span></button>';
+    '<button type="button" class="compact-status-row" data-route-view="home" data-focus="owned-plateaus"><span><strong>' + number(state.plateaus.mine.length) + ' plateaus held</strong><small>' + bonusLines.map(([name, value]) => name + ' ' + value).join(' · ') + '</small></span><span class="status-badge">Territory</span></button>' +
+    '<button type="button" class="compact-status-row" data-route-view="intelligence" data-route-tab="operations"><span><strong>' + number(Object.values(state.espionage?.available || {}).reduce((sum, count) => sum + Number(count || 0), 0)) + ' operatives ready</strong><small>Network level ' + number(state.espionage?.networkLevel || 0) + ' · ' + number(Object.values(state.espionage?.defending || {}).reduce((sum, count) => sum + Number(count || 0), 0)) + ' defending · ' + number((state.espionage?.missions || []).filter((mission) => mission.status === "pending").length) + ' operations underway</small></span><span class="status-badge">Espionage</span></button>';
   const operations = [];
   if (state.research?.active) operations.push({ label: "Active Research", detail: state.research.active.kind === "project" ? (state.research.rules?.projects?.[state.research.active.project]?.name || "Research") : (state.research.doctrines?.[state.research.active.doctrine]?.name || "Doctrine"), at: state.research.active.projectedCompletionAt || Date.now(), view: "research" });
   state.raids.filter((raid) => raid.attackerId === state.me.id).forEach((raid) => operations.push({ label: "Sphere raid", detail: raid.targetName, at: raid.arrivalAt, view: "raids" }));
@@ -2443,8 +2495,9 @@ function renderCommandBriefing() {
   const panel = $("command-briefing");
   const container = $("command-priorities");
   const priorities = [];
-  const urgentSieges = state.plateaus.sieges.filter((siege) => siege.defenderId === state.me.id && !siege.defenderCommittedAt);
-  if (urgentSieges.length) priorities.push({ label: "Defensive siege", text: urgentSieges.length + " plateau" + (urgentSieges.length === 1 ? " needs" : "s need") + " defenders", view: "plateaus" });
+  const activeSieges = state.plateaus.sieges.filter((siege) => siege.attackerId === state.me.id || siege.defenderId === state.me.id);
+  const urgentSieges = activeSieges.filter((siege) => siege.defenderId === state.me.id && !siege.defenderCommittedAt);
+  if (activeSieges.length) priorities.push({ label: urgentSieges.length ? "Defensive siege" : "Active siege", text: urgentSieges.length ? urgentSieges.length + " plateau" + (urgentSieges.length === 1 ? " needs" : "s need") + " defenders" : activeSieges.length + " siege" + (activeSieges.length === 1 ? " is" : "s are") + " underway", view: "plateaus" });
   if (state.worldPressure?.warning) priorities.push({ label: "Parshendi pressure", text: state.worldPressure.warning.message, view: "plateaus" });
   if (state.plateauRun) priorities.push({ label: "Plateau Run open", text: formatDuration(Math.max(0, Math.ceil((state.plateauRun.joinUntil - Date.now()) / 60000))) + " left to commit", view: "plateau" });
   if (state.research?.unlocked && !state.research?.active) priorities.push({ label: "Research slot empty", text: "Choose the kingdom's next study", view: "research" });
@@ -2765,7 +2818,7 @@ function renderEspionage() {
   bindQuantityControls(missionInputs);
   const targetSelect = $("espionage-target");
   if (targetSelect) {
-    targetSelect.innerHTML = (espionage.targets || []).map((target) => '<option value="' + escapeHtml(target.playerId) + '">' + escapeHtml(target.name) + ' · Economy ' + number(target.economyIntel || 0) + '/' + number(target.economyIntelCap || heistRules.economyIntelCap) + ' · Intel ' + number(target.intel) + '/' + number(target.intelCap) + '</option>').join("") || '<option value="">No rival kingdoms</option>';
+    targetSelect.innerHTML = (espionage.targets || []).map((target) => '<option value="' + escapeHtml(target.playerId) + '">' + escapeHtml(target.name) + '</option>').join("") || '<option value="">No rival kingdoms</option>';
     if ((espionage.targets || []).some((target) => target.playerId === lastSelections.espionageTarget)) targetSelect.value = lastSelections.espionageTarget;
   }
   const operationSelect = $("espionage-operation");
@@ -3468,6 +3521,13 @@ $("plateau-run-submit").addEventListener("click", () => {
 $("close-kingdom-intel-dialog")?.addEventListener("click", () => $("kingdom-intel-dialog").close());
 $("kingdom-intel-dialog")?.addEventListener("click", (event) => {
   if (event.target === $("kingdom-intel-dialog")) $("kingdom-intel-dialog").close();
+});
+$("close-siege-result")?.addEventListener("click", () => closeSiegeResult(false));
+$("dismiss-siege-result")?.addEventListener("click", () => closeSiegeResult(false));
+$("open-siege-result")?.addEventListener("click", () => closeSiegeResult(true));
+$("siege-result-dialog")?.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeSiegeResult(false);
 });
 $("accept-mission-confirmation")?.addEventListener("click", () => settleMissionConfirmation(true));
 $("cancel-mission-confirmation")?.addEventListener("click", () => settleMissionConfirmation(false));

@@ -239,6 +239,9 @@
 .conclave-deployment small { color: var(--muted); line-height: 1.45; }
 .mission-confirmation { width: min(560px,calc(100vw - 24px)); border: 1px solid rgba(127,183,255,.48); border-radius: 10px; background: #07111f; color: var(--text); padding: 18px; }
 .mission-confirmation::backdrop { background: rgba(2,8,16,.78); backdrop-filter: blur(3px); }
+.siege-result-dialog { border-color: rgba(231,176,90,.62); box-shadow: 0 22px 70px rgba(0,0,0,.52), inset 0 1px 0 rgba(255,255,255,.04); }
+.siege-result-details { display: grid; gap: 8px; margin: 14px 0 18px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.035); }
+.siege-result-details p { margin: 0; line-height: 1.55; color: var(--muted); }
 .message-action { margin-top: 12px; }
 .route-focus { animation: route-focus-pulse 2.4s ease-out; }
 @keyframes route-focus-pulse { 0%,35% { outline: 2px solid var(--accent); box-shadow: 0 0 28px rgba(127,183,255,.38); } 100% { outline: 2px solid transparent; box-shadow: none; } }

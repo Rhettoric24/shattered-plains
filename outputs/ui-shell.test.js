@@ -13,6 +13,27 @@ describe("post-overhaul shell", () => {
     expect(deploymentWorkflow).not.toContain("vars.CONVEX_URL ||");
   });
 
+  test("keeps the pre-release command surfaces concise and reactive", () => {
+    expect(client).toContain("const expandedInboxMessageIds = new Set()");
+    expect(client).toContain("expandedInboxMessageIds.has(details.dataset.messageId)");
+    expect(client).toContain("' operatives ready</strong>");
+    expect(client).toContain('"Active siege"');
+    expect(client).toContain("arrivalWindowMinutes");
+    expect(client).toContain("!encirclementClosed && siege.targetType === \"player\"");
+    expect(client).not.toContain("' · Economy ' + number(target.economyIntel");
+  });
+
+  test("presents each newly resolved PvP siege as a one-time battle report", () => {
+    expect(html).toContain('id="siege-result-dialog"');
+    expect(html).toContain('id="siege-result-narrative"');
+    expect(html).toContain('id="siege-result-details"');
+    expect(client).toContain('entry.eventType === "siege_resolved_attacker"');
+    expect(client).toContain('entry.eventType === "siege_resolved_defender"');
+    expect(client).toContain('sp-siege-result-seen:');
+    expect(client).toContain('client.mutation(refs.markMessageRead');
+    expect(client).toContain('view: "plains", tab: "sieges"');
+  });
+
   test("presents Plateau Runs as Chasmfiends with exact Sphere loot", () => {
     expect(client).toContain('return "Young Chasmfiend"');
     expect(client).toContain('return "Legendary Chasmfiend"');

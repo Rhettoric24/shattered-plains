@@ -406,6 +406,12 @@
       <div id="mission-confirmation-content" class="mission-summary"></div>
       <div class="inline-actions"><button id="cancel-mission-confirmation" class="secondary" type="button">Cancel</button><button id="accept-mission-confirmation" type="button">Confirm and commit</button></div>
     </dialog>
+    <dialog id="siege-result-dialog" class="mission-confirmation siege-result-dialog" aria-labelledby="siege-result-title">
+      <div class="dialog-heading"><div><p class="eyebrow">Battle report</p><h2 id="siege-result-title">Siege resolved</h2></div><button id="close-siege-result" class="secondary" type="button" aria-label="Close battle report">✕</button></div>
+      <p id="siege-result-narrative" class="mission-summary"></p>
+      <div id="siege-result-details" class="siege-result-details"></div>
+      <div class="inline-actions"><button id="dismiss-siege-result" class="secondary" type="button">Dismiss</button><button id="open-siege-result" type="button">View sieges</button></div>
+    </dialog>
     <script type="module" src="convex-client.js"></script>
   </body>
 </html>

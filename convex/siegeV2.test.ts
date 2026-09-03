@@ -27,6 +27,52 @@ async function setup() {
 }
 
 describe("PvP Siege V2", () => {
+  test("allows Emergency Defenses only during Encirclement", async () => {
+    const { t, defenderUser, defenderId, siegeId } = await setup();
+    await expect(t.withIdentity({ subject: String(defenderUser) }).mutation(api.plateaus.setEmergencyDefense, { siegeId, percent: 10 }))
+      .rejects.toThrow("only be prepared during Encirclement");
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(siegeId, { encircleEndsAt: Date.now() + 60_000 });
+    });
+    const result = await t.withIdentity({ subject: String(defenderUser) }).mutation(api.plateaus.setEmergencyDefense, { siegeId, percent: 10 });
+    expect(result).toMatchObject({ emergencyDefensePercent: 10 });
+    const defender = await t.run((ctx) => ctx.db.get(defenderId));
+    expect(defender?.spheres).toBeLessThan(10000);
+  });
+
+  test("Military Intel estimates use the speed-adjusted reinforcement arrival", async () => {
+    const { t, attackerUser, attackerId, defenderId, siegeId } = await setup();
+    const now = Date.now();
+    const arriveAt = now + 31 * 60_000;
+    await t.run(async (ctx) => {
+      await ctx.db.insert("siegeReinforcements", {
+        siegeId,
+        playerId: defenderId,
+        side: "defender",
+        units: { ...emptyUnits, bridgeman: 2 },
+        power: 2,
+        speed: 2,
+        departAt: now,
+        arriveAt,
+        status: "traveling",
+      });
+    });
+
+    const estimated = await t.withIdentity({ subject: String(attackerUser) }).query(api.plateaus.getSiegeBoard, {});
+    expect(estimated.sieges[0].reinforcements[0]).toMatchObject({ arrivalWindowMinutes: 60 });
+    expect(estimated.sieges[0].reinforcements[0]).not.toHaveProperty("arriveAt");
+
+    await t.run(async (ctx) => {
+      const intel = await ctx.db.query("kingdomIntelResources")
+        .withIndex("by_viewerPlayerId_and_targetPlayerId", (q) => q.eq("viewerPlayerId", attackerId).eq("targetPlayerId", defenderId))
+        .unique();
+      await ctx.db.patch(intel!._id, { militaryAmount: 75 });
+    });
+    const exact = await t.withIdentity({ subject: String(attackerUser) }).query(api.plateaus.getSiegeBoard, {});
+    expect(exact.sieges[0].reinforcements[0]).toMatchObject({ arriveAt });
+  });
+
   test("a siege investigation spends Military Intel and overwhelm reveals the present force", async () => {
     const { t, attackerUser, attackerId, defenderId, siegeId } = await setup();
     const launched = await t.withIdentity({ subject: String(attackerUser) }).mutation(api.plateaus.launchSiegeInvestigation, { siegeId, operatives: { ...emptyOps, ghostblood: 1 } });
