@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { dailyStorm, forecastFor, HIGHSTORM_RULES, isStormActive, mountainDateKey, stormCounterIntelligence, stormInvestigationIntel, stormParshendiPower, stormRewardPool } from "./highstormRules";
+import { applyHighstormExposureLosses, dailyStorm, forecastFor, HIGHSTORM_RULES, isStormActive, mountainDateKey, stormCounterIntelligence, stormInvestigationIntel, stormParshendiPower, stormRewardPool } from "./highstormRules";
 import { sphereHeistCasualties } from "./espionageRules";
 
 describe("Highstorms V0 schedule", () => {
@@ -20,3 +20,22 @@ describe("forecast authorization",()=>{
 
 test("central operation modifiers apply exactly once",()=>{expect(stormParshendiPower(101,true)).toBe(141);expect(stormParshendiPower(101,false)).toBe(101);expect(stormRewardPool(2400,true)).toBe(4800);expect(stormCounterIntelligence(90,true)).toBe(45);expect(stormInvestigationIntel(15,true,true)).toBe(23);expect(stormInvestigationIntel(15,false,true)).toBe(15);});
 test("Highstorm doubles only existing Sphere Heist failure casualties",()=>{const force={informant:10,spy:0,ghostblood:0};expect(sphereHeistCasualties(force,"failure").lost).toBe(2);expect(sphereHeistCasualties(force,"failure",2).lost).toBe(4);expect(sphereHeistCasualties(force,"partial",2).lost).toBe(2);expect(sphereHeistCasualties(force,"success",2).lost).toBe(0);});
+
+describe("storm exposure casualties", () => {
+  test("large armies retain combined Survivability without becoming weatherproof", () => {
+    const losses = applyHighstormExposureLosses({ bridgeman: 700, spearman: 1000, chull: 0, scout: 0, heavy: 0, shardbearer: 0 }, "reported-siege-force");
+    const total = Object.values(losses.casualties).reduce((sum, count) => sum + count, 0);
+    expect(total).toBeGreaterThanOrEqual(63);
+    expect(total).toBeLessThanOrEqual(64);
+    expect(losses.finalCasualtyRate).toBeCloseTo(0.0375);
+  });
+
+  test("strong cohorts cover weak cohorts, with storm mitigation capped", () => {
+    const mixed = applyHighstormExposureLosses({ bridgeman: 1000, spearman: 1000, chull: 0, scout: 0, heavy: 0, shardbearer: 0 }, "mixed");
+    const weak = applyHighstormExposureLosses({ bridgeman: 1000, spearman: 0, chull: 0, scout: 0, heavy: 0, shardbearer: 0 }, "weak");
+    const veryHardy = applyHighstormExposureLosses({ bridgeman: 0, spearman: 0, chull: 0, scout: 0, heavy: 0, shardbearer: 1000 }, "hardy");
+    expect(mixed.finalCasualtyRate).toBeLessThan(weak.finalCasualtyRate);
+    expect(veryHardy.finalCasualtyRate).toBeCloseTo(0.0375);
+    expect(HIGHSTORM_RULES.exposureSurvivabilityCap).toBe(300);
+  });
+});

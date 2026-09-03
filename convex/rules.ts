@@ -767,6 +767,7 @@ export function applySurvivalLosses(
   seed: string,
   completed?: Record<string, number>,
   conclaveCombat = false,
+  survivabilityCap?: number,
 ) {
   const normalized = normalizeUnits(units);
   const survivors = { ...normalized };
@@ -779,9 +780,10 @@ export function applySurvivalLosses(
     }
   }
 
+  const survivability = effectiveSurvivability(normalized, completed, conclaveCombat);
   const finalCasualtyRate = casualtyRateAfterSurvivability(
     baseCasualtyRate,
-    effectiveSurvivability(normalized, completed, conclaveCombat),
+    survivabilityCap === undefined ? survivability : Math.min(survivability, survivabilityCap),
   );
   const expectedCasualties = unitPool.length * finalCasualtyRate;
   const wholeCasualties = Math.floor(expectedCasualties);

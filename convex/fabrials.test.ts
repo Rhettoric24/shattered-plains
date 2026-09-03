@@ -5,8 +5,8 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { applyFabrialCasualtyProtection, FABRIAL_RULES, reusableFabrialLost, soulcasterRecovery } from "./fabrialRules";
 import { reserveFabrial, settleReusableFabrial } from "./fabrialHelpers";
-import { applySurvivalLosses, emptyBuildings, emptyUnits, totalUnits, WORLD_KEY } from "./rules";
-import { HIGHSTORM_RULES } from "./highstormRules";
+import { emptyBuildings, emptyUnits, totalUnits, WORLD_KEY } from "./rules";
+import { applyHighstormExposureLosses } from "./highstormRules";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -123,7 +123,7 @@ describe("Fabrial discovery and inventory", () => {
     const launched = await player.mutation(api.raids.launchSphereRaid, { units: { ...emptyUnits(), spearman: 1000 }, fabrial: "painrial" });
     expect((await player.query(api.fabrials.getStatus, {})).inventory.find((entry) => entry.kind === "painrial")).toMatchObject({ owned: 0, committed: 0, available: 0 });
     const beforeStorm = await t.run((ctx) => ctx.db.get(launched.raidId));
-    const raw = applySurvivalLosses(beforeStorm!.units, HIGHSTORM_RULES.exposureBaseCasualtyRate, `${launched.raidId}:highstorm:fabrial-test:exposure`, { painrialMedicine: 2, sprenStudies: 2 });
+    const raw = applyHighstormExposureLosses(beforeStorm!.units, `${launched.raidId}:highstorm:fabrial-test:exposure`, { painrialMedicine: 2, sprenStudies: 2 });
     const rawCasualties = totalUnits(raw.casualties);
     await t.mutation(internal.highstorms.processActiveStorm, {});
     const afterStorm = await t.run((ctx) => ctx.db.get(launched.raidId));

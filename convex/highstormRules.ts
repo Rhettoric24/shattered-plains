@@ -1,7 +1,10 @@
+import { applySurvivalLosses, type UnitCounts } from "./rules";
+
 export const HIGHSTORM_RULES = {
   timezone: "America/Denver", arrivalStartMinute: 540, arrivalEndMinute: 1260,
   durationMs: 7_200_000, forecastWindowMinutes: [240, 120, 60, 0],
-  exposureBaseCasualtyRate: 0.0375, parshendiPowerMultiplier: 1.4,
+  exposureBaseCasualtyRate: 0.15, exposureSurvivabilityCap: 300,
+  parshendiPowerMultiplier: 1.4,
   raidRewardMultiplier: 2, counterIntelligenceMultiplier: 0.5,
   investigationIntelMultiplier: 1.5, failureCasualtyMultiplier: 2,
 } as const;
@@ -19,3 +22,15 @@ export const stormParshendiPower=(normal:number,active:boolean)=>active?Math.rou
 export const stormRewardPool=(normal:number,active:boolean)=>active?Math.round(normal*2):normal;
 export const stormCounterIntelligence=(normal:number,active:boolean)=>active?normal*.5:normal;
 export const stormInvestigationIntel=(normal:number,success:boolean,active:boolean)=>active&&success?Math.round(normal*1.5):normal;
+
+/** Storms preserve combined-arms protection but cap its mitigation. */
+export function applyHighstormExposureLosses(units: Partial<UnitCounts>, seed: string, completed?: Record<string, number>, conclaveCombat = false) {
+  return applySurvivalLosses(
+    units,
+    HIGHSTORM_RULES.exposureBaseCasualtyRate,
+    seed,
+    completed,
+    conclaveCombat,
+    HIGHSTORM_RULES.exposureSurvivabilityCap,
+  );
+}
