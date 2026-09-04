@@ -38,6 +38,8 @@ import {
 } from "./rules";
 import { applyHostility } from "./worldPressure";
 import { WORLD_PRESSURE_RULES } from "./worldPressureRules";
+import { economyIntelDisclosureLevel } from "./espionageRules";
+import { presentIntelNumber } from "./intelligenceRules";
 
 function seededInt(seed: string, min: number, max: number) {
   let hash = 0;
@@ -177,6 +179,7 @@ function mountainScheduleSlot(now: number) {
 export const getCurrent = query({
   args: {},
   handler: async (ctx) => {
+    const viewer = await requireCurrentPlayer(ctx);
     const run = await ctx.db
       .query("plateauRuns")
       .withIndex("by_status", (q) => q.eq("status", "open"))
@@ -189,21 +192,44 @@ export const getCurrent = query({
       .collect();
     const players = await ctx.db.query("players").collect();
 
-    return {
-      run,
-      commitments: commitments
-        .sort((a, b) => a.committedAt - b.committedAt)
-        .map((commitment, index) => {
+    const decoratedCommitments = await Promise.all(commitments
+      .sort((a, b) => a.committedAt - b.committedAt)
+      .map(async (commitment, index) => {
         const player = players.find((entry) => entry._id === commitment.playerId);
         const joinOrderSpeedBonus = plateauRunJoinSpeedBonus(index, commitment.doctrineJoinSpeedMultiplier ?? 1);
-        return {
-          ...commitment,
+        const intelResource = commitment.playerId === viewer._id
+          ? null
+          : await ctx.db
+              .query("kingdomIntelResources")
+              .withIndex("by_viewerPlayerId_and_targetPlayerId", (q) =>
+                q.eq("viewerPlayerId", viewer._id).eq("targetPlayerId", commitment.playerId),
+              )
+              .unique();
+        const militaryIntel = Math.max(0, Math.min(100, Math.floor(
+          intelResource?.militaryAmount ?? intelResource?.amount ?? 0,
+        )));
+        const ledgerLevel = commitment.playerId === viewer._id
+          ? 2
+          : economyIntelDisclosureLevel(militaryIntel);
+        const presentationLevel = ledgerLevel === 2 ? 3 : ledgerLevel === 1 ? 2 : 0;
+        const shared = {
+          _id: commitment._id,
+          playerId: commitment.playerId,
+          committedAt: commitment.committedAt,
           joinOrder: index + 1,
           joinOrderSpeedBonus,
           speedScore: plateauRunFinalSpeed(commitment.speed, index, commitment.doctrineJoinSpeedMultiplier ?? 1),
           playerName: player?.name ?? "Unknown",
+          powerIntel: presentIntelNumber(commitment.power, presentationLevel),
         };
-      }),
+        return commitment.playerId === viewer._id
+          ? { ...commitment, ...shared }
+          : shared;
+      }));
+
+    return {
+      run,
+      commitments: decoratedCommitments,
     };
   },
 });
@@ -443,11 +469,18 @@ export const resolvePlateauRun = internalMutation({
           units: addUnits(player.units, lossResult.survivors),
           lastActiveAt: now,
         });
+        const speedRank = [...finalEntries]
+          .sort((a, b) => b.speedScore - a.speedScore || a.joinOrder - b.joinOrder)
+          .findIndex((candidate) => candidate._id === entry._id) + 1;
+        const effectivePowerText = entry._id === fastest._id
+          ? `${entry.effectivePower.toFixed(2)} effective Power (${entry.power.toFixed(2)} base plus the 10% fastest-army bonus)`
+          : `${entry.effectivePower.toFixed(2)} Power`;
+        const speedReport = `Final Speed ${entry.speedScore.toFixed(2)} (${entry.speed.toFixed(2)} base${entry.joinOrderSpeedBonus > 0 ? ` plus ${Math.round(entry.joinOrderSpeedBonus * 100)}% for joining #${entry.joinOrder}` : ""}), rank ${speedRank} of ${finalEntries.length}`;
         await ctx.db.insert("messages", {
           toPlayerId: player._id,
           kind: "system",
           subject: "Plateau Run Failed",
-          body: `The combined force failed against the ${plateauRunPowerLabel(run.difficulty).toLowerCase()} Chasmfiend. Casualties: ${casualtySummary(lossResult.casualties)}.`,
+          body: `The hunt failed: combined Power ${combinedPower.toFixed(2)} did not reach the Chasmfiend's ${run.difficulty} Power. Your contribution: ${effectivePowerText}. Gemheart race: ${speedReport}. Reward: none. Casualties: ${casualtySummary(lossResult.casualties)}.`,
           eventType: "plateau_run_resolved", destinationView: "plains", destinationTab: "plateau-runs", entityType: "plateau_run", entityId: String(run._id),
           createdAt: now,
         });
@@ -513,21 +546,29 @@ export const resolvePlateauRun = internalMutation({
         gemhearts: player.gemhearts + (isWinner ? run.gemheartReward : 0),
         lastActiveAt: now,
       });
-      if (isWinner) {
-        await applyHostility(ctx, {
-          playerId: player._id,
-          gain: WORLD_PRESSURE_RULES.hostility.gains.plateauRunVictory,
-          playerInitiated: true,
-          now,
-        });
-      }
+      await applyHostility(ctx, {
+        playerId: player._id,
+        gain: WORLD_PRESSURE_RULES.hostility.gains.plateauRunVictory,
+        playerInitiated: true,
+        now,
+      });
+      const speedRank = [...finalEntries]
+        .sort((a, b) => b.speedScore - a.speedScore || a.joinOrder - b.joinOrder)
+        .findIndex((candidate) => candidate._id === entry._id) + 1;
+      const effectivePowerText = isWinner
+        ? `${entry.effectivePower.toFixed(2)} effective Power (${entry.power.toFixed(2)} base plus the 10% fastest-army bonus)`
+        : `${entry.effectivePower.toFixed(2)} Power`;
+      const speedReport = `Final Speed ${entry.speedScore.toFixed(2)} (${entry.speed.toFixed(2)} base${entry.joinOrderSpeedBonus > 0 ? ` plus ${Math.round(entry.joinOrderSpeedBonus * 100)}% for joining #${entry.joinOrder}` : ""}), rank ${speedRank} of ${finalEntries.length}`;
+      const rewardReport = isWinner
+        ? finalEntries.length === 1
+          ? `${run.gemheartReward} Gemheart and ${sphereShare} of ${availableSphereShare} allocated Spheres (Plunder capacity ${plunder})`
+          : `${run.gemheartReward} Gemheart; the other hunters divided the Sphere pool`
+        : `${sphereShare} of ${availableSphereShare} allocated Spheres (Plunder capacity ${plunder})${leftBehind > 0 ? `; ${leftBehind} Spheres were left behind` : ""}`;
       await ctx.db.insert("messages", {
         toPlayerId: player._id,
         kind: "system",
         subject: isWinner ? "Gemheart Claimed" : "Plateau Run Reward",
-        body: isWinner
-          ? `Your warcamp claimed ${run.gemheartReward} Gemheart from the Plateau Run. Casualties: ${casualtySummary(lossResult.casualties)}.`
-          : `Your warcamp recovered ${sphereShare} spheres from the Plateau Run.${leftBehind > 0 ? " Some spheres were left behind because the army lacked Plunder." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`,
+        body: `The hunt succeeded: combined Power ${combinedPower.toFixed(2)} defeated the Chasmfiend's ${run.difficulty} Power. Your contribution: ${effectivePowerText}. Gemheart race: ${speedReport}. Reward: ${rewardReport}. Casualties: ${casualtySummary(lossResult.casualties)}.`,
         eventType: "plateau_run_resolved", destinationView: "plains", destinationTab: "plateau-runs", entityType: "plateau_run", entityId: String(run._id),
         createdAt: now,
       });

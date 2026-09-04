@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import {
   emptyBuildings,
@@ -73,6 +73,8 @@ async function resolveTwoPlayerRun(args: {
     run: await ctx.db.get(plateauRunId),
     first: await ctx.db.get(firstPlayerId),
     second: await ctx.db.get(secondPlayerId),
+    pressures: await ctx.db.query("kingdomWorldPressure").collect(),
+    messages: await ctx.db.query("messages").collect(),
   }));
 }
 
@@ -121,5 +123,51 @@ describe("Plateau Run join order and winner selection", () => {
     expect(result.run?.winnerPlayerId).toBe(result.first?._id);
     expect(result.first?.gemhearts).toBe(1);
     expect(result.second?.gemhearts).toBe(0);
+  });
+
+  test("raises Hostility for every participant and sends each warcamp a complete outcome report", async () => {
+    const result = await resolveTwoPlayerRun({ firstPower: 20, firstSpeed: 120, secondPower: 100, secondSpeed: 120 });
+    expect(result.pressures).toHaveLength(2);
+    expect(result.pressures.map((row) => row.hostility).sort()).toEqual([6, 6]);
+    expect(result.messages).toHaveLength(2);
+    for (const message of result.messages) {
+      expect(message.body).toContain("combined Power");
+      expect(message.body).toContain("Your contribution:");
+      expect(message.body).toContain("Gemheart race: Final Speed");
+      expect(message.body).toContain("Reward:");
+      expect(message.body).toContain("Casualties:");
+    }
+  });
+
+  test("uses persistent Military Intel to disclose rival Plateau Run Power", async () => {
+    const t = convexTest(schema, modules);
+    const viewerId = await addPlayer(t, "Viewer");
+    const rivalId = await addPlayer(t, "Rival");
+    await t.run((ctx) => ctx.db.patch(viewerId, { authUserId: "plateau-viewer" }));
+    await t.run(async (ctx) => {
+      const plateauRunId = await ctx.db.insert("plateauRuns", {
+        status: "open", opensAt: 1, closesAt: Date.now() + 60_000, resolvesAt: Date.now() + 60_000,
+        difficulty: 1000, spherePool: 1000, gemheartReward: 1,
+      });
+      await ctx.db.insert("plateauCommitments", {
+        plateauRunId, playerId: rivalId, units: emptyUnits(), power: 1000, speed: 20, committedAt: 1,
+      });
+    });
+    const viewer = t.withIdentity({ subject: "plateau-viewer" });
+
+    const qualitative = (await viewer.query(api.plateauRuns.getCurrent, {}))?.commitments[0];
+    expect(qualitative?.powerIntel).toEqual({ mode: "label", label: "Impregnable" });
+    expect(qualitative).not.toHaveProperty("power");
+    expect(qualitative).not.toHaveProperty("units");
+
+    const resourceId = await t.run((ctx) => ctx.db.insert("kingdomIntelResources", {
+      viewerPlayerId: viewerId, targetPlayerId: rivalId, amount: 0, militaryAmount: 25, updatedAt: 1,
+    }));
+    expect((await viewer.query(api.plateauRuns.getCurrent, {}))?.commitments[0].powerIntel)
+      .toEqual({ mode: "estimate", label: "Impregnable", min: 900, max: 1100 });
+
+    await t.run((ctx) => ctx.db.patch(resourceId, { militaryAmount: 75 }));
+    expect((await viewer.query(api.plateauRuns.getCurrent, {}))?.commitments[0].powerIntel)
+      .toEqual({ mode: "exact", label: "Impregnable", value: 1000 });
   });
 });

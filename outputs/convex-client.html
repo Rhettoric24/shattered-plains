@@ -228,9 +228,14 @@
               <h2>Current plateau run</h2>
               <div class="mission-brief">
                 <strong>Work together to take on the mighty Chasmfiend.</strong>
-                <p>Bring enough combined Power to bring it down. The fastest army claims the Gemheart; the other hunters divide the Sphere spoils according to the Power they brought. If the Chasmfiend bests your combined might, you will return to your warcamp with nothing but heavy casualties.</p>
+                <p>Bring enough combined Power to bring it down. Early hunters gain +10%, +7%, or +5% final Speed in commitment order. The fastest final army also contributes +10% Power to the hunt and claims the Gemheart; every other hunter splits the Sphere pool according to contributed Power, limited by that army's Plunder. If the Chasmfiend bests your combined might, you will return to your warcamp with nothing but heavy casualties.</p>
               </div>
               <div id="plateau-status" class="plateau-status"></div>
+            </section>
+            <section id="plateau-run-roster-panel" class="panel full-panel">
+              <p class="eyebrow">Roster</p>
+              <h2>Committed warcamps</h2>
+              <div id="plateau-participants" class="list"></div>
             </section>
             <section id="plateau-run-commit-panel" class="panel full-panel">
               <p class="eyebrow">Commit</p>
@@ -244,11 +249,6 @@
                 <label class="form-wide conclave-deployment">Scout Conclave<select id="plateau-conclave"></select><small data-conclave-tradeoff></small></label>
                 <div class="inline-actions form-wide"><button id="plateau-run-submit" data-mission-launch type="button">Commit to plateau run</button><button id="cancel-plateau-commitment" type="button" class="secondary hidden">Cancel commitment</button></div>
               </form>
-            </section>
-            <section id="plateau-run-roster-panel" class="panel full-panel">
-              <p class="eyebrow">Roster</p>
-              <h2>Committed warcamps</h2>
-              <div id="plateau-participants" class="list"></div>
             </section>
           </section>
 
@@ -271,6 +271,7 @@
             <section class="panel full-panel">
               <div class="section-heading"><p class="eyebrow">Covert operations</p><h2>Espionage Network</h2></div>
               <div id="espionage-network-status" class="pulse-grid"></div>
+              <div class="inline-actions"><button type="button" class="secondary" data-route-view="warcamp" data-route-tab="recruitment" data-focus="recruitment-group-espionage">Recruit espionage operatives</button></div>
               <div id="espionage-network-locked" class="network-required-callout hidden">
                 <div><strong>Ghostblood Network required</strong><span>Construct Network I in Buildings to recruit Informants and launch investigations.</span></div>
                 <button id="open-ghostblood-building" type="button">Open Buildings</button>

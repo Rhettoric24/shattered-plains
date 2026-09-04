@@ -40,7 +40,7 @@ describe("post-overhaul shell", () => {
     expect(client).toContain("number(run.spherePool) + ' Spheres.");
     expect(client).not.toContain("a ' + plateauRunLootLabel(run.spherePool) + ' sphere pool");
     expect(html).toContain("Work together to take on the mighty Chasmfiend.");
-    expect(html).toContain("The fastest army claims the Gemheart");
+    expect(html).toContain("The fastest final army also contributes +10% Power to the hunt and claims the Gemheart");
     expect(html).toContain("If the Chasmfiend bests your combined might, you will return to your warcamp with nothing but heavy casualties.");
     expect(client).toContain("Total Sphere pool:");
     expect(client).not.toContain("Your speed score");
@@ -133,6 +133,22 @@ describe("post-overhaul shell", () => {
     expect(css).toContain(".operative-recruit > button");
     expect(css).toMatch(/width:\s*min\(132px,\s*100%\)/);
     expect(css).toContain("height: 42px");
+  });
+
+  test("links covert operations to recruitment and previews full operative costs", () => {
+    expect(html).toContain('data-focus="recruitment-group-espionage"');
+    expect(client).toContain('id="recruitment-group-\' + key + \'"');
+    expect(client).toContain("renderOperativeRecruitmentPreview");
+    expect(client).toContain("Sphere cost <strong>");
+    expect(client).toContain("Provision use <strong>");
+    expect(client).toContain("Total Spy Power <strong>");
+  });
+
+  test("marks active PvP sieges and keeps Spanreeds in chronological order", () => {
+    expect(client).toContain('aria-label="PvP siege active"');
+    expect(client).toContain('siege.targetType === "player" && siege.status === "pending"');
+    expect(client).toContain('.sort((a, b) => b.at - a.at)');
+    expect(client).not.toContain('Number(a.read) - Number(b.read) || b.at - a.at');
   });
 
   test("makes all four army stats explicitly tap-accessible", () => {

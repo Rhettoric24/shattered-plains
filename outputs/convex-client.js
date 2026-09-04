@@ -891,7 +891,8 @@ function renderSpaceSubnav(route) {
     const mysteryFabrials = route.view === "research" && tab.key === "fabrials" && !state?.fabrials?.hasDiscovery;
     const label = mysteryFabrials ? "???" : route.view === "research" && tab.key === "fabrials" ? "Fabrials" : tab.label;
     const accessibility = mysteryFabrials ? ' aria-label="Unexplored scholarly applications" title="Unexplored scholarly applications"' : '';
-    return '<button type="button" class="subnav-button ' + (route.tab === tab.key ? 'active' : '') + (locked ? ' disclosure-locked' : '') + '"' + (locked ? ' disabled aria-label="Unknown intelligence function. Requires ' + requirement + '." title="Requires ' + requirement + '"' : ' data-route-view="' + route.view + '" data-route-tab="' + tab.key + '"' + accessibility) + '>' + escapeHtml(locked ? "???" : label) + (route.view === "plains" && tab.key === "plateau-runs" && state?.plateauRun ? '<span class="nav-state-dot" aria-label="Plateau Run active"></span>' : '') + '</button>';
+    const activePvpSiege = route.view === "plains" && tab.key === "sieges" && state?.plateaus?.sieges?.some((siege) => siege.targetType === "player" && siege.status === "pending" && (siege.role === "attacker" || siege.role === "defender"));
+    return '<button type="button" class="subnav-button ' + (route.tab === tab.key ? 'active' : '') + (locked ? ' disclosure-locked' : '') + '"' + (locked ? ' disabled aria-label="Unknown intelligence function. Requires ' + requirement + '." title="Requires ' + requirement + '"' : ' data-route-view="' + route.view + '" data-route-tab="' + tab.key + '"' + accessibility) + '>' + escapeHtml(locked ? "???" : label) + (activePvpSiege ? '<span class="nav-state-dot" aria-label="PvP siege active"></span>' : route.view === "plains" && tab.key === "plateau-runs" && state?.plateauRun ? '<span class="nav-state-dot" aria-label="Plateau Run active"></span>' : '') + '</button>';
   }).join("");
 }
 
@@ -1085,9 +1086,9 @@ function renderUnits() {
     ? '<article class="upgrade-card unit-card conclave-card"><div class="card-heading"><div><strong>Ardentia Scout Conclave</strong><span>Field intelligence specialists</span></div>' + rosterMetrics(ardentia.ready, ardentia.owned) + '</div><div class="unit-identity"><p>' + (conclaveCombatReady ? 'May accompany an army as an unkillable support cohort, strengthening its Power and Survive score. A deployed Conclave stops contributing Research speed until it returns.' : 'Accompanies an army to improve the resulting intelligence report. It does not add combat Power until the necessary Religious Studies are complete.') + '</p><small><strong>Capacity:</strong> ' + number(ardentia.owned) + ' / ' + number(ardentia.capacity) + ' supported by Ardent Monastery level ' + monasteryLevel + '.</small></div><div class="unit-costs"><span><small>Formation cost</small><strong>' + number(rules.recruitmentCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rules.provisionsCost) + '</strong></span></div><p class="rule-callout">One Conclave may accompany each expedition. It always has at least a 25% chance to complete its investigation and is never permanently destroyed.</p><button type="button" data-recruit-conclave' + (canRecruit ? '' : ' disabled') + '>' + (ardentia.owned >= ardentia.capacity ? 'Monastery capacity reached' : 'Form Scout Conclave') + '</button>' + conclaveRows + '</article>'
     : '';
   const operativeRoles = { informant: "Rumor gatherers and local contacts", spy: "Trained covert field agents", ghostblood: "Elite clandestine operatives" };
-  const operativeCards = Object.entries(state.espionage?.rules?.operatives || {}).map(([tier, rule]) => { const unlocked = Number(state.espionage?.networkLevel || 0) >= Number(rule.networkLevel || 0); const available = Number(state.espionage?.available?.[tier] || 0); const owned = available + Number(state.espionage?.defending?.[tier] || 0) + Number(state.espionage?.onMission?.[tier] || 0); return '<article class="upgrade-card unit-card operative-card operative-' + tier + ' ' + (unlocked ? '' : 'locked') + '" data-recruit-card="' + tier + '"><div class="card-heading"><div><strong>' + escapeHtml(rule.name) + '</strong><span>' + escapeHtml(operativeRoles[tier] || "Espionage operative") + '</span></div>' + (unlocked ? rosterMetrics(available, owned) : '<span class="status-badge blocked">Network ' + number(rule.networkLevel) + ' required</span>') + '</div><div class="unit-stat-grid"><div class="stat-cell operative-stat"><span>Spy Power</span><strong>' + number(rule.spyPower) + '</strong></div><div class="stat-cell operative-stat"><span>Network level</span><strong>' + number(rule.networkLevel) + '</strong></div></div><div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(rule.sphereCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rule.provisionsCost) + ' each</strong></span></div><div class="operative-recruit">' + quantityControlMarkup('data-operative-recruit-count="' + tier + '" aria-label="' + escapeHtml(rule.name) + ' recruitment count"' + (unlocked ? '' : ' disabled'), 1, unlocked ? Math.max(0, Math.floor(state.me.spheres / Number(rule.sphereCost || 1))) : 0, { max: true }) + '<button type="button" data-recruit-operative="' + tier + '"' + (unlocked ? '' : ' disabled') + '>Recruit ' + escapeHtml(rule.name) + '</button></div>' + (available ? '<button type="button" class="secondary" data-disband-operative="' + tier + '" data-available="' + available + '">Disband available</button>' : '') + '</article>'; }).join('');
+  const operativeCards = Object.entries(state.espionage?.rules?.operatives || {}).map(([tier, rule]) => { const unlocked = Number(state.espionage?.networkLevel || 0) >= Number(rule.networkLevel || 0); const available = Number(state.espionage?.available?.[tier] || 0); const owned = available + Number(state.espionage?.defending?.[tier] || 0) + Number(state.espionage?.onMission?.[tier] || 0); return '<article class="upgrade-card unit-card operative-card operative-' + tier + ' ' + (unlocked ? '' : 'locked') + '" data-recruit-card="' + tier + '"><div class="card-heading"><div><strong>' + escapeHtml(rule.name) + '</strong><span>' + escapeHtml(operativeRoles[tier] || "Espionage operative") + '</span></div>' + (unlocked ? rosterMetrics(available, owned) : '<span class="status-badge blocked">Network ' + number(rule.networkLevel) + ' required</span>') + '</div><div class="unit-stat-grid"><div class="stat-cell operative-stat"><span>Spy Power</span><strong>' + number(rule.spyPower) + '</strong></div><div class="stat-cell operative-stat"><span>Network level</span><strong>' + number(rule.networkLevel) + '</strong></div></div><div class="unit-costs"><span><small>Recruitment cost</small><strong>' + number(rule.sphereCost) + ' Spheres</strong></span><span><small>Provision cost</small><strong>' + number(rule.provisionsCost) + ' each</strong></span></div><div class="operative-recruit">' + quantityControlMarkup('data-operative-recruit-count="' + tier + '" aria-label="' + escapeHtml(rule.name) + ' recruitment count"' + (unlocked ? '' : ' disabled'), 1, unlocked ? Math.max(0, Math.floor(state.me.spheres / Number(rule.sphereCost || 1))) : 0, { max: true }) + '<div data-operative-recruit-preview class="recruit-preview"></div><button type="button" data-recruit-operative="' + tier + '"' + (unlocked ? '' : ' disabled') + '>Recruit ' + escapeHtml(rule.name) + '</button></div>' + (available ? '<button type="button" class="secondary" data-disband-operative="' + tier + '" data-available="' + available + '">Disband available</button>' : '') + '</article>'; }).join('');
   const groupOpen = (key) => localStorage.getItem("sp-recruitment-group-v1-" + key) !== "closed";
-  const group = (key, title, summary, content, contentClass) => '<details class="recruitment-group form-wide" data-recruitment-group="' + key + '"' + (groupOpen(key) ? ' open' : '') + '><summary><span><strong>' + title + '</strong><small>' + summary + '</small></span><span class="recruitment-group-affordance" aria-hidden="true"></span></summary><div id="recruitment-group-' + key + '" class="recruitment-group-content ' + contentClass + '">' + content + '</div></details>';
+  const group = (key, title, summary, content, contentClass) => '<details id="recruitment-group-' + key + '" class="recruitment-group form-wide" data-recruitment-group="' + key + '"' + (groupOpen(key) ? ' open' : '') + '><summary><span><strong>' + title + '</strong><small>' + summary + '</small></span><span class="recruitment-group-affordance" aria-hidden="true"></span></summary><div class="recruitment-group-content ' + contentClass + '">' + content + '</div></details>';
   const countSummary = (available, owned) => '<span>Available ' + number(available) + '</span><span>Owned ' + number(owned) + '</span>';
   const militaryAvailable = activeUnitEntries().reduce((sum, [key]) => sum + Number(state.me.availableUnits[key] || 0), 0);
   const militaryOwned = activeUnitEntries().reduce((sum, [key]) => sum + Number(state.me.availableUnits[key] || 0) + Number(state.me.unitsAway[key] || 0), 0);
@@ -1110,7 +1111,15 @@ function renderUnits() {
     });
   }
   bindQuantityControls($("unit-roster"));
-  $("unit-roster").querySelectorAll("[data-recruit-operative]").forEach((button) => button.addEventListener("click", () => { const input = $("unit-roster").querySelector('[data-operative-recruit-count="' + button.dataset.recruitOperative + '"]'); action(() => client.mutation(refs.recruitOperatives, { tier: button.dataset.recruitOperative, count: Math.floor(Number(input?.value) || 0) })); }));
+  $("unit-roster").querySelectorAll("[data-recruit-operative]").forEach((button) => {
+    const card = button.closest("[data-recruit-card]");
+    const tier = button.dataset.recruitOperative;
+    const input = card?.querySelector('[data-operative-recruit-count="' + tier + '"]');
+    const update = () => renderOperativeRecruitmentPreview(card, tier);
+    input?.addEventListener("input", update);
+    update();
+    button.addEventListener("click", () => action(() => client.mutation(refs.recruitOperatives, { tier, count: Math.floor(Number(input?.value) || 0) })));
+  });
   const confirmDisband = (label, maximum) => { const raw = window.prompt('Disband how many ' + label + '? (1–' + maximum + ')\nNo resources will be refunded.', '1'); if (raw === null) return 0; const count = Number(raw); if (!Number.isInteger(count) || count < 1 || count > maximum) { window.alert('Enter a whole number from 1 to ' + maximum + '.'); return 0; } return window.confirm('Disband ' + count + ' ' + label + '?\nNo resources will be refunded.') ? count : 0; };
   $("unit-roster").querySelectorAll("[data-disband-unit]").forEach((button) => button.addEventListener("click", () => { const count = confirmDisband(state.config.units[button.dataset.disbandUnit]?.name || 'units', Number(button.dataset.available)); if (count) action(() => client.mutation(refs.disbandUnits, { unit: button.dataset.disbandUnit, count })); }));
   $("unit-roster").querySelectorAll("[data-disband-operative]").forEach((button) => button.addEventListener("click", () => { const label = state.espionage.rules.operatives[button.dataset.disbandOperative]?.name || 'operatives'; const count = confirmDisband(label, Number(button.dataset.available)); if (count) action(() => client.mutation(refs.disbandOperatives, { tier: button.dataset.disbandOperative, count })); }));
@@ -1422,6 +1431,26 @@ function renderRecruitmentPreview(card, key) {
   preview.classList.toggle("empty-draft", count < 1);
   preview.innerHTML = '<span>Total cost <strong>' + number(totalCost) + ' ' + resourceName + '</strong></span><span>Provision use <strong>+' + number(provisionCost) + '</strong></span><span>After recruiting <strong>' + number(after) + ' / ' + number(state.me.provisions.capacity) + '</strong></span>' + (count < 1 ? '<small>Enter a quantity to preview recruitment.</small>' : shortages.length ? '<small class="warning-text">' + escapeHtml(shortages.join(" · ")) + '</small>' : '<small>Ready to recruit.</small>');
   card.querySelector("[data-recruit-submit]").disabled = count < 1 || shortages.length > 0;
+}
+
+function renderOperativeRecruitmentPreview(card, tier) {
+  if (!card) return;
+  const rule = state.espionage?.rules?.operatives?.[tier];
+  const input = card.querySelector('[data-operative-recruit-count="' + tier + '"]');
+  const preview = card.querySelector("[data-operative-recruit-preview]");
+  const button = card.querySelector("[data-recruit-operative]");
+  if (!rule || !input || !preview || !button) return;
+  const count = Math.max(0, Math.floor(Number(input.value) || 0));
+  const sphereCost = count * Number(rule.sphereCost || 0);
+  const provisionCost = count * Number(rule.provisionsCost || 0);
+  const totalSpyPower = count * Number(rule.spyPower || 0);
+  const afterProvisions = Number(state.me.provisions.used || 0) + provisionCost;
+  const shortages = [];
+  if (sphereCost > state.me.spheres) shortages.push("Needs " + number(sphereCost - state.me.spheres) + " more Spheres");
+  if (afterProvisions > state.me.provisions.capacity) shortages.push("Needs " + number(afterProvisions - state.me.provisions.capacity) + " more Provisions");
+  preview.classList.toggle("empty-draft", count < 1);
+  preview.innerHTML = '<span>Sphere cost <strong>' + number(sphereCost) + '</strong></span><span>Provision use <strong>+' + number(provisionCost) + '</strong></span><span>Total Spy Power <strong>' + number(totalSpyPower) + '</strong></span>' + (count < 1 ? '<small>Enter a quantity to preview recruitment.</small>' : shortages.length ? '<small class="warning-text">' + escapeHtml(shortages.join(" · ")) + '</small>' : '<small>Ready to recruit.</small>');
+  button.disabled = input.disabled || count < 1 || shortages.length > 0;
 }
 
 function renderProvisionsSummary(containerId) {
@@ -2173,10 +2202,10 @@ function renderPlateau() {
     const isMine = entry.playerId === state.me.id;
     const forceText = isMine
       ? escapeHtml(entry.unitSummary)
-      : "Committed force appears " + operationPowerLabel(entry.power);
+      : "Committed Power " + formatIntelValue(entry.powerIntel);
     const detailText = isMine
       ? "Power " + formatStat(entry.power) + ", speed " + formatStat(entry.speed) + ", speed score " + formatStat(entry.speedScore) + (entry.travelMinutes ? ", travel " + formatDuration(entry.travelMinutes) : "")
-      : "Estimated strength " + operationPowerLabel(entry.power) + ", pace " + operationSpeedLabel(entry.speedScore);
+      : "Military Intel reading; pace appears " + operationSpeedLabel(entry.speedScore);
     return '<article class="list-item"><strong>' + escapeHtml(entry.playerName) + '</strong><span>' + forceText + '</span><small>' + detailText + bonus + ', joined #' + entry.joinOrder + '.</small></article>';
   }).join("") : '<div class="empty">No committed warcamps yet.</div>';
 }
@@ -2256,7 +2285,7 @@ function renderInbox() {
   for (const details of list.querySelectorAll("details[open][data-message-id]")) {
     expandedInboxMessageIds.add(details.dataset.messageId);
   }
-  const inbox = (state.inbox || []).filter((message) => inboxFilter === "all" || (inboxFilter === "players" ? message.kind === "player" : message.kind !== "player")).sort((a, b) => Number(a.read) - Number(b.read) || b.at - a.at);
+  const inbox = (state.inbox || []).filter((message) => inboxFilter === "all" || (inboxFilter === "players" ? message.kind === "player" : message.kind !== "player")).sort((a, b) => b.at - a.at);
   $("toggle-compose").classList.toggle("secondary", inboxFilter !== "players");
   list.innerHTML = inbox.length ? inbox.map((message) => {
     const from = message.fromPlayerId ? playerName(message.fromPlayerId) : "System";
@@ -3116,6 +3145,7 @@ function decoratePlateauRun(plateauRun, unitsConfig) {
       units: normalizeUnitObject(entry.units || {}, Object.keys(unitsConfig)),
       unitSummary: unitSummary(entry.units, unitsConfig),
       power: entry.power,
+      powerIntel: entry.powerIntel,
       speed: entry.speed,
       speedScore: entry.speedScore,
       travelMinutes: entry.travelMinutes || null,

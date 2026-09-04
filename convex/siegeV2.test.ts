@@ -27,6 +27,56 @@ async function setup() {
 }
 
 describe("PvP Siege V2", () => {
+  test("uses persistent Ledger Military Intel, not Watchtower level, for PvP attacker Power", async () => {
+    const { t, defenderUser, defenderId, attackerId } = await setup();
+    await t.run(async (ctx) => {
+      const defender = (await ctx.db.get(defenderId))!;
+      await ctx.db.patch(defenderId, { buildings: { ...defender.buildings, watchtower: 3 } });
+    });
+    const defender = t.withIdentity({ subject: String(defenderUser) });
+
+    const qualitativeBoard = await defender.query(api.plateaus.getSiegeBoard, {});
+    const qualitativeSummary = await defender.query(api.plateaus.getMyPlateauState, {});
+    expect(qualitativeBoard.sieges[0].attackerIntel).toEqual({ mode: "label", label: "Vulnerable" });
+    expect(qualitativeSummary.sieges[0].attackerIntel).toEqual({ mode: "label", label: "Vulnerable" });
+
+    const resourceId = await t.run((ctx) => ctx.db.insert("kingdomIntelResources", {
+      viewerPlayerId: defenderId, targetPlayerId: attackerId, amount: 0, militaryAmount: 25, updatedAt: Date.now(),
+    }));
+    expect((await defender.query(api.plateaus.getSiegeBoard, {})).sieges[0].attackerIntel)
+      .toEqual({ mode: "estimate", label: "Vulnerable", min: 3, max: 7 });
+
+    await t.run((ctx) => ctx.db.patch(resourceId, { militaryAmount: 75 }));
+    expect((await defender.query(api.plateaus.getSiegeBoard, {})).sieges[0].attackerIntel)
+      .toEqual({ mode: "exact", label: "Vulnerable", value: 5 });
+  });
+
+  test("uses the defender's Ledger Military Intel in the incoming Spanreed report", async () => {
+    const { t, attackerUser, defenderId, attackerId } = await setup();
+    const plateauId = await t.run(async (ctx) => {
+      await ctx.db.insert("kingdomIntelResources", {
+        viewerPlayerId: defenderId, targetPlayerId: attackerId, amount: 0, militaryAmount: 25, updatedAt: Date.now(),
+      });
+      return await ctx.db.insert("plateaus", {
+        name: "Second Plateau", type: "sphere", status: "owned", ownerPlayerId: defenderId,
+        highground: false, neutralDefenseInitial: 0, neutralDefenseRemaining: 0,
+        heldSince: Date.now(), createdAt: Date.now(), updatedAt: Date.now(),
+      });
+    });
+
+    await t.withIdentity({ subject: String(attackerUser) }).mutation(api.plateaus.launchPlayerSiege, {
+      plateauId, units: { ...emptyUnits, bridgeman: 5 },
+    });
+    const report = await t.run(async (ctx) => (await ctx.db
+      .query("messages")
+      .withIndex("by_to_player_created", (q) => q.eq("toPlayerId", defenderId))
+      .order("desc")
+      .first()));
+    expect(report?.body).toContain("Military Intel assessment:");
+    expect(report?.body).toContain("0-5 Power");
+    expect(report?.body).not.toContain("Watchtower assessment");
+  });
+
   test("allows Emergency Defenses only during Encirclement", async () => {
     const { t, defenderUser, defenderId, siegeId } = await setup();
     await expect(t.withIdentity({ subject: String(defenderUser) }).mutation(api.plateaus.setEmergencyDefense, { siegeId, percent: 10 }))

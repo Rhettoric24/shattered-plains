@@ -7,7 +7,6 @@ import { insertGameEvent } from "./eventHelpers";
 import { requireCurrentPlayer } from "./ownership";
 import {
   casualtyIntelSummary,
-  currentKingdomIntelLevel,
   recordKingdomReport,
   recordTerritoryReport,
 } from "./intelligenceHelpers";
@@ -97,6 +96,26 @@ const SIEGE_V2 = {
 
 function militaryIntelAmount(resource: Doc<"kingdomIntelResources"> | null | undefined) {
   return Math.max(0, Math.min(100, Math.floor(resource?.militaryAmount ?? resource?.amount ?? 0)));
+}
+
+function persistentMilitaryDisclosureLevel(amount: number) {
+  if (amount >= 75) return 3;
+  if (amount >= 25) return 2;
+  return 0;
+}
+
+function persistentMilitaryPower(power: number, resource: Doc<"kingdomIntelResources"> | null | undefined) {
+  return presentIntelNumber(power, persistentMilitaryDisclosureLevel(militaryIntelAmount(resource)));
+}
+
+function militaryAssessmentText(power: number, resource: Doc<"kingdomIntelResources"> | null | undefined) {
+  const assessment = persistentMilitaryPower(power, resource);
+  if (!assessment) return "";
+  if (assessment.mode === "label") return ` Military Intel assessment: ${assessment.label}.`;
+  if (assessment.mode === "range" || assessment.mode === "estimate") {
+    return ` Military Intel assessment: ${assessment.label} (${assessment.min}-${assessment.max} Power).`;
+  }
+  return ` Military Intel assessment: ${assessment.label} (${assessment.value} Power snapshot).`;
 }
 
 async function siegeIntelResource(ctx: MutationCtx, viewerPlayerId: Id<"players">, targetPlayerId: Id<"players">) {
@@ -217,6 +236,10 @@ export const getMyPlateauState = query({
     }
     const players = (await Promise.all([...playerIds].map((id) => ctx.db.get(id)))).filter((row) => row !== null);
     const names = new Map(players.map((player) => [String(player._id), player.name]));
+    const intelResources = await ctx.db
+      .query("kingdomIntelResources")
+      .withIndex("by_viewerPlayerId_and_targetPlayerId", (q) => q.eq("viewerPlayerId", viewer._id))
+      .take(200);
     const watchtowerLevel = Math.min(3, viewer.buildings.watchtower ?? 0);
     const passiveTerritoryLevel = watchtowerTerritoryLevel(watchtowerLevel);
     return {
@@ -229,6 +252,12 @@ export const getMyPlateauState = query({
       sieges: sieges.map((siege) => {
         const isAttacker = siege.attackerId === viewer._id;
         const isDefender = siege.defenderId === viewer._id;
+        const attackerIntel = siege.targetType === "player" && isDefender && siege.attackerId
+          ? persistentMilitaryPower(
+              siege.attackerPower,
+              intelResources.find((resource) => resource.targetPlayerId === siege.attackerId),
+            )
+          : presentIntelNumber(siege.attackerPower, isAttacker ? 3 : isDefender ? passiveTerritoryLevel : 0);
         return {
           _id: siege._id,
           plateauId: siege.plateauId,
@@ -238,7 +267,7 @@ export const getMyPlateauState = query({
           targetType: siege.targetType,
           attackerName: siege.targetType === "parshendi_retaliation" ? "Parshendi" : siege.attackerId ? names.get(String(siege.attackerId)) ?? "Unknown" : "Unknown",
           defenderName: siege.defenderId ? names.get(String(siege.defenderId)) ?? "Unknown" : "Parshendi",
-          attackerIntel: presentIntelNumber(siege.attackerPower, isAttacker ? 3 : isDefender ? passiveTerritoryLevel : 0),
+          attackerIntel,
           ...(isAttacker ? { attackerUnits: siege.attackerUnits, attackerPower: siege.attackerPower, attackerSpeed: siege.attackerSpeed, ardentiaConclave: Boolean(siege.ardentiaConclave) } : {}),
           ...(isDefender ? { defenderUnits: siege.defenderUnits, defenderPower: siege.defenderPower, defenderSpeed: siege.defenderSpeed, defenderCommittedAt: siege.defenderCommittedAt ?? null, fortifyPercent: siege.fortifyPercent, emergencyDefensePercent: siege.emergencyDefensePercent, emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent } : {}),
           departAt: siege.departAt,
@@ -507,7 +536,6 @@ export const getSiegeBoard = query({
       sieges: visibleSieges.map((siege) => {
         const isAttacker = siege.attackerId === viewer._id;
         const isDefender = siege.defenderId === viewer._id;
-        const incomingLevel = isDefender ? passiveTerritoryLevel : 0;
         const opponentId = isAttacker ? siege.defenderId : isDefender ? siege.attackerId : undefined;
         const militaryIntel = opponentId ? militaryIntelAmount(intelResources.find(row => row.targetPlayerId === opponentId)) : 0;
         const ownInvestigations = allInvestigations.filter(row => row.siegeId === siege._id && row.investigatorId === viewer._id);
@@ -538,7 +566,12 @@ export const getSiegeBoard = query({
           defenderName: siege.defenderId
             ? playerNames[siege.defenderId] ?? "Unknown"
             : "Parshendi",
-          attackerIntel: presentIntelNumber(siege.attackerPower, isAttacker ? 3 : militaryIntel >= 75 ? 2 : militaryIntel >= 25 ? 1 : incomingLevel),
+          attackerIntel: isAttacker
+            ? presentIntelNumber(siege.attackerPower, 3)
+            : persistentMilitaryPower(
+                siege.attackerPower,
+                opponentId ? intelResources.find((row) => row.targetPlayerId === opponentId) : null,
+              ),
           ...(isAttacker
             ? {
                 attackerUnits: siege.attackerUnits,
@@ -702,13 +735,14 @@ export const launchPlayerSiege = mutation({
     const encircleEndsAt = now + SIEGE_V2.encircleMs;
     const resolveAt = now + SIEGE_V2.maximumMs;
     const remainingUnits = subtractAvailableUnits(attacker.units, units);
+    const attackerPower = effectivePower(units, completed, Boolean(args.conclaveId));
     const siegeId = await ctx.db.insert("sieges", {
       plateauId: plateau._id,
       attackerId: attacker._id,
       defenderId: defender._id,
       targetType: "player",
       attackerUnits: units,
-      attackerPower: effectivePower(units, completed, Boolean(args.conclaveId)),
+      attackerPower,
       attackerSpeed: effectiveSpeed(units, completed, Boolean(args.conclaveId)),
       defenderUnits: emptyUnits(),
       defenderPower: 0,
@@ -737,20 +771,8 @@ export const launchPlayerSiege = mutation({
       updatedAt: now,
     });
     if (args.conclaveId) await assignConclave(ctx, attacker._id, args.conclaveId, "siege", String(siegeId));
-    const defenderWatchtowerLevel = Math.min(3, defender.buildings.watchtower ?? 0);
-    const watchtowerAssessment = defenderWatchtowerLevel > 0
-      ? presentIntelNumber(
-          effectivePower(units),
-          watchtowerTerritoryLevel(defenderWatchtowerLevel),
-        )
-      : null;
-    const assessmentText = watchtowerAssessment
-      ? watchtowerAssessment.mode === "label"
-        ? ` Watchtower assessment: ${watchtowerAssessment.label}.`
-        : watchtowerAssessment.mode === "range" || watchtowerAssessment.mode === "estimate"
-          ? ` Watchtower assessment: ${watchtowerAssessment.label} (${watchtowerAssessment.min}-${watchtowerAssessment.max} Power).`
-          : ` Watchtower assessment: ${watchtowerAssessment.label} (${watchtowerAssessment.value} Power).`
-      : "";
+    const defenderMilitaryIntel = await siegeIntelResource(ctx, defender._id, attacker._id);
+    const assessmentText = militaryAssessmentText(attackerPower, defenderMilitaryIntel);
     await ctx.db.insert("messages", {
       toPlayerId: defender._id,
       kind: "system",
@@ -1393,12 +1415,12 @@ export const resolveSiege = internalMutation({
           `${siege._id}:player:defender:${now}`,
           defenderCompleted,
         );
-        const defenderIntelLevel = await currentKingdomIntelLevel(
-          ctx,
-          defender._id,
-          attacker,
-          now,
-        );
+        const [attackerMilitaryIntel, defenderMilitaryIntel] = await Promise.all([
+          siegeIntelResource(ctx, attacker._id, defender._id),
+          siegeIntelResource(ctx, defender._id, attacker._id),
+        ]);
+        const attackerCasualtyIntelLevel = persistentMilitaryDisclosureLevel(militaryIntelAmount(attackerMilitaryIntel));
+        const defenderCasualtyIntelLevel = persistentMilitaryDisclosureLevel(militaryIntelAmount(defenderMilitaryIntel));
 
         await ctx.db.patch(attacker._id, {
           units: addUnits(attacker.units, survivors),
@@ -1442,8 +1464,8 @@ export const resolveSiege = internalMutation({
             attackerName: attacker.name, plateauName: plateau.name, now,
           });
         }
-        const attackerResultText = `${outcomeText} Your casualties: ${casualtySummary(attackerLossResult.casualties)}. ${casualtyIntelSummary(defenderLossResult.casualties, attackerReportLevel)}${investigationText} Updated snapshots are available in Intelligence.`;
-        const defenderResultText = `${outcomeText} Your casualties: ${casualtySummary(defenderLossResult.casualties)}. ${casualtyIntelSummary(attackerLossResult.casualties, defenderIntelLevel)} Intelligence reflects what your warcamp could confirm.`;
+        const attackerResultText = `${outcomeText} Your casualties: ${casualtySummary(attackerLossResult.casualties)}. ${casualtyIntelSummary(defenderLossResult.casualties, attackerCasualtyIntelLevel)}${investigationText} Military disclosure follows your persistent Ledger Intel against ${defender.name}.`;
+        const defenderResultText = `${outcomeText} Your casualties: ${casualtySummary(defenderLossResult.casualties)}. ${casualtyIntelSummary(attackerLossResult.casualties, defenderCasualtyIntelLevel)} Military disclosure follows your persistent Ledger Intel against ${attacker.name}.`;
         resultText = attackerResultText;
 
         await ctx.db.insert("messages", {
