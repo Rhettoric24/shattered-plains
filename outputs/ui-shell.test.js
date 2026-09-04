@@ -60,6 +60,18 @@ describe("post-overhaul shell", () => {
     expect(html).toContain('class="settings-icon"');
   });
 
+  test("offers lightweight playtest bug reporting with automatic context", () => {
+    expect(html).toContain('id="bug-report-button"');
+    expect(html).toContain('id="bug-report-dialog"');
+    expect(html).toContain('id="bug-report-message"');
+    expect(html).toContain('id="playtest-report-list"');
+    expect(client).toContain('submitPlaytestFeedback: "playtestFeedback:submit"');
+    expect(client).toContain("routeView: currentRoute.view");
+    expect(client).toContain("buildIdentifier: BUILD_IDENTIFIER");
+    expect(client).toContain("viewportWidth: window.innerWidth");
+    expect(client).toContain("loadPlaytestReports");
+  });
+
   test("anchors mobile navigation and keeps the alert surface inside safe-area bounds", () => {
     expect(css).toMatch(/grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
     expect(css).toMatch(/bottom:\s*max\(10px,\s*env\(safe-area-inset-bottom\)\)/);
@@ -216,24 +228,28 @@ describe("post-overhaul shell", () => {
     expect(html).toContain("Intelligence helps you judge rival strength before committing armies, operatives, or resources.");
     expect(html).toContain("Friend-test note: two Intelligence models");
     expect(html).toContain("Persistent Intel · Military and Economy");
-    expect(html).toContain("0–24 shows a qualitative label, 25–74 an estimate, and 75–100 an exact ledger snapshot");
+    expect(html).not.toContain("0–24 shows a qualitative label, 25–74 an estimate, and 75–100 an exact ledger snapshot");
     expect(html).toContain("Military Intel can be spent in blocks of 50 by participants investigating an active PvP siege");
     expect(html).toContain("Report Intel · Research and Territory");
-    expect(html).toContain("lose one precision level every six hours");
+    expect(html).toContain("lose one level every six hours");
     expect(html).toContain("do not unlock separate Research or Territory operations in this friend test");
     expect(html).toContain("Separate boost pool:");
     expect(html).toContain("spending it does not lower persistent Military disclosure");
   });
 
-  test("shows exact persistent Intel in ledger cells instead of level pips", () => {
+  test("shows persistent Intel totals without explaining their presentation tier", () => {
     expect(client).toContain('cell[category + "Intel"]');
     expect(client).toContain('cell[category + "IntelCap"]');
     expect(client).toContain('amount >= 50 ? "operation-ready"');
-    expect(client).toContain('return "Exact"');
-    expect(client).toContain('return "Estimate"');
-    expect(client).toContain('return "Qualitative"');
+    expect(client).not.toContain("persistentIntelTier");
+    expect(client).not.toContain("— ' + escapeHtml(intelLevelName(cell.currentLevel))");
     expect(client).not.toContain('class="intel-markers"');
     expect(css).not.toContain(".intel-markers");
+  });
+
+  test("keeps contextual navigation at fixed dimensions across spaces", () => {
+    expect(css).toMatch(/\.space-subnav\s*\{[^}]*height:\s*52px[^}]*overflow-y:\s*hidden/);
+    expect(css).toMatch(/\.subnav-button\s*\{[^}]*flex:\s*0 0 112px[^}]*width:\s*112px[^}]*height:\s*40px/);
   });
 
   test("uses Survive as the canonical player-facing stat name", () => {

@@ -235,6 +235,8 @@ const refs = {
   setEspionageDefense: "espionage:setDefense",
   launchInvestigation: "espionage:launchInvestigation",
   launchSphereHeist: "espionage:launchSphereHeist",
+  submitPlaytestFeedback: "playtestFeedback:submit",
+  listPlaytestFeedback: "playtestFeedback:listRecent",
 };
 
 async function createAccount() {
@@ -375,6 +377,24 @@ async function refreshRouteDetails(route) {
   } catch (error) {
     console.warn("Chronicle history could not be loaded.", error);
   }
+}
+
+let playtestReportsRequest = null;
+async function loadPlaytestReports() {
+  const list = $("playtest-report-list");
+  if (!state?.isAdmin || !list || playtestReportsRequest) return playtestReportsRequest;
+  list.innerHTML = '<div class="empty">Loading playtest reports…</div>';
+  playtestReportsRequest = client.query(refs.listPlaytestFeedback, {}).then((reports) => {
+    list.innerHTML = reports.length ? reports.map((report) => {
+      const location = report.routeView + (report.routeTab ? " · " + report.routeTab : "");
+      return '<article class="list-item playtest-report"><strong>' + escapeHtml(report.playerName) + '</strong><span>' + escapeHtml(report.message) + '</span><small>' + escapeHtml(location) + ' · build ' + escapeHtml(report.buildIdentifier) + ' · ' + number(report.viewportWidth) + '×' + number(report.viewportHeight) + ' · ' + escapeHtml(new Date(report.createdAt).toLocaleString()) + '</small></article>';
+    }).join("") : '<div class="empty">No playtest bug reports yet.</div>';
+    return reports;
+  }, (error) => {
+    list.innerHTML = '<div class="empty warning-text">Could not load playtest reports: ' + escapeHtml(friendlyError(error)) + '</div>';
+    return [];
+  }).finally(() => { playtestReportsRequest = null; });
+  return playtestReportsRequest;
 }
 
 function subscriptionSpecs(data) {
@@ -775,6 +795,47 @@ $("highstorm-banner-details")?.addEventListener("click", openStormDetails);
 $("storm-details-close")?.addEventListener("click", () => $("storm-details").close());
 $("highstorm-banner-dismiss")?.addEventListener("click", () => { if(state?.highstorm) sessionStorage.setItem(`sp-highstorm-dismissed:${state.highstorm.stormId}`,"1"); $("highstorm-banner").classList.add("hidden"); });
 
+function closeBugReport() {
+  const dialog = $("bug-report-dialog");
+  if (dialog.open && typeof dialog.close === "function") dialog.close(); else dialog.removeAttribute("open");
+}
+
+$("bug-report-button")?.addEventListener("click", () => {
+  const dialog = $("bug-report-dialog");
+  $("bug-report-status").textContent = "";
+  if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
+  window.requestAnimationFrame(() => $("bug-report-message")?.focus());
+});
+$("close-bug-report")?.addEventListener("click", closeBugReport);
+$("cancel-bug-report")?.addEventListener("click", closeBugReport);
+$("bug-report-dialog")?.addEventListener("cancel", (event) => { event.preventDefault(); closeBugReport(); });
+$("bug-report-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = $("bug-report-message").value.trim();
+  if (message.length < 3) return;
+  const submit = $("submit-bug-report");
+  submit.disabled = true;
+  $("bug-report-status").textContent = "Sending…";
+  const result = await action(() => client.mutation(refs.submitPlaytestFeedback, {
+    message,
+    routeView: currentRoute.view,
+    ...(currentRoute.tab ? { routeTab: currentRoute.tab } : {}),
+    buildIdentifier: BUILD_IDENTIFIER,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  }), { refresh: false });
+  submit.disabled = false;
+  if (!result) {
+    $("bug-report-status").textContent = "Report not sent.";
+    return;
+  }
+  $("bug-report-message").value = "";
+  $("bug-report-status").textContent = "Report sent. Thank you.";
+  if (currentRoute.view === "testing" && state?.isAdmin) void loadPlaytestReports();
+  window.setTimeout(closeBugReport, 700);
+});
+$("refresh-playtest-reports")?.addEventListener("click", () => { void loadPlaytestReports(); });
+
 function renderAdminAccess() {
   const isAdmin = Boolean(state?.isAdmin);
   const status = $("admin-status");
@@ -962,6 +1023,7 @@ function showRoute(routeOrLegacy, options = {}) {
   renderSpaceSubnav(route);
   bindRouteControls();
   void refreshRouteDetails(route);
+  if (route.view === "testing" && state?.isAdmin) void loadPlaytestReports();
   ensureReactiveSubscriptions(rawStateData);
   if (route.view === "spanreed" && localStorage.getItem("sp-auto-read-inbox") === "true" && state?.unreadCount > 0) {
     action(() => client.mutation(refs.markInboxRead, {}));
@@ -2700,20 +2762,14 @@ function intelligenceTooltip(report) {
     "Reports lose one precision level every 6 hours. Opposing counter-intelligence is not disclosed.";
 }
 
-function persistentIntelTier(amount) {
-  if (Number(amount || 0) >= 75) return "Exact";
-  if (Number(amount || 0) >= 25) return "Estimate";
-  return "Qualitative";
-}
-
 function kingdomIntelCellStatus(row, category, cell) {
   if (row.own) return "";
   if (category === "military" || category === "economy") {
     const amount = Number(cell[category + "Intel"] || 0);
     const cap = Number(cell[category + "IntelCap"] || 100);
-    return '<small class="persistent-intel-status ' + (amount >= 50 ? "operation-ready" : "") + '"><span>Intel</span><strong>' + number(amount) + '/' + number(cap) + '</strong><em>' + persistentIntelTier(amount) + '</em></small>';
+    return '<small class="persistent-intel-status ' + (amount >= 50 ? "operation-ready" : "") + '"><span>Intel</span><strong>' + number(amount) + '/' + number(cap) + '</strong></small>';
   }
-  return '<small class="report-intel-status">Report ' + number(cell.currentLevel) + '/2 — ' + escapeHtml(intelLevelName(cell.currentLevel)) + '</small>';
+  return '<small class="report-intel-status">Report ' + number(cell.currentLevel) + '/2</small>';
 }
 
 function renderKingdomIntelligence() {
@@ -2760,7 +2816,7 @@ function openKingdomIntelDetail(playerId, category) {
     const discoveries = (cell.discoveries || []).map((fact) => '<article class="bonus-discovery"><strong>Bonus Discovery</strong><p>' + escapeHtml(fact.text) + '</p><small>Observed ' + escapeHtml(new Date(fact.observedAt).toLocaleString()) + '</small></article>').join("");
     $("kingdom-intel-dialog-title").textContent = row.kingdomName + " — " + cell.categoryName + " Intelligence";
     const persistentResource = (category === "military" || category === "economy") && !row.own
-      ? '<span>' + escapeHtml(category === "military" ? "Military Intel" : "Economy Intel") + '</span><strong>' + number(cell[category + "Intel"] || 0) + '/' + number(cell[category + "IntelCap"] || 100) + ' · ' + persistentIntelTier(cell[category + "Intel"]) + '</strong>'
+      ? '<span>' + escapeHtml(category === "military" ? "Military Intel" : "Economy Intel") + '</span><strong>' + number(cell[category + "Intel"] || 0) + '/' + number(cell[category + "IntelCap"] || 100) + '</strong>'
       : '';
     $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid"><span>Current Intel</span><strong>Level ' + cell.currentLevel + ' / 2</strong><span>Best achieved</span><strong>Level ' + cell.bestLevel + ' / 2</strong>' + persistentResource + '<span>Current information</span><strong>' + escapeHtml(cell.presentation.display) + '</strong>' + timingRows + '<span>Source</span><strong>' + escapeHtml(cell.source) + '</strong></div>' + discoveries + (row.own ? '' : '<button type="button" class="investigate-category" data-investigate-kingdom="' + escapeHtml(row.playerId) + '" data-investigate-category="' + escapeHtml(category) + '">Investigate this category</button>');
     $("kingdom-intel-dialog-content").querySelector("[data-investigate-kingdom]")?.addEventListener("click", (event) => {

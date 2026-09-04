@@ -314,6 +314,18 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_playerId", ["playerId"]),
 
+  playtestFeedback: defineTable({
+    playerId: v.id("players"),
+    playerName: v.string(),
+    message: v.string(),
+    routeView: v.string(),
+    routeTab: v.optional(v.string()),
+    buildIdentifier: v.string(),
+    viewportWidth: v.number(),
+    viewportHeight: v.number(),
+    createdAt: v.number(),
+  }).index("by_createdAt", ["createdAt"]),
+
   pushSubscriptions: defineTable({
     playerId: v.id("players"),
     endpoint: v.string(),

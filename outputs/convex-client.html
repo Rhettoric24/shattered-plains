@@ -64,6 +64,7 @@
             <div class="header-actions">
               <button id="highstorm-indicator" class="highstorm-indicator secondary" type="button" aria-controls="storm-details"><span aria-hidden="true">☁⚡</span><strong id="highstorm-status">Highstorm forecast</strong></button>
               <button id="spanreed-button" class="header-icon-button secondary" type="button" data-route-view="spanreed" aria-label="Open Spanreed Hub"><span aria-hidden="true">✒</span><span id="inbox-badge" class="nav-badge hidden">0</span></button>
+              <button id="bug-report-button" class="header-icon-button secondary" type="button" aria-label="Report a playtest bug" title="Report a playtest bug"><span aria-hidden="true">🐞</span></button>
               <div class="notification-shell transient-alert-shell">
                 <button id="notification-bell" class="notification-bell secondary" type="button" aria-expanded="false" aria-controls="notification-panel" aria-label="Recent alerts and notification settings">🔔<span id="notification-badge" class="nav-badge hidden">0</span></button>
                 <div id="notification-backdrop" class="notification-backdrop hidden" aria-hidden="true"></div>
@@ -258,8 +259,8 @@
               <details class="intel-model-note">
                 <summary><span aria-hidden="true">*</span> Friend-test note: two Intelligence models</summary>
                 <div class="intel-model-grid">
-                  <section><strong>Persistent Intel · Military and Economy</strong><p>Each category builds its own 0–100 meter against each rival. 0–24 shows a qualitative label, 25–74 an estimate, and 75–100 an exact ledger snapshot. These meters do not decay. Economy Intel can be spent in blocks of 50 on Sphere Heists; Military Intel can be spent in blocks of 50 by participants investigating an active PvP siege.</p></section>
-                  <section><strong>Report Intel · Research and Territory</strong><p>Investigations produce a Level 0–2 report of that rival’s ledger score. Reports lose one precision level every six hours, so reinvestigating refreshes a fading snapshot. These categories do not unlock separate Research or Territory operations in this friend test.</p></section>
+                  <section><strong>Persistent Intel · Military and Economy</strong><p>Each category builds its own 0–100 meter against each rival, and these meters do not decay. Economy Intel can be spent in blocks of 50 on Sphere Heists; Military Intel can be spent in blocks of 50 by participants investigating an active PvP siege.</p></section>
+                  <section><strong>Report Intel · Research and Territory</strong><p>Investigations produce a Level 0–2 report of that rival’s ledger score. Reports lose one level every six hours, so reinvestigating refreshes an aging report. These categories do not unlock separate Research or Territory operations in this friend test.</p></section>
                 </div>
                 <p class="intel-model-footnote"><strong>Separate boost pool:</strong> Military, Research, and Territory investigations can also earn Rival Intel. Rival Intel may be spent before a later investigation to add Spy Power; spending it does not lower persistent Military disclosure.</p>
               </details>
@@ -384,6 +385,10 @@
               </div>
               <p class="hint">These tools call Convex testing helpers. Economy is lazy-settled when you train, build, or open your dashboard. Resetting the world keeps login accounts and warcamp names, but wipes current gameplay state.</p>
             </section>
+            <section class="panel full-panel">
+              <div class="section-heading"><p class="eyebrow">Friend test</p><h2>Playtest bug reports</h2><button id="refresh-playtest-reports" type="button" class="secondary compact-button">Refresh reports</button></div>
+              <div id="playtest-report-list" class="list"><div class="empty">Open Testing to load reports.</div></div>
+            </section>
           </section>
 
           <section class="view hidden" id="view-chronicle" data-title="Event log" data-eyebrow="Chronicle" data-admin-only="true">
@@ -401,6 +406,16 @@
     <dialog id="kingdom-intel-dialog" class="kingdom-intel-dialog" aria-labelledby="kingdom-intel-dialog-title">
       <div class="dialog-heading"><div><p class="eyebrow">Kingdom Intelligence</p><h2 id="kingdom-intel-dialog-title">Intelligence detail</h2></div><button id="close-kingdom-intel-dialog" class="secondary" type="button" aria-label="Close">✕</button></div>
       <div id="kingdom-intel-dialog-content"></div>
+    </dialog>
+    <dialog id="bug-report-dialog" class="mission-confirmation bug-report-dialog" aria-labelledby="bug-report-title">
+      <div class="dialog-heading"><div><p class="eyebrow">Friend-test feedback</p><h2 id="bug-report-title">Report a bug</h2></div><button id="close-bug-report" class="secondary" type="button" aria-label="Close bug report">✕</button></div>
+      <form id="bug-report-form" class="contained-form bug-report-form">
+        <label for="bug-report-message">What did you notice?</label>
+        <textarea id="bug-report-message" rows="5" minlength="3" maxlength="2000" required placeholder="Tell us what happened and what you expected instead."></textarea>
+        <small>The current screen, game build, window size, time, and your warcamp name will be included automatically.</small>
+        <p id="bug-report-status" class="hint" role="status"></p>
+        <div class="inline-actions"><button id="cancel-bug-report" type="button" class="secondary">Cancel</button><button id="submit-bug-report" type="submit">Send bug report</button></div>
+      </form>
     </dialog>
     <dialog id="mission-confirmation" class="mission-confirmation" aria-labelledby="mission-confirmation-title">
       <div class="dialog-heading"><div><p class="eyebrow">Consequential action</p><h2 id="mission-confirmation-title">Confirm mission</h2></div><button id="close-mission-confirmation" class="secondary" type="button" aria-label="Cancel">✕</button></div>
