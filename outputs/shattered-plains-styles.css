@@ -113,7 +113,7 @@ h3 { font-size: 1rem; color: var(--accent); }
 .account-forms h3 { margin: 0 0 2px; color: var(--silver); }
 .account-message { margin: 0; }
 .button-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.dashboard { display: grid; grid-template-columns: 260px minmax(0, 1fr); grid-template-areas: "shell shell" "navigation content"; gap: 16px; min-height: calc(100vh - 48px); }
+.dashboard { display: grid; grid-template-columns: 260px minmax(0, 1fr); grid-template-areas: "shell shell" "navigation content"; align-content: start; gap: 16px; min-height: calc(100vh - 48px); }
 .global-shell { grid-area: shell; min-width: 0; border-radius: 8px; }
 .sidebar { grid-area: navigation; position: sticky; top: calc(var(--global-shell-height, 0px) + 16px); align-self: start; display: grid; gap: 22px; border-radius: 8px; padding: 18px; }
 .brand-block { display: grid; gap: 8px; }
@@ -364,6 +364,6 @@ h3 { font-size: 1rem; color: var(--accent); }
 .storm-details::backdrop{background:rgba(2,8,15,.76);backdrop-filter:blur(3px)}
 .storm-details-heading{display:flex;justify-content:space-between;align-items:flex-start}.storm-effects{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}.storm-effects section{padding:.8rem;border:1px solid #40586c;border-radius:10px;background:#172838}.storm-effects h3{margin:0 0 .3rem}.storm-effects p{margin:0;line-height:1.45}
 body.highstorm-active{background-color:#07111a}body.highstorm-active .global-shell{box-shadow:0 0 26px rgba(116,158,190,.32);border-bottom-color:#7896ad}body.highstorm-active .highstorm-indicator{border-color:#b7d3e8;background:#243d51;color:#fff}
-@media(max-width:800px){.dashboard-header{flex-wrap:wrap;max-width:100%;box-sizing:border-box}.header-actions{flex:1 1 100%;width:100%;min-width:0}.highstorm-indicator{flex:1 1 auto;max-width:none}.resource-strip{max-width:100%;box-sizing:border-box}}
+@media(max-width:900px){.dashboard-header{flex-wrap:wrap;max-width:100%;box-sizing:border-box}.header-actions{flex:1 1 100%;width:100%;min-width:0}.highstorm-indicator{flex:1 1 auto;max-width:none}.resource-strip{max-width:100%;box-sizing:border-box}}
 @media(max-width:700px){.highstorm-indicator strong{font-size:.7rem}.highstorm-banner{align-items:flex-start;flex-wrap:wrap}.highstorm-banner div{min-width:100%;flex-direction:column;gap:.1rem}.storm-effects{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){body.highstorm-active .global-shell{transition:none}}

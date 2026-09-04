@@ -524,6 +524,36 @@ test("primary navigation reaches every representative view", async ({ page }) =>
   }
 });
 
+test("every accessible tab keeps the global shell at a stable height", async ({ page }) => {
+  const shellParts = ["#global-shell", ".dashboard-header", ".resource-strip", "#space-subnav:not(.hidden)"];
+  const heights = async () => Promise.all(shellParts.map(async (selector) => {
+    const box = await page.locator(selector).boundingBox();
+    expect(box, `${selector} should be measurable`).not.toBeNull();
+    return box?.height || 0;
+  }));
+
+  await page.getByRole("button", { name: "Warcamp", exact: true }).click();
+  const expected = await heights();
+  const spaces = [
+    page.getByRole("button", { name: "Warcamp", exact: true }),
+    page.getByRole("button", { name: /^Plains/ }),
+    page.locator("#intelligence-primary-nav"),
+    page.locator("#research-primary-nav"),
+  ];
+
+  for (const space of spaces) {
+    await space.click();
+    const tabKeys = await page.locator("#space-subnav [data-route-tab]").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("data-route-tab")).filter(Boolean));
+    for (const tabKey of tabKeys) {
+      await page.locator(`#space-subnav [data-route-tab="${tabKey}"]`).click();
+      const actual = await heights();
+      actual.forEach((height, index) => {
+        expect(Math.abs(height - expected[index]), `${shellParts[index]} should not grow on ${tabKey}`).toBeLessThanOrEqual(1);
+      });
+    }
+  }
+});
+
 test("legacy view URLs resolve through the current router", async ({ page }) => {
   const legacyRoutes = [
     ["overview", "#view-overview"],

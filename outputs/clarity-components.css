@@ -255,7 +255,7 @@
 button, input, select, textarea, summary, [role="button"] { touch-action: manipulation; }
 
 /* Global shell: the DOM now owns the header, resources, and contextual navigation as one sticky unit. */
-.global-shell { position: sticky; z-index: 90; top: 0; display: grid; overflow: visible; border-color: rgba(127,183,255,.22); background: rgba(7,17,31,.985); box-shadow: 0 10px 28px rgba(0,0,0,.3); backdrop-filter: blur(12px); }
+.global-shell { position: sticky; z-index: 90; top: 0; display: grid; align-content: start; overflow: visible; border-color: rgba(127,183,255,.22); background: rgba(7,17,31,.985); box-shadow: 0 10px 28px rgba(0,0,0,.3); backdrop-filter: blur(12px); }
 .brand-home-affordance { display: grid; width: 25px; height: 25px; margin-left: 2px; place-items: center; border: 1px solid rgba(127,183,255,.35); border-radius: 50%; color: var(--accent); font-size: .82rem; }
 .header-context { min-width: 0; flex: 1; }
 .header-context h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
