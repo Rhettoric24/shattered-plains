@@ -23,8 +23,9 @@ Aspirations belong in `IDEA_VAULT.md` or `ROADMAP.md`.
 only deliberate production deployments; experimental and pre-release
 work remains on Yak.
 
-The public PWA currently serves the Yak test build until an explicit
-production frontend cutover. See `DEPLOYMENT.md` for the operating policy.
+The public PWA serves the Buzzard production/friend-test backend. Yak
+remains the development and pre-release environment. See `DEPLOYMENT.md`
+for the operating policy.
 
 ## Kingdom / Warcamp
 

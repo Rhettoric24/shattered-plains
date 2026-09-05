@@ -492,6 +492,21 @@ export const resetWorldKeepAccounts = mutation({
   },
 });
 
+export const resetWorldKeepAccountsFromDashboard = mutation({
+  args: {
+    adminKey: v.string(),
+    confirm: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireDashboardAdminKey(args.adminKey);
+    if (args.confirm !== "RESET WORLD") {
+      throw new Error('Type "RESET WORLD" to confirm this reset.');
+    }
+
+    return await performWorldResetKeepAccounts(ctx);
+  },
+});
+
 export const migrateWorldBrutalityV1 = mutation({
   args: {},
   handler: async (ctx) => {

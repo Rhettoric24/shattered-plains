@@ -80,7 +80,7 @@ Completed production preparation:
 Remaining before friend invitations:
 
 -   Run the production auth/new-account smoke test.
--   Change the Pages workflow backend from Yak to Buzzard explicitly.
+-   ✅ Change the Pages workflow backend from Yak to Buzzard explicitly.
 -   Publish the production frontend and smoke-test the live PWA.
 
 # FRIEND TEST

@@ -9,7 +9,7 @@ const css = ["shattered-plains-styles.css", "clarity-components.css", "clarity-r
   .join("\n");
 describe("post-overhaul shell", () => {
   test("requires an explicit backend for every published frontend", () => {
-    expect(deploymentWorkflow).toContain("CONVEX_URL: https://clean-yak-51.convex.cloud");
+    expect(deploymentWorkflow).toContain("CONVEX_URL: https://groovy-buzzard-108.convex.cloud");
     expect(deploymentWorkflow).not.toContain("vars.CONVEX_URL ||");
   });
 

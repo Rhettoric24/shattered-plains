@@ -33,8 +33,8 @@ jobs:
       - name: Build static frontend
         run: npm run build
         env:
-          # Keep Pages on Yak until the friend-test production cutover is explicitly approved.
-          CONVEX_URL: https://clean-yak-51.convex.cloud
+          # Friend-test production frontend. Development and pre-release work remains on Yak.
+          CONVEX_URL: https://groovy-buzzard-108.convex.cloud
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
