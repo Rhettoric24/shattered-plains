@@ -9,8 +9,9 @@ const CONVEX_URL =
   "https://clean-yak-51.convex.cloud";
 const BUILD_IDENTIFIER = window.SHATTERED_PLAINS_CONFIG?.buildIdentifier || "dev";
 const client = new ConvexHttpClient(CONVEX_URL);
-const AUTH_TOKEN_KEY = "sp-convex-auth-token";
-const AUTH_REFRESH_KEY = "sp-convex-auth-refresh-token";
+const AUTH_STORAGE_NAMESPACE = new URL(CONVEX_URL).hostname;
+const AUTH_TOKEN_KEY = `sp-convex-auth-token:${AUTH_STORAGE_NAMESPACE}`;
+const AUTH_REFRESH_KEY = `sp-convex-auth-refresh-token:${AUTH_STORAGE_NAMESPACE}`;
 const ESPIONAGE_UI_DEFAULTS = {
   building: {
     name: "Ghostblood Network",

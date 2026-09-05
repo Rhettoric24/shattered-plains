@@ -13,6 +13,12 @@ describe("post-overhaul shell", () => {
     expect(deploymentWorkflow).not.toContain("vars.CONVEX_URL ||");
   });
 
+  test("keeps authentication sessions isolated by Convex deployment", () => {
+    expect(client).toContain("const AUTH_STORAGE_NAMESPACE = new URL(CONVEX_URL).hostname");
+    expect(client).toContain("sp-convex-auth-token:${AUTH_STORAGE_NAMESPACE}");
+    expect(client).toContain("sp-convex-auth-refresh-token:${AUTH_STORAGE_NAMESPACE}");
+  });
+
   test("keeps the pre-release command surfaces concise and reactive", () => {
     expect(client).toContain("const expandedInboxMessageIds = new Set()");
     expect(client).toContain("expandedInboxMessageIds.has(details.dataset.messageId)");
