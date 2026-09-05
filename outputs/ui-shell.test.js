@@ -19,6 +19,12 @@ describe("post-overhaul shell", () => {
     expect(client).toContain("sp-convex-auth-refresh-token:${AUTH_STORAGE_NAMESPACE}");
   });
 
+  test("gives mobile admins a Settings entry point for admin spaces", () => {
+    expect(html).toContain('class="admin-account-actions hidden" data-admin-only="true"');
+    expect(html).toContain('<button type="button" data-route-view="testing">Testing</button>');
+    expect(html).toContain('<button class="secondary" type="button" data-route-view="chronicle">Chronicle</button>');
+  });
+
   test("keeps the pre-release command surfaces concise and reactive", () => {
     expect(client).toContain("const expandedInboxMessageIds = new Set()");
     expect(client).toContain("expandedInboxMessageIds.has(details.dataset.messageId)");
