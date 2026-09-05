@@ -74,7 +74,7 @@
   .notification-heading-actions { flex-shrink: 0; }
   .notification-close { display: inline-grid; place-items: center; }
   button:hover { transform: none; }
-  .shell { width: 100%; padding: 0; }
+  .shell { width: var(--sp-visual-viewport-width, 100%); max-width: none; margin-inline: 0; padding: 0; }
   .account-panel { grid-template-columns: 1fr; padding: 24px 18px; overflow: hidden; }
   .setup-copy, .account-forms, .account-mode { min-width: 0; }
   .setup-copy h2, .setup-copy p { overflow-wrap: anywhere; }

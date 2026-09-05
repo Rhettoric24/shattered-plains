@@ -130,6 +130,18 @@ let reactiveRenderPromise = Promise.resolve();
 
 const $ = (id) => document.getElementById(id);
 
+function syncZoomedOutViewportWidth() {
+  const viewport = window.visualViewport;
+  if (viewport && viewport.scale < 0.999) {
+    document.documentElement.style.setProperty("--sp-visual-viewport-width", `${Math.ceil(viewport.width)}px`);
+  } else {
+    document.documentElement.style.removeProperty("--sp-visual-viewport-width");
+  }
+}
+
+syncZoomedOutViewportWidth();
+window.visualViewport?.addEventListener("resize", syncZoomedOutViewportWidth);
+
 function intelligenceUnlocks() {
   return intelligenceDisclosureState({
     networkLevel: state?.espionage?.networkLevel || state?.me?.buildings?.espionageNetwork || 0,
@@ -1165,7 +1177,13 @@ function renderUnits() {
   if (hasNeutralHolding) localStorage.setItem(expeditionHintKey, "complete");
   const showExpeditionHint = localStorage.getItem(expeditionHintKey) !== "complete";
   const expeditionHint = showExpeditionHint ? '<aside class="fresh-player-dispatch"><div><span>Orders from the warcamp</span><strong>The Plains wait beyond the warcamp.</strong><p>Recruit a force suited to the crossing, then send it to survey an unclaimed plateau. Strength may win the ground, but Speed, Plunder, and Survive shape what returns.</p></div><button type="button" data-route-view="plains" data-route-tab="sieges">Survey the Plains</button></aside>' : '';
-  $("unit-roster").innerHTML = expeditionHint + group("military", "Military Units", countSummary(militaryAvailable, militaryOwned), unitCards, "building-grid") + group("ardents", "Ardents", countSummary(ardentia.ready, ardentia.owned), conclaveCard || '<div class="empty">Construct an Ardent Monastery to form Scout Conclaves.</div>', "building-grid") + group("espionage", "Espionage Operatives", countSummary(operativeAvailable, operativeOwned), '<p class="hint">Recruit here; assign defenders and launch missions from Intelligence.</p><div class="operative-roster">' + operativeCards + '</div>', "personnel-group");
+  const ardentRecruitment = monasteryLevel > 0
+    ? group("ardents", "Ardents", countSummary(ardentia.ready, ardentia.owned), conclaveCard, "building-grid")
+    : "";
+  const espionageRecruitment = Number(state.espionage?.networkLevel || 0) > 0
+    ? group("espionage", "Espionage Operatives", countSummary(operativeAvailable, operativeOwned), '<p class="hint">Recruit here; assign defenders and launch missions from Intelligence.</p><div class="operative-roster">' + operativeCards + '</div>', "personnel-group")
+    : "";
+  $("unit-roster").innerHTML = expeditionHint + group("military", "Military Units", countSummary(militaryAvailable, militaryOwned), unitCards, "building-grid") + ardentRecruitment + espionageRecruitment;
   $("unit-roster").querySelectorAll("[data-recruitment-group]").forEach((details) => details.addEventListener("toggle", () => localStorage.setItem("sp-recruitment-group-v1-" + details.dataset.recruitmentGroup, details.open ? "open" : "closed")));
   attachRecruitmentControls();
   const recruitConclave = document.querySelector("[data-recruit-conclave]");

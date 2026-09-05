@@ -25,6 +25,19 @@ describe("post-overhaul shell", () => {
     expect(html).toContain('<button class="secondary" type="button" data-route-view="chronicle">Chronicle</button>');
   });
 
+  test("fills the visual viewport when a mobile PWA is zoomed out", () => {
+    expect(client).toContain("function syncZoomedOutViewportWidth()");
+    expect(client).toContain('viewport.scale < 0.999');
+    expect(client).toContain('window.visualViewport?.addEventListener("resize", syncZoomedOutViewportWidth)');
+    expect(css).toContain("width: var(--sp-visual-viewport-width, 100%)");
+  });
+
+  test("reveals specialist recruitment only after its building unlock", () => {
+    expect(client).toContain('const ardentRecruitment = monasteryLevel > 0');
+    expect(client).toContain('const espionageRecruitment = Number(state.espionage?.networkLevel || 0) > 0');
+    expect(client).toContain('+ ardentRecruitment + espionageRecruitment');
+  });
+
   test("keeps the pre-release command surfaces concise and reactive", () => {
     expect(client).toContain("const expandedInboxMessageIds = new Set()");
     expect(client).toContain("expandedInboxMessageIds.has(details.dataset.messageId)");

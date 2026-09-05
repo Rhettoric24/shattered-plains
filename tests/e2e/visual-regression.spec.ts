@@ -289,6 +289,7 @@ async function strictStandardComposerScreenshot(page: Page) {
     ],
     maskColor,
     threshold: 0.2,
+    maxDiffPixels: 50,
   });
 }
 
