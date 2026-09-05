@@ -123,6 +123,9 @@ describe("post-overhaul shell", () => {
     expect(html).toContain('id="deep-plains-fabrial"');
     expect(html).toContain('id="neutral-fabrial"');
     expect(html).toContain('id="player-fabrial"');
+    expect(html).toContain('id="plateau-fabrial"');
+    expect(client).toContain("data-siege-defense-fabrial");
+    expect(client).toContain("Reinforcements cannot bring one.");
     expect(client).toContain('aria-label="Unexplored scholarly applications"');
     expect(client).toContain("Ancient Plateaus");
     expect(client).not.toContain("Research AP");

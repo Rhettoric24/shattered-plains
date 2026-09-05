@@ -3,7 +3,7 @@ import { internal } from "./_generated/api";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { insertGameEvent } from "./eventHelpers";
-import { requireCurrentPlayer } from "./ownership";
+import { requireCompetitivePlayer, requireCurrentPlayer } from "./ownership";
 import {
   casualtyIntelSummary,
   currentKingdomIntelLevel,
@@ -81,6 +81,7 @@ async function createRaid(
     if (args.targetPlayerId === attacker._id) throw new Error("You cannot raid yourself.");
     const defender = await ctx.db.get(args.targetPlayerId);
     if (!defender) throw new Error("Target player not found.");
+    if (defender.isAdminObserver) throw new Error("Administrative observers cannot be targeted.");
   }
 
   const world = await ctx.db
@@ -218,7 +219,7 @@ export const launchSphereRaid = mutation({
     fabrial: v.optional(v.union(v.literal("painrial"), v.literal("soulcaster"), v.literal("halfShard"))),
   },
   handler: async (ctx, args) => {
-    const attacker = await requireCurrentPlayer(ctx);
+    const attacker = await requireCompetitivePlayer(ctx);
     return await createRaid(ctx, {
       attackerId: attacker._id,
       targetType: "parshendi_spheres",
@@ -236,7 +237,7 @@ export const launchDeepPlainsRaid = mutation({
     fabrial: v.optional(v.union(v.literal("painrial"), v.literal("soulcaster"), v.literal("halfShard"))),
   },
   handler: async (ctx, args) => {
-    const attacker = await requireCurrentPlayer(ctx);
+    const attacker = await requireCompetitivePlayer(ctx);
     return await createRaid(ctx, {
       attackerId: attacker._id,
       targetType: "deep_plains",

@@ -609,6 +609,8 @@ test("the Fabrial mystery or revealed state stays contained", async ({ page }) =
   await page.locator('#dashboard-nav [data-route-view="plains"]').click();
   if (revealed) await expect(page.locator("#sphere-fabrial")).toBeVisible();
   else await expect(page.locator("#sphere-fabrial")).toBeHidden();
+  await expect(page.locator("#plateau-fabrial")).toHaveCount(1);
+  if (revealed) await expect(page.locator("#plateau-fabrial option")).not.toHaveCount(0);
   await expectContained(page.locator("#sphere-form"));
   await expectNoMajorHorizontalOverflow(page);
 });

@@ -49,9 +49,10 @@ async function expose(ctx: MutationCtx, now: number) {
     }
     if (siege.defenderId && siege.defenderCommittedAt && siege.defenderHighstormExposureId !== storm.stormId) {
       const completed = await completedResearch(ctx, siege.defenderId);
-      const loss = applyHighstormExposureLosses(normalizeUnits(siege.defenderUnits), `${siege._id}:${storm.stormId}:defender`, completed);
-      await ctx.db.patch(siege._id, { defenderUnits: loss.survivors, defenderPower: effectivePower(loss.survivors, completed), defenderSpeed: effectiveSpeed(loss.survivors, completed), defenderHighstormExposureId: storm.stormId });
-      await createNotification(ctx, { playerId: siege.defenderId, category: "combat", eventType: "highstorm_exposure", title: "Defenders Caught in Highstorm", body: `Highstorm exposure casualties: ${casualtySummary(loss.casualties)}.`, destinationView: "plains", destinationTab: "sieges", entityId: String(siege._id), dedupeKey: `${storm.stormId}:siege:${siege._id}:defender`, createdAt: now });
+      const raw = applyHighstormExposureLosses(normalizeUnits(siege.defenderUnits), `${siege._id}:${storm.stormId}:defender`, completed);
+      const loss = applyFabrialCasualtyProtection(siege.defenderFabrialKind, raw);
+      await ctx.db.patch(siege._id, { defenderUnits: loss.survivors, defenderPower: effectivePower(loss.survivors, completed), defenderSpeed: effectiveSpeed(loss.survivors, completed), defenderHighstormExposureId: storm.stormId, defenderFabrialPreventedCasualties: (siege.defenderFabrialPreventedCasualties ?? 0) + loss.prevented });
+      await createNotification(ctx, { playerId: siege.defenderId, category: "combat", eventType: "highstorm_exposure", title: "Defenders Caught in Highstorm", body: `Highstorm exposure casualties: ${casualtySummary(loss.casualties)}.${loss.prevented ? ` ${siege.defenderFabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${loss.prevented}.` : ""}`, destinationView: "plains", destinationTab: "sieges", entityId: String(siege._id), dedupeKey: `${storm.stormId}:siege:${siege._id}:defender`, createdAt: now });
       await ctx.db.insert("messages", { toPlayerId: siege.defenderId, kind: "system", subject: "Highstorm Exposure", body: `Your committed plateau defenders suffered Highstorm exposure. Casualties: ${casualtySummary(loss.casualties)}.`, eventType: "highstorm_exposure", destinationView: "plains", destinationTab: "sieges", entityType: "siege", entityId: String(siege._id), createdAt: now });
       exposed++;
     }
@@ -70,9 +71,10 @@ async function expose(ctx: MutationCtx, now: number) {
   for (const run of runs) for await (const commitment of ctx.db.query("plateauCommitments").withIndex("by_run", q => q.eq("plateauRunId", run._id))) {
     if (commitment.lastHighstormExposureId === storm.stormId) continue;
     const completed = await completedResearch(ctx, commitment.playerId);
-    const loss = applyHighstormExposureLosses(commitment.units, `${commitment._id}:${storm.stormId}`, completed, Boolean(commitment.conclaveId));
-    await ctx.db.patch(commitment._id, { units: loss.survivors, power: effectivePower(loss.survivors, completed, Boolean(commitment.conclaveId)), speed: effectiveSpeed(loss.survivors, completed, Boolean(commitment.conclaveId)), lastHighstormExposureId: storm.stormId });
-    await createNotification(ctx, { playerId: commitment.playerId, category: "combat", eventType: "highstorm_exposure", title: "Plateau Run Force Caught in Highstorm", body: `Highstorm exposure casualties: ${casualtySummary(loss.casualties)}.`, destinationView: "plains", destinationTab: "plateau-runs", entityId: String(run._id), dedupeKey: `${storm.stormId}:plateau-run:${commitment._id}`, createdAt: now });
+    const raw = applyHighstormExposureLosses(commitment.units, `${commitment._id}:${storm.stormId}`, completed, Boolean(commitment.conclaveId));
+    const loss = applyFabrialCasualtyProtection(commitment.fabrialKind, raw);
+    await ctx.db.patch(commitment._id, { units: loss.survivors, power: effectivePower(loss.survivors, completed, Boolean(commitment.conclaveId)), speed: effectiveSpeed(loss.survivors, completed, Boolean(commitment.conclaveId)), lastHighstormExposureId: storm.stormId, fabrialPreventedCasualties: (commitment.fabrialPreventedCasualties ?? 0) + loss.prevented });
+    await createNotification(ctx, { playerId: commitment.playerId, category: "combat", eventType: "highstorm_exposure", title: "Plateau Run Force Caught in Highstorm", body: `Highstorm exposure casualties: ${casualtySummary(loss.casualties)}.${loss.prevented ? ` ${commitment.fabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${loss.prevented}.` : ""}`, destinationView: "plains", destinationTab: "plateau-runs", entityId: String(run._id), dedupeKey: `${storm.stormId}:plateau-run:${commitment._id}`, createdAt: now });
     await ctx.db.insert("messages", { toPlayerId: commitment.playerId, kind: "system", subject: "Highstorm Exposure", body: `Your Plateau Run force suffered Highstorm exposure. Casualties: ${casualtySummary(loss.casualties)}.`, eventType: "highstorm_exposure", destinationView: "plains", destinationTab: "plateau-runs", entityType: "plateau_run", entityId: String(run._id), createdAt: now });
     exposed++;
   }

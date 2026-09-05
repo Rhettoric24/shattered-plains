@@ -108,7 +108,7 @@ function routeFromLocation() {
 }
 
 let currentRoute = routeFromLocation();
-let lastSelections = { trainUnit: "", target: "", attackUnits: {}, recruitment: {}, fabrials: {}, espionageMission: {}, espionageDefense: {}, espionageOperation: "investigation" };
+let lastSelections = { trainUnit: "", target: "", attackUnits: {}, recruitment: {}, fabrials: {}, siegeDefenseFabrials: {}, espionageMission: {}, espionageDefense: {}, espionageOperation: "investigation" };
 let previewListenersReady = false;
 let activePopoverAnchor = null;
 let inboxFilter = "all";
@@ -885,10 +885,13 @@ function captureSelections() {
   if ($("target")) lastSelections.target = $("target").value;
   if ($("neutral-plateau-target")) lastSelections.neutralPlateau = $("neutral-plateau-target").value;
   if ($("player-plateau-target")) lastSelections.playerPlateau = $("player-plateau-target").value;
-  ["sphere-fabrial", "deep-plains-fabrial", "neutral-fabrial", "player-fabrial"].forEach((id) => { if ($(id)) lastSelections.fabrials[id] = $(id).value; });
+  ["sphere-fabrial", "deep-plains-fabrial", "neutral-fabrial", "player-fabrial", "plateau-fabrial"].forEach((id) => { if ($(id)) lastSelections.fabrials[id] = $(id).value; });
   lastSelections.siegeDefenders = lastSelections.siegeDefenders || {};
   document.querySelectorAll("[data-siege-defense-unit]").forEach((input) => {
     lastSelections.siegeDefenders[input.dataset.siegeId + ":" + input.dataset.unit] = input.value;
+  });
+  document.querySelectorAll("[data-siege-defense-fabrial]").forEach((select) => {
+    lastSelections.siegeDefenseFabrials[select.dataset.siegeId] = select.value;
   });
   lastSelections.emergencyDefense = lastSelections.emergencyDefense || {};
   document.querySelectorAll("[data-emergency-defense-range]").forEach((input) => {
@@ -1898,10 +1901,12 @@ function renderPlateaus() {
       const units = readSiegeDefenderUnits(siegeId);
       const siege = state.plateaus.sieges.find((entry) => entry.id === siegeId);
       const plateau = state.plateaus.byId[siege?.plateauId];
-      if (!await confirmConsequentialMission(consequentialMissionSummary("Commit siege defenders?", plateau?.name || "Threatened plateau", units, "", "This defensive force cannot be changed after commitment."))) return;
+      const fabrial = selectedFabrial("siege-defense-fabrial-" + siegeId);
+      if (!await confirmConsequentialMission(consequentialMissionSummary("Commit siege defenders?", plateau?.name || "Threatened plateau", units, "", "This defensive force cannot be changed after commitment." + (fabrial.summary ? " " + fabrial.summary : "")))) return;
       action(() => client.mutation(refs.commitSiegeDefenders, {
         siegeId,
         units,
+        ...(fabrial.kind ? { fabrial: fabrial.kind } : {}),
       }));
     });
   });
@@ -1932,6 +1937,11 @@ function renderPlateaus() {
       lastSelections.siegeDefenders = lastSelections.siegeDefenders || {};
       lastSelections.siegeDefenders[input.dataset.siegeId + ":" + input.dataset.unit] = input.value;
       renderSiegeDefenseOutlook(input.dataset.siegeId);
+    });
+  });
+  document.querySelectorAll("[data-siege-defense-fabrial]").forEach((select) => {
+    select.addEventListener("change", () => {
+      lastSelections.siegeDefenseFabrials[select.dataset.siegeId] = select.value;
     });
   });
   urgent.forEach((siege) => renderSiegeDefenseOutlook(siege.id));
@@ -2140,11 +2150,12 @@ function siegeOperativeInputs(siegeId) {
 
 function siegeDefenderPanel(siege, plateau) {
   const encirclementClosed = siege.targetType === "player" && siege.siegeVersion >= 2 && Date.now() >= Number(siege.encircleEndsAt || 0);
+  const committedFabrial = (state.fabrials?.inventory || []).find((item) => item.kind === siege.defenderFabrialKind);
   const commitPanel = siege.defenderCommittedAt
-    ? '<div class="siege-defense-note">Defending army locked: ' + escapeHtml(unitSummary(siege.defenderUnits, state.config.units)) + '.</div>'
+    ? '<div class="siege-defense-note">Defending army locked: ' + escapeHtml(unitSummary(siege.defenderUnits, state.config.units)) + '.' + (committedFabrial ? ' Fabrial: ' + escapeHtml(committedFabrial.name) + '.' : '') + '</div>'
     : encirclementClosed
       ? '<div class="siege-defense-note"><strong>Initial defense closed</strong><small>Encirclement has ended without a defensive commitment. No initial defense or reinforcements may now be committed.</small></div>'
-      : '<div class="siege-defense-panel"><strong>Commit defenders</strong><small>Commit before Encirclement ends. This force cannot be changed during the siege.</small><div class="unit-input-grid siege-defense-grid">' + siegeDefenderUnitInputs(siege) + '</div><div class="attack-outlook" data-siege-defense-outlook="' + siege.id + '"></div><button type="button" data-commit-siege-defenders="' + siege.id + '">Commit defending army</button></div>';
+      : '<div class="siege-defense-panel"><strong>Commit defenders</strong><small>Commit before Encirclement ends. This force cannot be changed during the siege.</small><div class="unit-input-grid siege-defense-grid">' + siegeDefenderUnitInputs(siege) + '</div><div class="attack-outlook" data-siege-defense-outlook="' + siege.id + '"></div>' + siegeDefenderFabrialMarkup(siege.id) + '<button type="button" data-commit-siege-defenders="' + siege.id + '">Commit defending army</button></div>';
   const currentPercent = Math.max(0, Number(siege.emergencyDefensePercent || 0));
   const storedTarget = Number(lastSelections.emergencyDefense?.[siege.id]);
   const targetPercent = Number.isFinite(storedTarget) && storedTarget >= currentPercent ? storedTarget : currentPercent;
@@ -2205,6 +2216,24 @@ function renderEmergencyDefensePreview(siegeId) {
   renderSiegeDefenseOutlook(siegeId);
 }
 
+function siegeDefenderFabrialMarkup(siegeId) {
+  const inventory = state.fabrials?.inventory || [];
+  if (!inventory.length) return "";
+  const selected = lastSelections.siegeDefenseFabrials?.[siegeId] || "";
+  const definitions = {
+    painrial: "Disposable · 25% casualty protection",
+    soulcaster: "Reusable · not applicable to siege defense",
+    halfShard: "Reusable · 50% casualty protection · may be lost if the defense fails",
+  };
+  const options = inventory.map((item) => {
+    const applicable = item.kind !== "soulcaster";
+    const enabled = applicable && item.available > 0;
+    const suffix = !applicable ? " · Not applicable" : item.available < 1 ? " · Unavailable" : " · " + item.available + " available";
+    return '<option value="' + item.kind + '"' + (enabled ? '' : ' disabled') + (item.kind === selected && enabled ? ' selected' : '') + ' title="' + escapeHtml(definitions[item.kind]) + '">' + escapeHtml(item.name + ' — ' + definitions[item.kind] + suffix) + '</option>';
+  }).join("");
+  return '<label class="form-wide fabrial-deployment">Fabrial<select id="siege-defense-fabrial-' + siegeId + '" data-siege-defense-fabrial data-siege-id="' + siegeId + '"><option value="">None</option>' + options + '</select><small>One optional Fabrial may accompany the committed defenders. Reinforcements cannot bring one.</small></label>';
+}
+
 function raidListMarkup(raids, emptyText) {
   return raids.length ? raids.map((raid) => {
     const arrival = new Date(raid.arrivalAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -2248,6 +2277,7 @@ function renderPlateau() {
   const myCommitment = run.participants.find((entry) => entry.playerId === state.me.id) || null;
   if (myCommitment && loadedPlateauCommitmentId !== myCommitment.id) {
     lastSelections.attackUnits.plateau = { ...myCommitment.units };
+    lastSelections.fabrials["plateau-fabrial"] = myCommitment.fabrialKind || "";
     loadedPlateauCommitmentId = myCommitment.id;
     $("plateau-run-units").querySelectorAll("input[data-unit]").forEach((input) => {
       input.value = String(Number(myCommitment.units?.[input.dataset.unit] || 0));
@@ -2527,6 +2557,7 @@ function renderFabrialSelectors() {
   const configs = [
     ["sphere-fabrial", true], ["deep-plains-fabrial", true],
     ["neutral-fabrial", false], ["player-fabrial", false],
+    ["plateau-fabrial", true],
   ];
   configs.forEach(([id, sphereProducing]) => {
     const select = $(id);
@@ -2534,10 +2565,14 @@ function renderFabrialSelectors() {
     const wrapper = select.closest(".fabrial-deployment");
     wrapper?.classList.toggle("hidden", inventory.length < 1);
     const previous = lastSelections.fabrials[id] || select.value;
+    const committedHere = id === "plateau-fabrial"
+      ? state.plateauRun?.participants.find((entry) => entry.playerId === state.me.id)?.fabrialKind
+      : null;
     select.innerHTML = '<option value="">None</option>' + inventory.map((item) => {
       const applicable = sphereProducing || item.kind !== "soulcaster";
-      const enabled = applicable && item.available > 0;
-      const suffix = !applicable ? " · Not applicable" : item.available < 1 ? " · Unavailable" : " · " + item.available + " available";
+      const alreadyCommitted = committedHere === item.kind;
+      const enabled = applicable && (item.available > 0 || alreadyCommitted);
+      const suffix = !applicable ? " · Not applicable" : alreadyCommitted ? " · Committed here" : item.available < 1 ? " · Unavailable" : " · " + item.available + " available";
       return '<option value="' + item.kind + '"' + (enabled ? '' : ' disabled') + ' title="' + escapeHtml(definitions[item.kind]) + '">' + escapeHtml(item.name + ' — ' + definitions[item.kind] + suffix) + '</option>';
     }).join('');
     if ([...select.options].some((option) => option.value === previous && !option.disabled)) select.value = previous;
@@ -3169,6 +3204,7 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
         defenderPower: siege.defenderPower || 0,
         defenderSpeed: siege.defenderSpeed || 0,
         defenderCommittedAt: siege.defenderCommittedAt || null,
+        defenderFabrialKind: siege.defenderFabrialKind || null,
         fortifyPercent: siege.fortifyPercent,
         emergencyDefensePercent: siege.emergencyDefensePercent || 0,
         emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent || 0,
@@ -3208,6 +3244,7 @@ function decoratePlateauRun(plateauRun, unitsConfig) {
       bridgedTravelReductionPercent: entry.bridgedTravelReductionPercent || 0,
       joinOrder: entry.joinOrder,
       joinOrderSpeedBonus: entry.joinOrderSpeedBonus,
+      fabrialKind: entry.fabrialKind || null,
     })),
   };
 }
@@ -3601,7 +3638,8 @@ $("plateau-run-submit").addEventListener("click", () => {
   try {
     const units = validatedRaidUnits("plateau-run-units");
     const conclaveId = $("plateau-conclave")?.value || "";
-    action(() => client.mutation(refs.joinPlateauRun, { plateauRunId: state.plateauRun.id, units, ...(conclaveId ? { conclaveId } : {}) }));
+    const fabrial = selectedFabrial("plateau-fabrial");
+    action(() => client.mutation(refs.joinPlateauRun, { plateauRunId: state.plateauRun.id, units, ...(conclaveId ? { conclaveId } : {}), ...(fabrial.kind ? { fabrial: fabrial.kind } : {}) }));
   } catch (error) { alert(friendlyError(error)); }
 });
 $("close-kingdom-intel-dialog")?.addEventListener("click", () => $("kingdom-intel-dialog").close());
@@ -3660,6 +3698,7 @@ $("cancel-plateau-commitment").addEventListener("click", () => {
   if (!state.plateauRun) return;
   if (!window.confirm("Withdraw your army from this Plateau Run? All committed units will return immediately.")) return;
   lastSelections.attackUnits.plateau = {};
+  lastSelections.fabrials["plateau-fabrial"] = "";
   loadedPlateauCommitmentId = null;
   $("plateau-run-units").querySelectorAll("input[data-unit]").forEach((input) => { input.value = "0"; });
   action(() => client.mutation(refs.cancelPlateauRunCommitment, { plateauRunId: state.plateauRun.id }));

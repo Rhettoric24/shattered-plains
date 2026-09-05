@@ -44,6 +44,7 @@ export default defineSchema({
 
   players: defineTable({
     authUserId: v.optional(v.string()),
+    isAdminObserver: v.optional(v.boolean()),
     name: v.string(),
     normalizedName: v.string(),
     acres: v.number(),
@@ -169,6 +170,10 @@ export default defineSchema({
     fabrialResolvedAt: v.optional(v.number()),
     fabrialLost: v.optional(v.boolean()),
     fabrialPreventedCasualties: v.optional(v.number()),
+    defenderFabrialKind: v.optional(v.union(v.literal("painrial"), v.literal("halfShard"))),
+    defenderFabrialResolvedAt: v.optional(v.number()),
+    defenderFabrialLost: v.optional(v.boolean()),
+    defenderFabrialPreventedCasualties: v.optional(v.number()),
   })
     .index("by_status_resolve", ["status", "resolveAt"])
     .index("by_attacker", ["attackerId"])
@@ -368,6 +373,11 @@ export default defineSchema({
     conclaveId: v.optional(v.id("ardentConclaves")),
     conclaveXpAwarded: v.optional(v.number()),
     doctrineJoinSpeedMultiplier: v.optional(v.number()),
+    fabrialKind: v.optional(v.union(v.literal("painrial"), v.literal("soulcaster"), v.literal("halfShard"))),
+    fabrialResolvedAt: v.optional(v.number()),
+    fabrialLost: v.optional(v.boolean()),
+    fabrialPreventedCasualties: v.optional(v.number()),
+    fabrialSoulcasterBonus: v.optional(v.number()),
     committedAt: v.number(),
     lastHighstormExposureId: v.optional(v.string()),
   })

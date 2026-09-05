@@ -94,6 +94,11 @@ export async function requireAdmin(ctx: AnyCtx) {
   return { email };
 }
 
+export async function isCurrentIdentityAdmin(ctx: AnyCtx) {
+  const { email } = await currentAdminIdentity(ctx);
+  return Boolean(email && configuredAdminEmails().includes(email));
+}
+
 function requireDashboardAdminKey(adminKey: string) {
   const configuredKey = configuredDashboardAdminKey();
   if (!configuredKey) {
@@ -123,6 +128,7 @@ async function deleteGameplayTable(ctx: MutationCtx, table: GameplayTable) {
 async function performWorldResetKeepAccounts(ctx: MutationCtx) {
   const now = Date.now();
   const players = await ctx.db.query("players").take(200);
+  const competitivePlayers = players.filter((player) => !player.isAdminObserver);
   const deleted = {
     parshendiRetaliations: await deleteGameplayTable(ctx, "parshendiRetaliations"),
     kingdomWorldPressure: await deleteGameplayTable(ctx, "kingdomWorldPressure"),
@@ -162,7 +168,7 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
 
   const worldId = await ctx.db.insert("gameState", {
     key: WORLD_KEY,
-    openAcres: players.length * STARTING_RULES.openAcresPerNewPlayer,
+    openAcres: competitivePlayers.length * STARTING_RULES.openAcresPerNewPlayer,
     nextPlateauNameOrdinal: 0,
     createdAt: now,
     updatedAt: now,
@@ -198,14 +204,14 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
 
   const homeSeed = await createBalancedHomePlateaus(
     ctx,
-    players.map((player) => player._id),
+    competitivePlayers.map((player) => player._id),
     now,
   );
-  const neutralSeed = await createSeasonNeutralPlateaus(ctx, players.length, now);
+  const neutralSeed = await createSeasonNeutralPlateaus(ctx, competitivePlayers.length, now);
 
   await insertGameEvent(ctx, {
     kind: "world",
-    text: `World reset. ${players.length} warcamps kept their accounts and received fresh starter kingdoms.`,
+    text: `World reset. ${competitivePlayers.length} player warcamps received fresh starter kingdoms; administrative observers remained isolated.`,
     createdAt: now,
   });
 
@@ -213,7 +219,7 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
     reset: true,
     worldId,
     seasonId,
-    playersReset: players.length,
+    playersReset: competitivePlayers.length,
     homePlateausCreated: homeSeed.created,
     neutralPlateausCreated: neutralSeed.totalNeutral,
     gemheartPlateausCreated: neutralSeed.gemhearts,

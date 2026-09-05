@@ -54,6 +54,10 @@ export async function awardSeasonPoints(ctx: MutationCtx, args: {
   now?: number;
 }) {
   const now = args.now ?? Date.now();
+  const player = await ctx.db.get(args.playerId);
+  if (!player || player.isAdminObserver) {
+    return { awarded: false, reason: "admin_observer" as const };
+  }
   const season = args.seasonId ? await ctx.db.get(args.seasonId) : await ensureActiveSeason(ctx, now);
   if (!season || season.status !== "active") return { awarded: false, reason: "inactive_season" as const };
   const existing = await ctx.db.query("seasonScoreEvents")
@@ -290,7 +294,9 @@ export const evaluatePlateauHold = internalMutation({
 
 export async function initializeSeasonBaseline(ctx: MutationCtx, season: Doc<"seasons">, now: number) {
   const players = await ctx.db.query("players").take(200);
-  for (const player of players) await updateTerritoryCount(ctx, season._id, player._id, now, false);
+  for (const player of players) {
+    if (!player.isAdminObserver) await updateTerritoryCount(ctx, season._id, player._id, now, false);
+  }
   const plateaus = await ctx.db.query("plateaus").withIndex("by_status", (q) => q.eq("status", "owned")).take(500);
   for (const plateau of plateaus) if (plateau.ownerPlayerId) {
     const claim = await ctx.db.query("seasonPlateauClaims").withIndex("by_seasonId_and_plateauId_and_playerId", (q) => q.eq("seasonId", season._id).eq("plateauId", plateau._id).eq("playerId", plateau.ownerPlayerId!)).unique();

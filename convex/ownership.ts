@@ -28,6 +28,14 @@ export async function requireCurrentPlayer(ctx: AnyCtx) {
   return player;
 }
 
+export async function requireCompetitivePlayer(ctx: AnyCtx) {
+  const player = await requireCurrentPlayer(ctx);
+  if (player.isAdminObserver) {
+    throw new Error("Administrative observers cannot launch gameplay operations.");
+  }
+  return player;
+}
+
 export async function requirePlayerOwner(
   ctx: AnyCtx,
   playerId: Id<"players">,

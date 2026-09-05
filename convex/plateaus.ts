@@ -4,7 +4,7 @@ import { internalMutation, mutation, query, type MutationCtx } from "./_generate
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireAdmin } from "./admin";
 import { insertGameEvent } from "./eventHelpers";
-import { requireCurrentPlayer } from "./ownership";
+import { requireCompetitivePlayer, requireCurrentPlayer } from "./ownership";
 import {
   casualtyIntelSummary,
   recordKingdomReport,
@@ -269,7 +269,7 @@ export const getMyPlateauState = query({
           defenderName: siege.defenderId ? names.get(String(siege.defenderId)) ?? "Unknown" : "Parshendi",
           attackerIntel,
           ...(isAttacker ? { attackerUnits: siege.attackerUnits, attackerPower: siege.attackerPower, attackerSpeed: siege.attackerSpeed, ardentiaConclave: Boolean(siege.ardentiaConclave) } : {}),
-          ...(isDefender ? { defenderUnits: siege.defenderUnits, defenderPower: siege.defenderPower, defenderSpeed: siege.defenderSpeed, defenderCommittedAt: siege.defenderCommittedAt ?? null, fortifyPercent: siege.fortifyPercent, emergencyDefensePercent: siege.emergencyDefensePercent, emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent } : {}),
+          ...(isDefender ? { defenderUnits: siege.defenderUnits, defenderPower: siege.defenderPower, defenderSpeed: siege.defenderSpeed, defenderCommittedAt: siege.defenderCommittedAt ?? null, defenderFabrialKind: siege.defenderFabrialKind, fortifyPercent: siege.fortifyPercent, emergencyDefensePercent: siege.emergencyDefensePercent, emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent } : {}),
           departAt: siege.departAt,
           resolveAt: siege.resolveAt,
           status: siege.status,
@@ -586,6 +586,7 @@ export const getSiegeBoard = query({
                 defenderPower: siege.defenderPower,
                 defenderSpeed: siege.defenderSpeed,
                 defenderCommittedAt: siege.defenderCommittedAt ?? null,
+                defenderFabrialKind: siege.defenderFabrialKind,
                 fortifyPercent: siege.fortifyPercent,
                 emergencyDefensePercent: siege.emergencyDefensePercent,
                 emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent,
@@ -628,7 +629,7 @@ export const launchNeutralSiege = mutation({
     fabrial: v.optional(v.union(v.literal("painrial"), v.literal("halfShard"))),
   },
   handler: async (ctx, args) => {
-    const attacker = await requireCurrentPlayer(ctx);
+    const attacker = await requireCompetitivePlayer(ctx);
     const plateau = await ctx.db.get(args.plateauId);
     if (!plateau || plateau.status !== "neutral") {
       throw new Error("Choose an available neutral plateau.");
@@ -704,7 +705,7 @@ export const launchPlayerSiege = mutation({
     fabrial: v.optional(v.union(v.literal("painrial"), v.literal("halfShard"))),
   },
   handler: async (ctx, args) => {
-    const attacker = await requireCurrentPlayer(ctx);
+    const attacker = await requireCompetitivePlayer(ctx);
     const plateau = await ctx.db.get(args.plateauId);
     if (!plateau || plateau.status !== "owned" || !plateau.ownerPlayerId) {
       throw new Error("Choose an owned enemy plateau.");
@@ -804,6 +805,7 @@ export const commitSiegeDefenders = mutation({
   args: {
     siegeId: v.id("sieges"),
     units: unitCountsValidator,
+    fabrial: v.optional(v.union(v.literal("painrial"), v.literal("halfShard"))),
   },
   handler: async (ctx, args) => {
     const defender = await requireCurrentPlayer(ctx);
@@ -832,6 +834,7 @@ export const commitSiegeDefenders = mutation({
     const completed = await completedResearch(ctx, defender._id);
     const defenderPower = effectivePower(units, completed);
     const defenderSpeed = effectiveSpeed(units, completed);
+    await reserveFabrial(ctx, defender._id, args.fabrial, now);
     await ctx.db.patch(defender._id, {
       units: remainingUnits,
       lastActiveAt: now,
@@ -841,6 +844,7 @@ export const commitSiegeDefenders = mutation({
       defenderPower,
       defenderSpeed,
       defenderCommittedAt: now,
+      ...(args.fabrial ? { defenderFabrialKind: args.fabrial } : {}),
     });
 
     await ctx.scheduler.runAfter(0, internal.highstorms.processActiveStorm, {});
@@ -1066,7 +1070,7 @@ export const backfillPlateaus = mutation({
   handler: async (ctx) => {
     await requireAdmin(ctx);
     const now = Date.now();
-    const players = await ctx.db.query("players").take(200);
+    const players = (await ctx.db.query("players").take(200)).filter((player) => !player.isAdminObserver);
     let starterCreated = 0;
     let migrated = 0;
     let defensesRetuned = 0;
@@ -1195,12 +1199,13 @@ export const resolveSiege = internalMutation({
       const stormActive = (await activeHighstorm(ctx, now)).active;
       const parshendiPower = stormParshendiPower(siege.attackerPower, stormActive);
       const parshendiWon = parshendiPower > defenderPower;
-      const defenderLossResult = applyLossRate(
+      const rawDefenderLossResult = applyLossRate(
         defenderUnits,
         baseCasualtyRate(defenderPower, parshendiPower),
         `${siege._id}:retaliation:defender:${now}`,
         defenderCompleted,
       );
+      const defenderLossResult = applyFabrialCasualtyProtection(siege.defenderFabrialKind, rawDefenderLossResult);
       await ctx.db.patch(defender._id, {
         units: addUnits(defender.units, defenderLossResult.survivors),
         lastActiveAt: now,
@@ -1241,10 +1246,24 @@ export const resolveSiege = internalMutation({
         resultText = `The Parshendi reclaimed ${plateau.name}. Its reclamation count is now ${reclamationCount}, raising neutral defense to ${nextDefense} Power. Casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
       }
 
+      const defenderPrevented = (siege.defenderFabrialPreventedCasualties ?? 0) + defenderLossResult.prevented;
+      const defenderReusable = await settleReusableFabrial(
+        ctx,
+        defender._id,
+        siege.defenderFabrialKind,
+        parshendiWon ? "lower_failure" : "normal_success",
+        `siege:${siege._id}:defender-fabrial-loss`,
+        now,
+      );
+      if (defenderLossResult.prevented > 0) resultText += ` ${siege.defenderFabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${defenderLossResult.prevented} casualties.`;
+      if (defenderReusable.lost) resultText += " The retreat became chaotic. The Half-Shard was lost.";
       await ctx.db.patch(siege._id, {
         status: "resolved",
         resolvedAt: now,
         defenderHeld: !parshendiWon,
+        defenderFabrialResolvedAt: siege.defenderFabrialKind ? now : undefined,
+        defenderFabrialLost: siege.defenderFabrialKind ? defenderReusable.lost : undefined,
+        defenderFabrialPreventedCasualties: siege.defenderFabrialKind ? defenderPrevented : undefined,
       });
       await ctx.db.insert("messages", {
         toPlayerId: defender._id,
@@ -1409,11 +1428,21 @@ export const resolveSiege = internalMutation({
               successChance: investigation.successChance,
             })
           : "";
-        const defenderLossResult = applyLossRate(
+        const rawDefenderLossResult = applyLossRate(
           defenderUnits,
           baseCasualtyRate(defenderPower, siege.attackerPower),
           `${siege._id}:player:defender:${now}`,
           defenderCompleted,
+        );
+        const defenderLossResult = applyFabrialCasualtyProtection(siege.defenderFabrialKind, rawDefenderLossResult);
+        const defenderPrevented = (siege.defenderFabrialPreventedCasualties ?? 0) + defenderLossResult.prevented;
+        const defenderReusable = await settleReusableFabrial(
+          ctx,
+          defender._id,
+          siege.defenderFabrialKind,
+          won ? "lower_failure" : "normal_success",
+          `siege:${siege._id}:defender-fabrial-loss`,
+          now,
         );
         const [attackerMilitaryIntel, defenderMilitaryIntel] = await Promise.all([
           siegeIntelResource(ctx, attacker._id, defender._id),
@@ -1465,8 +1494,15 @@ export const resolveSiege = internalMutation({
           });
         }
         const attackerResultText = `${outcomeText} Your casualties: ${casualtySummary(attackerLossResult.casualties)}. ${casualtyIntelSummary(defenderLossResult.casualties, attackerCasualtyIntelLevel)}${investigationText} Military disclosure follows your persistent Ledger Intel against ${defender.name}.`;
-        const defenderResultText = `${outcomeText} Your casualties: ${casualtySummary(defenderLossResult.casualties)}. ${casualtyIntelSummary(attackerLossResult.casualties, defenderCasualtyIntelLevel)} Military disclosure follows your persistent Ledger Intel against ${attacker.name}.`;
+        const defenderFabrialText = `${defenderLossResult.prevented ? ` ${siege.defenderFabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${defenderLossResult.prevented} casualties.` : ""}${defenderReusable.lost ? " The retreat became chaotic. The Half-Shard was lost." : ""}`;
+        const defenderResultText = `${outcomeText} Your casualties: ${casualtySummary(defenderLossResult.casualties)}.${defenderFabrialText} ${casualtyIntelSummary(attackerLossResult.casualties, defenderCasualtyIntelLevel)} Military disclosure follows your persistent Ledger Intel against ${attacker.name}.`;
         resultText = attackerResultText;
+
+        await ctx.db.patch(siege._id, {
+          defenderFabrialResolvedAt: siege.defenderFabrialKind ? now : undefined,
+          defenderFabrialLost: siege.defenderFabrialKind ? defenderReusable.lost : undefined,
+          defenderFabrialPreventedCasualties: siege.defenderFabrialKind ? defenderPrevented : undefined,
+        });
 
         await ctx.db.insert("messages", {
           toPlayerId: defender._id,

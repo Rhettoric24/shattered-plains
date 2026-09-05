@@ -6,7 +6,7 @@ import { settlePlayerEconomy } from "./economyHelpers";
 import { createNotification } from "./notificationHelpers";
 import { activeHighstorm } from "./highstorms";
 import { stormCounterIntelligence, stormInvestigationIntel } from "./highstormRules";
-import { requireCurrentPlayer } from "./ownership";
+import { requireCompetitivePlayer, requireCurrentPlayer } from "./ownership";
 import { plateauAttributeCountsForPlayer, plateauCountsForPlayer } from "./plateauHelpers";
 import { ownedOperativesIncludingAway, ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import { ensureActiveSeason } from "./seasonLedger";
@@ -209,7 +209,7 @@ export const getStatus = query({
       defending: normalizeOperatives(player.defendingOperatives),
       onMission,
       counterIntelligence: spyPower(player.defendingOperatives),
-      targets: targets.filter((target) => target._id !== player._id).map((target) => ({
+      targets: targets.filter((target) => target._id !== player._id && !target.isAdminObserver).map((target) => ({
         playerId: target._id, name: target.name,
         intel: resourcesByTarget.get(String(target._id))?.amount ?? 0, intelCap: cap,
         economyIntel: economyIntelAmount(resourcesByTarget.get(String(target._id))),
@@ -260,7 +260,7 @@ export const getKingdomLedger = query({
       if (rows.length < 10) rows.push(discovery);
       discoveryMap.set(key, rows);
     }
-    const rows = players.map((target) => {
+    const rows = players.filter((target) => !target.isAdminObserver).map((target) => {
       const own = target._id === viewer._id;
       const score = scoreMap.get(String(target._id));
       const actual = Object.fromEntries(ESPIONAGE_CATEGORIES.map((category) => [category, Math.max(0, Number(score?.categoryTotals?.[category] ?? 0))])) as Record<EspionageCategory, number>;
@@ -410,12 +410,13 @@ function validateOffensiveCommitment(attacker: Doc<"players">, level: number, re
 export const launchInvestigation = mutation({
   args: { targetPlayerId: v.id("players"), category: categoryValidator, operatives: operativeCountsValidator, intelSpend: v.number() },
   handler: async (ctx, args) => {
-    const attacker = await requireCurrentPlayer(ctx);
+    const attacker = await requireCompetitivePlayer(ctx);
     const level = networkLevel(attacker);
     if (level < 1) throw new Error("Construct a Ghostblood Network before launching investigations.");
     if (args.targetPlayerId === attacker._id) throw new Error("Choose a rival kingdom.");
     const target = await ctx.db.get(args.targetPlayerId);
     if (!target) throw new Error("Target kingdom not found.");
+    if (target.isAdminObserver) throw new Error("Administrative observers cannot be targeted.");
     const { commitment, remaining } = validateOffensiveCommitment(attacker, level, args.operatives);
     const intelSpend = Math.floor(args.intelSpend);
     const spendCap = networkValue(ESPIONAGE_RULES.network.missionIntelSpendCaps, level);
@@ -442,12 +443,13 @@ export const launchInvestigation = mutation({
 export const launchSphereHeist = mutation({
   args: { targetPlayerId: v.id("players"), operatives: operativeCountsValidator },
   handler: async (ctx, args) => {
-    const attacker = await requireCurrentPlayer(ctx);
+    const attacker = await requireCompetitivePlayer(ctx);
     const level = networkLevel(attacker);
     if (level < 1) throw new Error("Construct a Ghostblood Network before launching a Sphere Heist.");
     if (args.targetPlayerId === attacker._id) throw new Error("Choose a rival kingdom.");
     const target = await ctx.db.get(args.targetPlayerId);
     if (!target) throw new Error("Target kingdom not found.");
+    if (target.isAdminObserver) throw new Error("Administrative observers cannot be targeted.");
     const { commitment, remaining } = validateOffensiveCommitment(attacker, level, args.operatives);
     const now = Date.now();
     const resource = await intelResource(ctx, attacker._id, target._id);

@@ -23,7 +23,7 @@ export const getWorldStatus = query({
     return {
       world,
       clock: world ? getGameClock(world.createdAt, Date.now()) : null,
-      playerCount: players.length,
+      playerCount: players.filter((player) => !player.isAdminObserver).length,
       pendingRaidCount: openRaids.length,
       openPlateauRunCount: openPlateauRuns.length,
     };

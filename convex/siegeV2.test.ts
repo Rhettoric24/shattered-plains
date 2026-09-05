@@ -27,6 +27,38 @@ async function setup() {
 }
 
 describe("PvP Siege V2", () => {
+  test("commits and returns a defender Half-Shard when the plateau is held", async () => {
+    const { t, defenderUser, defenderId, siegeId } = await setup();
+    const inventoryId = await t.run(async (ctx) => {
+      await ctx.db.patch(siegeId, {
+        defenderUnits: undefined,
+        defenderPower: undefined,
+        defenderSpeed: undefined,
+        defenderCommittedAt: undefined,
+        encircleEndsAt: Date.now() + 60_000,
+      });
+      return await ctx.db.insert("playerFabrials", {
+        playerId: defenderId, kind: "halfShard", owned: 1, committed: 0,
+        discoveredAt: 1, prototypeGrantedAt: 1, createdAt: 1, updatedAt: 1,
+      });
+    });
+    const defender = t.withIdentity({ subject: String(defenderUser) });
+
+    await defender.mutation(api.plateaus.commitSiegeDefenders, {
+      siegeId, units: { ...emptyUnits, bridgeman: 10 }, fabrial: "halfShard",
+    });
+    expect(await t.run((ctx) => ctx.db.get(inventoryId))).toMatchObject({ owned: 1, committed: 1 });
+    expect(await t.run((ctx) => ctx.db.get(siegeId))).toMatchObject({ defenderFabrialKind: "halfShard" });
+
+    await t.mutation(internal.plateaus.resolveSiege, { siegeId });
+    const result = await t.run(async (ctx) => ({
+      inventory: await ctx.db.get(inventoryId),
+      siege: await ctx.db.get(siegeId),
+    }));
+    expect(result.inventory).toMatchObject({ owned: 1, committed: 0 });
+    expect(result.siege).toMatchObject({ defenderHeld: true, defenderFabrialLost: false });
+  });
+
   test("uses persistent Ledger Military Intel, not Watchtower level, for PvP attacker Power", async () => {
     const { t, defenderUser, defenderId, attackerId } = await setup();
     await t.run(async (ctx) => {

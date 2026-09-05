@@ -170,4 +170,70 @@ describe("Plateau Run join order and winner selection", () => {
     expect((await viewer.query(api.plateauRuns.getCurrent, {}))?.commitments[0].powerIntel)
       .toEqual({ mode: "exact", label: "Impregnable", value: 1000 });
   });
+
+  test("reserves a reusable Fabrial for a Plateau Run and returns it on cancellation", async () => {
+    const t = convexTest(schema, modules);
+    const playerId = await addPlayer(t, "Fabrial Runner");
+    await t.run((ctx) => ctx.db.patch(playerId, {
+      authUserId: "fabrial-runner",
+      units: { ...emptyUnits(), bridgeman: 5 },
+    }));
+    const { plateauRunId, inventoryId } = await t.run(async (ctx) => ({
+      plateauRunId: await ctx.db.insert("plateauRuns", {
+        status: "open", opensAt: Date.now() - 1_000, closesAt: Date.now() + 60_000,
+        resolvesAt: Date.now() + 60_000, difficulty: 10, spherePool: 1_000, gemheartReward: 1,
+      }),
+      inventoryId: await ctx.db.insert("playerFabrials", {
+        playerId, kind: "halfShard", owned: 1, committed: 0,
+        discoveredAt: 1, prototypeGrantedAt: 1, createdAt: 1, updatedAt: 1,
+      }),
+    }));
+    const runner = t.withIdentity({ subject: "fabrial-runner" });
+
+    await runner.mutation(api.plateauRuns.joinPlateauRun, {
+      plateauRunId, units: { ...emptyUnits(), bridgeman: 5 }, fabrial: "halfShard",
+    });
+    expect((await t.run((ctx) => ctx.db.get(inventoryId)))?.committed).toBe(1);
+
+    await runner.mutation(api.plateauRuns.joinPlateauRun, {
+      plateauRunId, units: { ...emptyUnits(), bridgeman: 5 }, fabrial: "halfShard",
+    });
+    expect((await t.run((ctx) => ctx.db.get(inventoryId)))?.committed).toBe(1);
+
+    await runner.mutation(api.plateauRuns.cancelPlateauRunCommitment, { plateauRunId });
+    const inventory = await t.run((ctx) => ctx.db.get(inventoryId));
+    expect(inventory).toMatchObject({ owned: 1, committed: 0 });
+  });
+
+  test("applies Soulcaster recovery and returns it after a successful Plateau Run", async () => {
+    const t = convexTest(schema, modules);
+    const playerId = await addPlayer(t, "Soulcast Runner");
+    const { plateauRunId, commitmentId, inventoryId } = await t.run(async (ctx) => {
+      const plateauRunId = await ctx.db.insert("plateauRuns", {
+        status: "open", opensAt: 1, closesAt: 2, resolvesAt: 2,
+        difficulty: 1, spherePool: 1_000, gemheartReward: 1,
+      });
+      const commitmentId = await ctx.db.insert("plateauCommitments", {
+        plateauRunId, playerId, units: { ...emptyUnits(), bridgeman: 10 },
+        power: 10, speed: 10, fabrialKind: "soulcaster", committedAt: 1,
+      });
+      const inventoryId = await ctx.db.insert("playerFabrials", {
+        playerId, kind: "soulcaster", owned: 1, committed: 1,
+        discoveredAt: 1, prototypeGrantedAt: 1, createdAt: 1, updatedAt: 1,
+      });
+      return { plateauRunId, commitmentId, inventoryId };
+    });
+
+    await t.mutation(internal.plateauRuns.resolvePlateauRun, { plateauRunId });
+    const result = await t.run(async (ctx) => ({
+      player: await ctx.db.get(playerId),
+      commitment: await ctx.db.get(commitmentId),
+      inventory: await ctx.db.get(inventoryId),
+      message: await ctx.db.query("messages").first(),
+    }));
+    expect(result.player?.spheres).toBe(505);
+    expect(result.commitment?.fabrialSoulcasterBonus).toBe(495);
+    expect(result.inventory).toMatchObject({ owned: 1, committed: 0 });
+    expect(result.message?.body).toContain("Soulcaster recovered an additional 495 Spheres");
+  });
 });

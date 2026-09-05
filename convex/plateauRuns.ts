@@ -3,7 +3,7 @@ import { internal } from "./_generated/api";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireAdmin } from "./admin";
 import { insertGameEvent } from "./eventHelpers";
-import { requireCurrentPlayer } from "./ownership";
+import { requireCompetitivePlayer, requireCurrentPlayer } from "./ownership";
 import { plateauCountsForPlayer } from "./plateauHelpers";
 import { assignConclave, missionXpBudget, releaseConclave } from "./ardentiaHelpers";
 import { completedResearch } from "./researchHelpers";
@@ -40,6 +40,8 @@ import { applyHostility } from "./worldPressure";
 import { WORLD_PRESSURE_RULES } from "./worldPressureRules";
 import { economyIntelDisclosureLevel } from "./espionageRules";
 import { presentIntelNumber } from "./intelligenceRules";
+import { applyFabrialCasualtyProtection, soulcasterRecovery } from "./fabrialRules";
+import { reserveFabrial, settleReusableFabrial } from "./fabrialHelpers";
 
 function seededInt(seed: string, min: number, max: number) {
   let hash = 0;
@@ -59,7 +61,7 @@ async function activePlayerCount(ctx: MutationCtx, now: number) {
     .query("players")
     .withIndex("by_last_active", (q) => q.gte("lastActiveAt", cutoff))
     .collect();
-  return Math.max(1, activePlayers.length);
+  return Math.max(1, activePlayers.filter((player) => !player.isAdminObserver).length);
 }
 
 async function createPlateauRun(
@@ -265,6 +267,7 @@ export const joinPlateauRun = mutation({
     plateauRunId: v.id("plateauRuns"),
     units: unitCountsValidator,
     conclaveId: v.optional(v.id("ardentConclaves")),
+    fabrial: v.optional(v.union(v.literal("painrial"), v.literal("soulcaster"), v.literal("halfShard"))),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -276,7 +279,7 @@ export const joinPlateauRun = mutation({
       throw new Error("This Plateau Run is already closed.");
     }
 
-    const player = await requireCurrentPlayer(ctx);
+    const player = await requireCompetitivePlayer(ctx);
 
     const existingCommitment = await ctx.db
       .query("plateauCommitments")
@@ -305,6 +308,18 @@ export const joinPlateauRun = mutation({
       Math.round(travelMsForUnits(units, plateauCounts, completed, conclaveCombat) / 60000),
     );
 
+    if (existingCommitment?.fabrialKind !== args.fabrial) {
+      await settleReusableFabrial(
+        ctx,
+        player._id,
+        existingCommitment?.fabrialKind,
+        "clean_success",
+        `plateau-run:${run._id}:replace:${existingCommitment?._id ?? "new"}`,
+        now,
+      );
+      await reserveFabrial(ctx, player._id, args.fabrial, now);
+    }
+
     await ctx.db.patch(player._id, {
       units: remainingUnits,
       lastActiveAt: now,
@@ -318,6 +333,7 @@ export const joinPlateauRun = mutation({
       travelMinutes,
       doctrineJoinSpeedMultiplier: doctrineFromResearch(completed) === "gemheartBaron" ? 2 : 1,
       ...(args.conclaveId ? { conclaveId: args.conclaveId } : {}),
+      ...(args.fabrial ? { fabrialKind: args.fabrial } : {}),
     };
     const commitmentId = existingCommitment
       ? existingCommitment._id
@@ -329,7 +345,11 @@ export const joinPlateauRun = mutation({
         });
     if (existingCommitment) {
       if (existingCommitment.conclaveId && existingCommitment.conclaveId !== args.conclaveId) await releaseConclave(ctx, existingCommitment.conclaveId);
-      await ctx.db.patch(existingCommitment._id, commitment);
+      await ctx.db.patch(existingCommitment._id, {
+        ...commitment,
+        conclaveId: args.conclaveId,
+        fabrialKind: args.fabrial,
+      });
     }
     if (args.conclaveId && existingCommitment?.conclaveId !== args.conclaveId) await assignConclave(ctx, player._id, args.conclaveId, "plateau_run", String(commitmentId));
 
@@ -354,7 +374,7 @@ export const cancelPlateauRunCommitment = mutation({
     if (!run || run.status !== "open" || now > run.closesAt) {
       throw new Error("This Plateau Run has already begun.");
     }
-    const player = await requireCurrentPlayer(ctx);
+    const player = await requireCompetitivePlayer(ctx);
     const commitment = await ctx.db
       .query("plateauCommitments")
       .withIndex("by_run_player", (q) =>
@@ -368,6 +388,7 @@ export const cancelPlateauRunCommitment = mutation({
       lastActiveAt: now,
     });
     await releaseConclave(ctx, commitment.conclaveId);
+    await settleReusableFabrial(ctx, player._id, commitment.fabrialKind, "clean_success", `plateau-run:${run._id}:cancel:${commitment._id}`, now);
     await ctx.db.delete(commitment._id);
     await insertGameEvent(ctx, {
       kind: "plateau_run",
@@ -456,15 +477,29 @@ export const resolvePlateauRun = internalMutation({
         const player = await ctx.db.get(entry.playerId);
         if (!player) continue;
         const completed = await completedResearch(ctx, player._id);
-        const lossResult = applySurvivalLosses(
+        const rawLossResult = applySurvivalLosses(
           entry.units,
           runBaseCasualtyRate,
           `${run._id}:${entry._id}:failed:${now}`,
           completed,
           Boolean(entry.conclaveId),
         );
+        const lossResult = applyFabrialCasualtyProtection(entry.fabrialKind, rawLossResult);
+        const reusable = await settleReusableFabrial(
+          ctx,
+          player._id,
+          entry.fabrialKind,
+          "lower_failure",
+          `plateau-run:${run._id}:${entry._id}:fabrial-loss`,
+          now,
+        );
         const awardedXp = entry.conclaveId ? await releaseConclave(ctx, entry.conclaveId, conclaveXp) : undefined;
-        await ctx.db.patch(entry._id, { conclaveXpAwarded: awardedXp });
+        await ctx.db.patch(entry._id, {
+          conclaveXpAwarded: awardedXp,
+          fabrialResolvedAt: entry.fabrialKind ? now : undefined,
+          fabrialLost: entry.fabrialKind ? reusable.lost : undefined,
+          fabrialPreventedCasualties: entry.fabrialKind ? (entry.fabrialPreventedCasualties ?? 0) + lossResult.prevented : undefined,
+        });
         await ctx.db.patch(player._id, {
           units: addUnits(player.units, lossResult.survivors),
           lastActiveAt: now,
@@ -480,7 +515,7 @@ export const resolvePlateauRun = internalMutation({
           toPlayerId: player._id,
           kind: "system",
           subject: "Plateau Run Failed",
-          body: `The hunt failed: combined Power ${combinedPower.toFixed(2)} did not reach the Chasmfiend's ${run.difficulty} Power. Your contribution: ${effectivePowerText}. Gemheart race: ${speedReport}. Reward: none. Casualties: ${casualtySummary(lossResult.casualties)}.`,
+          body: `The hunt failed: combined Power ${combinedPower.toFixed(2)} did not reach the Chasmfiend's ${run.difficulty} Power. Your contribution: ${effectivePowerText}. Gemheart race: ${speedReport}. Reward: none. Casualties: ${casualtySummary(lossResult.casualties)}.${lossResult.prevented ? ` ${entry.fabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${lossResult.prevented} casualties.` : ""}${reusable.lost ? ` The retreat became chaotic. The ${entry.fabrialKind === "halfShard" ? "Half-Shard" : "Soulcaster"} was lost.` : ""}`,
           eventType: "plateau_run_resolved", destinationView: "plains", destinationTab: "plateau-runs", entityType: "plateau_run", entityId: String(run._id),
           createdAt: now,
         });
@@ -520,13 +555,14 @@ export const resolvePlateauRun = internalMutation({
       if (!player) continue;
       const completed = await completedResearch(ctx, player._id);
 
-      const lossResult = applySurvivalLosses(
+      const rawLossResult = applySurvivalLosses(
         entry.units,
         runBaseCasualtyRate,
         `${run._id}:${entry._id}:success:${now}`,
         completed,
         Boolean(entry.conclaveId),
       );
+      const lossResult = applyFabrialCasualtyProtection(entry.fabrialKind, rawLossResult);
       const isWinner = entry._id === winner._id;
       const availableSphereShare =
         !isWinner && nonWinnerPower > 0
@@ -536,9 +572,30 @@ export const resolvePlateauRun = internalMutation({
             : 0;
       const plunder = unitPlunder(entry.units, completed, Boolean(entry.conclaveId));
       const awardedXp = entry.conclaveId ? await releaseConclave(ctx, entry.conclaveId, conclaveXp) : undefined;
-      await ctx.db.patch(entry._id, { conclaveXpAwarded: awardedXp });
-      const sphereShare = Math.min(availableSphereShare, plunder);
+      const recovery = entry.fabrialKind === "soulcaster"
+        ? soulcasterRecovery(availableSphereShare, plunder, true)
+        : {
+            normalRecovery: Math.min(availableSphereShare, plunder),
+            bonus: 0,
+            totalRecovery: Math.min(availableSphereShare, plunder),
+          };
+      const sphereShare = recovery.totalRecovery;
       const leftBehind = Math.max(0, availableSphereShare - sphereShare);
+      const reusable = await settleReusableFabrial(
+        ctx,
+        player._id,
+        entry.fabrialKind,
+        "normal_success",
+        `plateau-run:${run._id}:${entry._id}:fabrial-loss`,
+        now,
+      );
+      await ctx.db.patch(entry._id, {
+        conclaveXpAwarded: awardedXp,
+        fabrialResolvedAt: entry.fabrialKind ? now : undefined,
+        fabrialLost: entry.fabrialKind ? reusable.lost : undefined,
+        fabrialPreventedCasualties: entry.fabrialKind ? (entry.fabrialPreventedCasualties ?? 0) + lossResult.prevented : undefined,
+        fabrialSoulcasterBonus: entry.fabrialKind ? recovery.bonus : undefined,
+      });
 
       await ctx.db.patch(player._id, {
         units: addUnits(player.units, lossResult.survivors),
@@ -568,7 +625,7 @@ export const resolvePlateauRun = internalMutation({
         toPlayerId: player._id,
         kind: "system",
         subject: isWinner ? "Gemheart Claimed" : "Plateau Run Reward",
-        body: `The hunt succeeded: combined Power ${combinedPower.toFixed(2)} defeated the Chasmfiend's ${run.difficulty} Power. Your contribution: ${effectivePowerText}. Gemheart race: ${speedReport}. Reward: ${rewardReport}. Casualties: ${casualtySummary(lossResult.casualties)}.`,
+        body: `The hunt succeeded: combined Power ${combinedPower.toFixed(2)} defeated the Chasmfiend's ${run.difficulty} Power. Your contribution: ${effectivePowerText}. Gemheart race: ${speedReport}. Reward: ${rewardReport}. Casualties: ${casualtySummary(lossResult.casualties)}.${lossResult.prevented ? ` ${entry.fabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${lossResult.prevented} casualties.` : ""}${recovery.bonus ? ` Your Soulcaster recovered an additional ${recovery.bonus} Spheres beyond the army's normal Plunder capacity.` : ""}`,
         eventType: "plateau_run_resolved", destinationView: "plains", destinationTab: "plateau-runs", entityType: "plateau_run", entityId: String(run._id),
         createdAt: now,
       });

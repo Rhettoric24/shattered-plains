@@ -25,6 +25,7 @@ import {
 } from "./rules";
 import { completedResearch } from "./researchHelpers";
 import { emptyOperatives } from "./espionageRules";
+import { isCurrentIdentityAdmin } from "./admin";
 
 function normalizeName(name: string) {
   return name.trim().toLowerCase();
@@ -39,7 +40,7 @@ async function getMainWorld(ctx: QueryCtx | MutationCtx) {
 
 async function createPlayerForAuth(
   ctx: MutationCtx,
-  args: { name: string; authUserId?: string },
+  args: { name: string; authUserId?: string; isAdminObserver?: boolean },
 ) {
   const now = Date.now();
   const displayName = args.name.trim();
@@ -106,33 +107,37 @@ async function createPlayerForAuth(
     lastEconomyAt: now,
     lastActiveAt: now,
     createdAt: now,
+    ...(args.isAdminObserver ? { isAdminObserver: true } : {}),
     ...(args.authUserId ? { authUserId: args.authUserId } : {}),
   };
 
   const playerId = await ctx.db.insert("players", newPlayer);
-  await createStarterPlateaus(ctx, playerId, now);
-  const existingNeutralPlateaus = await neutralPlateaus(ctx);
-  if (existingNeutralPlateaus.length === 0) {
-    await createSeasonNeutralPlateaus(ctx, 1, now);
-  } else {
-    await createNeutralPlateaus(
-      ctx,
-      STARTING_RULES.neutralPlateausPerNewPlayer,
-      now,
-    );
-  }
+  if (!args.isAdminObserver) {
+    await createStarterPlateaus(ctx, playerId, now);
+    const existingNeutralPlateaus = await neutralPlateaus(ctx);
+    if (existingNeutralPlateaus.length === 0) {
+      await createSeasonNeutralPlateaus(ctx, 1, now);
+    } else {
+      await createNeutralPlateaus(
+        ctx,
+        STARTING_RULES.neutralPlateausPerNewPlayer,
+        now,
+      );
+    }
 
-  await ctx.db.patch(world._id, {
-    openAcres: world.openAcres + STARTING_RULES.openAcresPerNewPlayer,
-    updatedAt: now,
-  });
+    await ctx.db.patch(world._id, {
+      openAcres: world.openAcres + STARTING_RULES.openAcresPerNewPlayer,
+      updatedAt: now,
+    });
+  }
 
   await ctx.db.insert("messages", {
     toPlayerId: playerId,
     kind: "system",
     subject: "Welcome to the Shattered Plains",
-    body:
-      "Your warcamp has been founded with a balanced Home Plateau package, 1,200 spheres, and 1 Gemheart.",
+    body: args.isAdminObserver
+      ? "This administrative observer warcamp is excluded from world population, competitive scoring, and rival targeting."
+      : "Your warcamp has been founded with a balanced Home Plateau package, 1,200 spheres, and 1 Gemheart.",
     eventType: "warcamp_founded",
     destinationView: "home",
     createdAt: now,
@@ -177,7 +182,8 @@ export const createPlayer = mutation({
   },
   handler: async (ctx, args) => {
     const authUserId = await requireAuthUserId(ctx);
-    return await createPlayerForAuth(ctx, { name: args.name, authUserId });
+    const isAdminObserver = await isCurrentIdentityAdmin(ctx);
+    return await createPlayerForAuth(ctx, { name: args.name, authUserId, isAdminObserver });
   },
 });
 
@@ -289,6 +295,7 @@ export const listPlayers = query({
   handler: async (ctx) => {
     const players = await ctx.db.query("players").collect();
     return players
+      .filter((player) => !player.isAdminObserver)
       .map((player) => ({
         _id: player._id,
         name: player.name,
