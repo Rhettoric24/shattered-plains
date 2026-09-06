@@ -38,6 +38,10 @@ describe("post-overhaul shell", () => {
     expect(client).toContain('+ ardentRecruitment + espionageRecruitment');
   });
 
+  test("explains the universal Bridged Plateau travel bonus on Home holdings", () => {
+    expect(client).toContain('-10% all military mission travel (stacks to -30%)');
+  });
+
   test("keeps the pre-release command surfaces concise and reactive", () => {
     expect(client).toContain("const expandedInboxMessageIds = new Set()");
     expect(client).toContain("expandedInboxMessageIds.has(details.dataset.messageId)");

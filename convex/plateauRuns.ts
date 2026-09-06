@@ -220,7 +220,7 @@ export const getCurrent = query({
           committedAt: commitment.committedAt,
           joinOrder: index + 1,
           joinOrderSpeedBonus,
-          speedScore: plateauRunFinalSpeed(commitment.speed, index, commitment.doctrineJoinSpeedMultiplier ?? 1),
+          speedScore: plateauRunFinalSpeed(commitment.speed, index, commitment.doctrineJoinSpeedMultiplier ?? 1, (commitment.bridgedTravelReductionPercent ?? 0) / 100),
           playerName: player?.name ?? "Unknown",
           powerIntel: presentIntelNumber(commitment.power, presentationLevel),
         };
@@ -302,7 +302,7 @@ export const joinPlateauRun = mutation({
     const power = effectivePower(units, completed, conclaveCombat);
     const plateauCounts = await plateauCountsForPlayer(ctx, player._id);
     const bridgedReduction = bridgedTravelReduction(plateauCounts);
-    const speed = effectiveSpeed(units, completed, conclaveCombat) + bridgedReduction * 100;
+    const speed = effectiveSpeed(units, completed, conclaveCombat);
     const travelMinutes = Math.max(
       1,
       Math.round(travelMsForUnits(units, plateauCounts, completed, conclaveCombat) / 60000),
@@ -448,7 +448,7 @@ export const resolvePlateauRun = internalMutation({
         ...commitment,
         joinOrder: index + 1,
         joinOrderSpeedBonus,
-        speedScore: plateauRunFinalSpeed(commitment.speed, index, commitment.doctrineJoinSpeedMultiplier ?? 1),
+        speedScore: plateauRunFinalSpeed(commitment.speed, index, commitment.doctrineJoinSpeedMultiplier ?? 1, (commitment.bridgedTravelReductionPercent ?? 0) / 100),
         effectivePower: commitment.power,
       };
     });
@@ -510,7 +510,7 @@ export const resolvePlateauRun = internalMutation({
         const effectivePowerText = entry._id === fastest._id
           ? `${entry.effectivePower.toFixed(2)} effective Power (${entry.power.toFixed(2)} base plus the 10% fastest-army bonus)`
           : `${entry.effectivePower.toFixed(2)} Power`;
-        const speedReport = `Final Speed ${entry.speedScore.toFixed(2)} (${entry.speed.toFixed(2)} base${entry.joinOrderSpeedBonus > 0 ? ` plus ${Math.round(entry.joinOrderSpeedBonus * 100)}% for joining #${entry.joinOrder}` : ""}), rank ${speedRank} of ${finalEntries.length}`;
+        const speedReport = `Final Speed ${entry.speedScore.toFixed(2)} (${entry.speed.toFixed(2)} army Speed${(entry.bridgedTravelReductionPercent ?? 0) > 0 ? ` plus ${entry.bridgedTravelReductionPercent}% from Bridged Plateaus` : ""}${entry.joinOrderSpeedBonus > 0 ? ` plus ${Math.round(entry.joinOrderSpeedBonus * 100)}% for joining #${entry.joinOrder}` : ""}), rank ${speedRank} of ${finalEntries.length}`;
         await ctx.db.insert("messages", {
           toPlayerId: player._id,
           kind: "system",
@@ -615,7 +615,7 @@ export const resolvePlateauRun = internalMutation({
       const effectivePowerText = isWinner
         ? `${entry.effectivePower.toFixed(2)} effective Power (${entry.power.toFixed(2)} base plus the 10% fastest-army bonus)`
         : `${entry.effectivePower.toFixed(2)} Power`;
-      const speedReport = `Final Speed ${entry.speedScore.toFixed(2)} (${entry.speed.toFixed(2)} base${entry.joinOrderSpeedBonus > 0 ? ` plus ${Math.round(entry.joinOrderSpeedBonus * 100)}% for joining #${entry.joinOrder}` : ""}), rank ${speedRank} of ${finalEntries.length}`;
+      const speedReport = `Final Speed ${entry.speedScore.toFixed(2)} (${entry.speed.toFixed(2)} army Speed${(entry.bridgedTravelReductionPercent ?? 0) > 0 ? ` plus ${entry.bridgedTravelReductionPercent}% from Bridged Plateaus` : ""}${entry.joinOrderSpeedBonus > 0 ? ` plus ${Math.round(entry.joinOrderSpeedBonus * 100)}% for joining #${entry.joinOrder}` : ""}), rank ${speedRank} of ${finalEntries.length}`;
       const rewardReport = isWinner
         ? finalEntries.length === 1
           ? `${run.gemheartReward} Gemheart and ${sphereShare} of ${availableSphereShare} allocated Spheres (Plunder capacity ${plunder})`

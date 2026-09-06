@@ -2761,7 +2761,7 @@ function plateauAttributes(plateau) {
 
 function plateauBonusLabel(plateau) {
   if (plateau.type === "sphere") return "+10% passive Sphere income";
-  if (plateau.type === "bridged" || plateau.type === "training") return "-10% Raid and Plateau Run travel";
+  if (plateau.type === "bridged" || plateau.type === "training") return "-10% all military mission travel (stacks to -30%)";
   if (plateau.type === "gemheart") return "1 Gemheart every 12 real hours";
   if (plateau.type === "ancient" || plateau.type === "ancient_ruins") return Number(state.me.buildings.ardentMonastery || 0) > 0 ? "Research requirements and scholarship" : "???";
   return "No active bonus";

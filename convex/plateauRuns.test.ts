@@ -111,6 +111,12 @@ describe("Plateau Run join order and winner selection", () => {
     expect([0, 1, 2, 3].map((index) => plateauRunFinalSpeed(100, index))).toEqual([110.00000000000001, 107, 105, 100]);
   });
 
+  test("applies Bridged Plateaus as a true percentage to Plateau Run Speed", () => {
+    expect(plateauRunFinalSpeed(100, 3, 1, 0.1)).toBeCloseTo(110);
+    expect(plateauRunFinalSpeed(40, 3, 1, 0.2)).toBeCloseTo(48);
+    expect(plateauRunFinalSpeed(100, 0, 1, 0.1)).toBeCloseTo(121);
+  });
+
   test("awards the Gemheart to a later joiner with the highest final Speed", async () => {
     const result = await resolveTwoPlayerRun({ firstPower: 100, firstSpeed: 100, secondPower: 20, secondSpeed: 120 });
     expect(result.run?.winnerPlayerId).toBe(result.second?._id);

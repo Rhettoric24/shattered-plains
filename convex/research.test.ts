@@ -110,6 +110,14 @@ describe("permanent mechanic effects", () => {
     expect(improved).toBeLessThan(baseline);
   });
 
+  test("each Bridged Plateau removes 10% from every shared military travel clock, capped at 30%", () => {
+    const baseMs = 60 * 60 * 1000;
+    const counts = (bridged: number) => ({ sphere: 0, bridged, gemheart: 0, ancient: 0 });
+    expect(missionMsForBase(baseMs, {}, counts(1))).toBe(baseMs * 0.9);
+    expect(missionMsForBase(baseMs, {}, counts(2))).toBe(baseMs * 0.8);
+    expect(missionMsForBase(baseMs, {}, counts(4))).toBe(baseMs * 0.7);
+  });
+
   test("Field Surgery uses per-Spearman Survive without adding Power", () => {
     const baseline = applySurvivalLosses(units, 0.5, "same-seed");
     const researched = applySurvivalLosses(units, 0.5, "same-seed", { painrialMedicine: 3 });

@@ -259,8 +259,9 @@ export function plateauRunJoinSpeedBonus(joinIndex: number, multiplier = 1) {
   return (PLATEAU_RUN_RULES.joinOrderSpeedBonuses[joinIndex] ?? 0) * multiplier;
 }
 
-export function plateauRunFinalSpeed(speed: number, joinIndex: number, multiplier = 1) {
-  return speed * (1 + plateauRunJoinSpeedBonus(joinIndex, multiplier));
+export function plateauRunFinalSpeed(speed: number, joinIndex: number, multiplier = 1, bridgedReduction = 0) {
+  const bridgedSpeedMultiplier = 1 + Math.max(0, Math.min(PLATEAU_RULES.bridgedTravelReductionMax, bridgedReduction));
+  return speed * bridgedSpeedMultiplier * (1 + plateauRunJoinSpeedBonus(joinIndex, multiplier));
 }
 
 export const PLATEAU_RUN_SCHEDULE = [
