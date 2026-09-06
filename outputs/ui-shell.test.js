@@ -64,6 +64,14 @@ describe("post-overhaul shell", () => {
     expect(html).toContain("the storm lasts 2 real hours");
   });
 
+  test("detects and repairs notification subscriptions from an older signing identity", () => {
+    expect(client).toContain("function pushSubscriptionMatchesCurrentKey(subscription)");
+    expect(client).toContain("!pushSubscriptionMatchesCurrentKey(subscription)");
+    expect(client).toContain("await subscription.unsubscribe()");
+    expect(client).toContain('"Reconnect notifications"');
+    expect(client).toContain("older notification registration");
+  });
+
   test("explains the universal Bridged Plateau travel bonus on Home holdings", () => {
     expect(client).toContain('-10% all military mission travel (stacks to -30%)');
   });

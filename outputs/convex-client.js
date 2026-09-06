@@ -2540,12 +2540,30 @@ function urlBase64ToUint8Array(value) {
   return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
 }
 
+function uint8ArrayToUrlBase64(value) {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value || []);
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function pushSubscriptionMatchesCurrentKey(subscription) {
+  const key = subscription?.options?.applicationServerKey;
+  if (!key || !state.vapidPublicKey) return true;
+  return uint8ArrayToUrlBase64(key) === state.vapidPublicKey.replace(/=+$/, "");
+}
+
 async function enablePushNotifications() {
   if (!state.vapidPublicKey) throw new Error("Push delivery is not configured on the server yet.");
   const permission = await Notification.requestPermission();
   if (permission !== "granted") throw new Error("Notification permission was not granted.");
   const registration = await navigator.serviceWorker.ready;
   let subscription = await registration.pushManager.getSubscription();
+  if (subscription && !pushSubscriptionMatchesCurrentKey(subscription)) {
+    await client.mutation(refs.removePushDevice, { endpoint: subscription.endpoint }).catch(() => null);
+    await subscription.unsubscribe();
+    subscription = null;
+  }
   if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(state.vapidPublicKey) });
   const json = subscription.toJSON();
   await client.mutation(refs.registerPushDevice, {
@@ -2565,10 +2583,12 @@ async function disablePushNotifications() {
 async function updatePushControls() {
   const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
   const subscription = supported ? await currentPushSubscription().catch(() => null) : null;
-  $("enable-push")?.classList.toggle("hidden", !supported || Boolean(subscription));
+  const needsReconnect = Boolean(subscription && !pushSubscriptionMatchesCurrentKey(subscription));
+  $("enable-push")?.classList.toggle("hidden", !supported || Boolean(subscription && !needsReconnect));
   $("disable-push")?.classList.toggle("hidden", !subscription);
+  if ($("enable-push")) $("enable-push").textContent = needsReconnect ? "Reconnect notifications" : "Enable notifications";
   const support = $("notification-support");
-  if (support) support.textContent = !supported ? "This browser does not support background web notifications." : subscription ? "Background notifications are enabled on this device." : /iPad|iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone ? "On iPhone or iPad, add the game to your Home Screen before enabling notifications." : state.vapidPublicKey ? "Enable this device to receive alerts while the game is closed." : "Push keys must be configured by the game administrator before devices can be enabled.";
+  if (support) support.textContent = !supported ? "This browser does not support background web notifications." : needsReconnect ? "This device has an older notification registration. Reconnect it to receive background alerts." : subscription ? "Background notifications are enabled on this device." : /iPad|iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone ? "On iPhone or iPad, add the game to your Home Screen before enabling notifications." : state.vapidPublicKey ? "Enable this device to receive alerts while the game is closed." : "Push keys must be configured by the game administrator before devices can be enabled.";
   if (subscription) {
     const device = state.notificationDevices.find((entry) => entry.endpoint === subscription.endpoint);
     if (device) $("notification-sound").checked = device.soundEnabled;

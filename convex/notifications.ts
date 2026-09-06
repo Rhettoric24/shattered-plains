@@ -5,6 +5,7 @@ import { paginationOptsValidator } from "convex/server";
 import { internal } from "./_generated/api";
 import { requireCurrentPlayer } from "./ownership";
 import { createNotification } from "./notificationHelpers";
+import { normalizeVapidKey } from "./pushKeys";
 
 const categoryArgs = {
   combat: v.boolean(), missions: v.boolean(), research: v.boolean(),
@@ -48,17 +49,18 @@ export const list = query({
         id: entry._id, endpoint: entry.endpoint, deviceLabel: entry.deviceLabel,
         soundEnabled: entry.soundEnabled, lastSeenAt: entry.lastSeenAt,
       })),
-      vapidPublicKey: env.VAPID_PUBLIC_KEY ?? null,
+      vapidPublicKey: normalizeVapidKey(env.VAPID_PUBLIC_KEY) ?? null,
     };
   },
 });
 
 export const getPushConfiguration = query({
   args: {},
-  handler: async () => ({
-    vapidPublicKey: env.VAPID_PUBLIC_KEY ?? null,
-    configured: Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY),
-  }),
+  handler: async () => {
+    const vapidPublicKey = normalizeVapidKey(env.VAPID_PUBLIC_KEY);
+    const vapidPrivateKey = normalizeVapidKey(env.VAPID_PRIVATE_KEY);
+    return { vapidPublicKey: vapidPublicKey ?? null, configured: Boolean(vapidPublicKey && vapidPrivateKey) };
+  },
 });
 
 export const markRead = mutation({

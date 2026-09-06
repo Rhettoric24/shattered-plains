@@ -4,12 +4,13 @@ import { v } from "convex/values";
 import webpush from "web-push";
 import { internal } from "./_generated/api";
 import { env, internalAction } from "./_generated/server";
+import { normalizeVapidKey } from "./pushKeys";
 
 export const deliver = internalAction({
   args: { notificationId: v.id("notifications") },
   handler: async (ctx, args) => {
-    const publicKey = env.VAPID_PUBLIC_KEY;
-    const privateKey = env.VAPID_PRIVATE_KEY;
+    const publicKey = normalizeVapidKey(env.VAPID_PUBLIC_KEY);
+    const privateKey = normalizeVapidKey(env.VAPID_PRIVATE_KEY);
     if (!publicKey || !privateKey) return { delivered: 0, disabled: 0, configured: false };
     webpush.setVapidDetails(env.VAPID_SUBJECT || "mailto:admin@shattered-plains.invalid", publicKey, privateKey);
     const data = await ctx.runQuery(internal.notifications.deliveryData, { notificationId: args.notificationId });
