@@ -38,6 +38,32 @@ describe("post-overhaul shell", () => {
     expect(client).toContain('+ ardentRecruitment + espionageRecruitment');
   });
 
+  test("keeps specialist strength secret until its building unlocks", () => {
+    expect(client).toContain('if (Number(state.me.buildings?.ardentMonastery || 0) > 0) strengthRows.push');
+    expect(client).toContain('if (Number(state.espionage?.networkLevel || 0) > 0) strengthRows.push');
+    expect(client).toContain('kingdomSummary.innerHTML = strengthRows.join("")');
+  });
+
+  test("lets the locked Intelligence space offer a thematic hint", () => {
+    expect(client).toContain('intelNav.dataset.intelligenceTeaser = "true"');
+    expect(client).toContain('delete intelNav.dataset.routeView');
+    expect(client).toContain("Political machinations take time to gather momentum.");
+    expect(client).toContain("Build a Ghostblood Network");
+    expect(client).toContain("Watchtower");
+  });
+
+  test("explains Hostility from both its global and Home surfaces", () => {
+    expect(html.match(/data-hostility-explanation/g)?.length).toBe(2);
+    expect(client).toContain("Hostility is shared world pressure from 0–100.");
+    expect(client).toContain("At Agitated (34), retaliations can begin.");
+    expect(client).toContain("At Vengeful (68), the Deep Plains open.");
+  });
+
+  test("clarifies Highstorm start time and duration", () => {
+    expect(html).toContain("forecasts when the Highstorm begins");
+    expect(html).toContain("the storm lasts 2 real hours");
+  });
+
   test("explains the universal Bridged Plateau travel bonus on Home holdings", () => {
     expect(client).toContain('-10% all military mission travel (stacks to -30%)');
   });

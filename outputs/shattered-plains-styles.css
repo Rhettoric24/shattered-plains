@@ -130,9 +130,13 @@ h3 { font-size: 1rem; color: var(--accent); }
 .resource-strip article.warning strong { color: #ffd88a; }
 .resource-strip span { display: block; color: var(--muted); font-size: 0.72rem; font-weight: 850; }
 .resource-strip strong { display: block; margin-top: 5px; color: var(--text); font-size: 1.1rem; }
-.hostility-panel { border-color: rgba(255, 216, 138, 0.28); }
+.hostility-panel { border-color: rgba(255, 216, 138, 0.28); cursor: help; }
+.hostility-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .hostility-meter { overflow: hidden; height: 12px; border: 1px solid rgba(255, 216, 138, 0.4); border-radius: 999px; background: rgba(7, 17, 31, 0.85); }
 .hostility-meter span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #7fb7ff 0%, #ffd88a 55%, #e86b58 100%); transition: width 220ms ease; }
+.nav-button.disclosure-locked { border-style: dashed; color: rgba(184,199,216,.68); }
+.storm-timing-note { margin: 0 0 1rem; color: var(--muted); line-height: 1.5; }
+.storm-timing-note strong { color: var(--accent); }
 .dashboard-header { position: relative; z-index: 2; display: flex; align-items: center; gap: 14px; min-height: 54px; margin: 0; padding: 7px 9px; border-bottom: 1px solid rgba(127, 183, 255, 0.18); background: transparent; }
 .player-chip { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 44px; min-height: 42px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(7, 17, 31, 0.7); }
 .view { display: none; }

@@ -886,10 +886,21 @@ function renderNavStates() {
   const intel = intelligenceUnlocks();
   const intelligenceRevealed = intel.network || intel.watchtower;
   if (intelNav) {
-    intelNav.disabled = !intelligenceRevealed;
+    if (intelligenceRevealed) intelNav.dataset.routeView = "intelligence";
+    else delete intelNav.dataset.routeView;
     intelNav.dataset.routeTab = intel.network ? "ledger" : "territory";
-    intelNav.title = intelligenceRevealed ? "Intelligence" : "Establish an intelligence network to reveal this space.";
-    intelNav.setAttribute("aria-label", intelligenceRevealed ? "Intelligence" : "Unknown game space");
+    intelNav.classList.toggle("disclosure-locked", !intelligenceRevealed);
+    if (intelligenceRevealed) {
+      delete intelNav.dataset.intelligenceTeaser;
+      intelNav.title = "Intelligence";
+      intelNav.setAttribute("aria-label", "Intelligence");
+      intelNav.removeAttribute("aria-disabled");
+    } else {
+      intelNav.dataset.intelligenceTeaser = "true";
+      intelNav.title = "Political machinations take time to gather momentum.";
+      intelNav.setAttribute("aria-label", "Unknown game space. Tap for a hint.");
+      intelNav.setAttribute("aria-disabled", "true");
+    }
   }
   if (intelLabel) intelLabel.textContent = intelligenceRevealed ? "Intel" : "???";
 }
@@ -1488,7 +1499,6 @@ function attachRecruitmentControls() {
     const input = card.querySelector("[data-recruit-quantity]");
     if (!input) return;
     const update = (value) => { input.value = String(Math.max(0, Math.floor(Number(value) || 0))); lastSelections.recruitment[key] = input.value; renderRecruitmentPreview(card, key); };
-    bindQuantityControls(card);
     input.addEventListener("input", () => update(input.value));
     card.querySelector("[data-recruit-submit]").addEventListener("click", () => action(async () => { await client.mutation(refs.trainUnit, { unit: key, count: Number(input.value) }); lastSelections.recruitment[key] = 0; }));
     renderRecruitmentPreview(card, key);
@@ -2619,12 +2629,14 @@ function renderOverview() {
   ];
   const establishedBuildings = Object.values(state.me.buildings || {}).reduce((sum, level) => sum + Math.max(0, Number(level) || 0), 0);
   const kingdomSummary = $("kingdom-summary");
-  if (kingdomSummary) kingdomSummary.innerHTML =
+  const strengthRows = [
     '<button type="button" class="compact-status-row" data-route-view="warcamp" data-route-tab="recruitment"><span><strong>' + number(state.me.totalAvailableUnits) + ' units ready</strong><small>' + formatStat(state.me.power) + ' ready Power · ' + number(sumUnits(state.me.unitsAway)) + ' units away</small></span><span class="status-badge">Recruitment</span></button>' +
-    '<button type="button" class="compact-status-row" data-route-view="warcamp" data-route-tab="buildings"><span><strong>' + number(state.me.totalIncomePerDay) + ' Spheres / day</strong><small>' + number(establishedBuildings) + ' established building levels · ' + modifierLabel(state.me.plateauBonuses.sphereIncomeBonusPercent, "+") + ' plateau income</small></span><span class="status-badge">Warcamp</span></button>' +
-    '<button type="button" class="compact-status-row" data-route-view="research" data-route-tab="ardents"><span><strong>' + number(state.ardentia?.owned || 0) + ' Scout Conclave' + (Number(state.ardentia?.owned || 0) === 1 ? '' : 's') + '</strong><small>' + number(state.ardentia?.ready || 0) + ' ready · +' + number(state.research?.speed?.conclave || 0) + '% active Research speed</small></span><span class="status-badge">Ardents</span></button>' +
-    '<button type="button" class="compact-status-row" data-route-view="home" data-focus="owned-plateaus"><span><strong>' + number(state.plateaus.mine.length) + ' plateaus held</strong><small>' + bonusLines.map(([name, value]) => name + ' ' + value).join(' · ') + '</small></span><span class="status-badge">Territory</span></button>' +
-    '<button type="button" class="compact-status-row" data-route-view="intelligence" data-route-tab="operations"><span><strong>' + number(Object.values(state.espionage?.available || {}).reduce((sum, count) => sum + Number(count || 0), 0)) + ' operatives ready</strong><small>Network level ' + number(state.espionage?.networkLevel || 0) + ' · ' + number(Object.values(state.espionage?.defending || {}).reduce((sum, count) => sum + Number(count || 0), 0)) + ' defending · ' + number((state.espionage?.missions || []).filter((mission) => mission.status === "pending").length) + ' operations underway</small></span><span class="status-badge">Espionage</span></button>';
+    '<button type="button" class="compact-status-row" data-route-view="warcamp" data-route-tab="buildings"><span><strong>' + number(state.me.totalIncomePerDay) + ' Spheres / day</strong><small>' + number(establishedBuildings) + ' established building levels · ' + modifierLabel(state.me.plateauBonuses.sphereIncomeBonusPercent, "+") + ' plateau income</small></span><span class="status-badge">Warcamp</span></button>',
+  ];
+  if (Number(state.me.buildings?.ardentMonastery || 0) > 0) strengthRows.push('<button type="button" class="compact-status-row" data-route-view="research" data-route-tab="ardents"><span><strong>' + number(state.ardentia?.owned || 0) + ' Scout Conclave' + (Number(state.ardentia?.owned || 0) === 1 ? '' : 's') + '</strong><small>' + number(state.ardentia?.ready || 0) + ' ready · +' + number(state.research?.speed?.conclave || 0) + '% active Research speed</small></span><span class="status-badge">Ardents</span></button>');
+  strengthRows.push('<button type="button" class="compact-status-row" data-route-view="home" data-focus="owned-plateaus"><span><strong>' + number(state.plateaus.mine.length) + ' plateaus held</strong><small>' + bonusLines.map(([name, value]) => name + ' ' + value).join(' · ') + '</small></span><span class="status-badge">Territory</span></button>');
+  if (Number(state.espionage?.networkLevel || 0) > 0) strengthRows.push('<button type="button" class="compact-status-row" data-route-view="intelligence" data-route-tab="operations"><span><strong>' + number(Object.values(state.espionage?.available || {}).reduce((sum, count) => sum + Number(count || 0), 0)) + ' operatives ready</strong><small>Network level ' + number(state.espionage?.networkLevel || 0) + ' · ' + number(Object.values(state.espionage?.defending || {}).reduce((sum, count) => sum + Number(count || 0), 0)) + ' defending · ' + number((state.espionage?.missions || []).filter((mission) => mission.status === "pending").length) + ' operations underway</small></span><span class="status-badge">Espionage</span></button>');
+  if (kingdomSummary) kingdomSummary.innerHTML = strengthRows.join("");
   const operations = [];
   if (state.research?.active) operations.push({ label: "Active Research", detail: state.research.active.kind === "project" ? (state.research.rules?.projects?.[state.research.active.project]?.name || "Research") : (state.research.doctrines?.[state.research.active.doctrine]?.name || "Doctrine"), at: state.research.active.projectedCompletionAt || Date.now(), view: "research" });
   state.raids.filter((raid) => raid.attackerId === state.me.id).forEach((raid) => operations.push({ label: "Sphere raid", detail: raid.targetName, at: raid.arrivalAt, view: "raids" }));
@@ -2674,6 +2686,8 @@ function renderHostility() {
     ? ' Peaceful decay in <b data-local-countdown-at="' + Number(pressure.nextDecayAt) + '">' + formatDuration(Math.max(0, Math.ceil((pressure.nextDecayAt - Date.now()) / 60000))) + '</b>.'
     : "";
   if ($("hostility-summary")) $("hostility-summary").innerHTML = '<strong>' + escapeHtml(nextState) + '</strong><span>Neutral conquest, raids, Plateau Run victories, and Deep Plains operations raise Hostility.' + decay + '</span>';
+  const explanation = 'Hostility is shared world pressure from 0–100. Aggressive victories by any player raise it for everyone; long peaceful stretches lower it. Higher Hostility makes Parshendi raids and expeditions more dangerous but more rewarding. At Agitated (34), retaliations can begin. At Vengeful (68), the Deep Plains open.';
+  document.querySelectorAll("[data-hostility-explanation]").forEach((element) => { element.dataset.uiExplanation = explanation; element.title = explanation; });
 
   const warning = pressure.warning;
   const warningPanel = $("retaliation-warning-panel");
@@ -3913,6 +3927,16 @@ function updateLocalTimePresentation() {
 }
 document.addEventListener("click", (event) => {
   if (event.target.closest("#tap-tooltip")) return;
+  const intelligenceTeaser = event.target.closest("[data-intelligence-teaser]");
+  if (intelligenceTeaser) {
+    showTapTooltip("Political machinations take time to gather momentum. Build a Ghostblood Network to enter the bloodbath of the underhanded—or a Watchtower to begin gathering territory intelligence.", intelligenceTeaser);
+    return;
+  }
+  const explained = event.target.closest("[data-ui-explanation]");
+  if (explained) {
+    showTapTooltip(explained.dataset.uiExplanation, explained);
+    return;
+  }
   const calculation = event.target.closest(".stat-cell[title], .outlook-cell[title], .research-time-cell[title]");
   if (calculation) {
     showTapTooltip(calculation.getAttribute("title"), calculation);
@@ -3932,7 +3956,17 @@ document.addEventListener("click", (event) => {
   showTapTooltip(text, target);
 });
 $("close-tap-tooltip")?.addEventListener("click", hideTapTooltip);
-document.addEventListener("keydown", (event) => { if (event.key === "Escape") hideTapTooltip(); });
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") return hideTapTooltip();
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const target = event.target.closest?.("[data-intelligence-teaser], [data-ui-explanation]");
+  if (!target) return;
+  event.preventDefault();
+  const text = target.matches("[data-intelligence-teaser]")
+    ? "Political machinations take time to gather momentum. Build a Ghostblood Network to enter the bloodbath of the underhanded—or a Watchtower to begin gathering territory intelligence."
+    : target.dataset.uiExplanation;
+  showTapTooltip(text, target);
+});
 window.addEventListener("resize", () => {
   const notificationsOpen = !$("notification-panel")?.classList.contains("hidden");
   if (notificationsOpen) placeNotificationPanelForLayout();

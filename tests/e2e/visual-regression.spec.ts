@@ -525,6 +525,39 @@ test("primary navigation reaches every representative view", async ({ page }) =>
   }
 });
 
+test("recruitment quantity buttons apply the selected step exactly once", async ({ page }) => {
+  await destinations.find((destination) => destination.name === "warcamp-recruitment")!.open(page);
+  const control = page.locator('[data-recruitment-group="military"] [data-quantity-control]').first();
+  const input = control.locator("[data-quantity-input]");
+  const maximum = Number(await input.getAttribute("max"));
+  test.skip(maximum < 100, "seeded player needs capacity for every recruitment step");
+
+  for (const step of [1, 10, 50, 100]) {
+    await input.fill("0");
+    await control.locator(`[data-quantity-step="${step}"]`).click();
+    await control.locator('[data-quantity-adjust="1"]').click();
+    await expect(input).toHaveValue(String(step));
+    await control.locator('[data-quantity-adjust="-1"]').click();
+    await expect(input).toHaveValue("0");
+  }
+});
+
+test("Hostility and Highstorm teaching surfaces work by touch", async ({ page }) => {
+  await page.locator("#res-hostility-card").click();
+  await expect(page.locator("#tap-tooltip")).toBeVisible();
+  await expect(page.locator("#tap-tooltip-content")).toContainText("shared world pressure");
+  await expect(page.locator("#tap-tooltip-content")).toContainText("retaliations can begin");
+
+  await page.locator("#close-tap-tooltip").click();
+  await page.locator("#home-hostility .hostility-meter").click();
+  await expect(page.locator("#tap-tooltip-content")).toContainText("Deep Plains open");
+
+  await page.locator("#highstorm-indicator").click();
+  await expect(page.locator("#storm-details")).toBeVisible();
+  await expect(page.locator("#storm-details")).toContainText("when the Highstorm begins");
+  await expect(page.locator("#storm-details")).toContainText("lasts 2 real hours");
+});
+
 test("every accessible tab keeps the global shell at a stable height", async ({ page }) => {
   const shellParts = ["#global-shell", ".dashboard-header", ".resource-strip", "#space-subnav:not(.hidden)"];
   const heights = async () => Promise.all(shellParts.map(async (selector) => {
