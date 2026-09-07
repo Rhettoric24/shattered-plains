@@ -79,9 +79,14 @@ Completed production preparation:
 
 Remaining before friend invitations:
 
--   Run the production auth/new-account smoke test.
+-   ✅ Run the production auth/new-account smoke test.
 -   ✅ Change the Pages workflow backend from Yak to Buzzard explicitly.
--   Publish the production frontend and smoke-test the live PWA.
+-   ✅ Publish the production frontend and smoke-test the live PWA.
+-   ✅ Verify background push delivery through Buzzard and Apple Push.
+-   ✅ Create the friend-test release checkpoint and production snapshot.
+
+Friend-test release details and accepted limitations are recorded in
+`docs/FRIEND_TEST_RELEASE.md`.
 
 # FRIEND TEST
 
