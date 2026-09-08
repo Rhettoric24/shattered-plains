@@ -52,11 +52,12 @@ describe("post-overhaul shell", () => {
     expect(client).toContain("Watchtower");
   });
 
-  test("explains Hostility from both its global and Home surfaces", () => {
+  test("explains individual Hostility from both its header and Home surfaces", () => {
     expect(html.match(/data-hostility-explanation/g)?.length).toBe(2);
-    expect(client).toContain("Hostility is shared world pressure from 0–100.");
-    expect(client).toContain("At Agitated (34), retaliations can begin.");
-    expect(client).toContain("At Vengeful (68), the Deep Plains open.");
+    expect(client).toContain("Hostility is your kingdom’s individual pressure from 0–100.");
+    expect(client).toContain("other players’ actions do not affect your Hostility.");
+    expect(client).toContain("At Agitated (34), retaliations against your holdings can begin.");
+    expect(client).toContain("At Vengeful (68), the Deep Plains open for you.");
   });
 
   test("clarifies Highstorm start time and duration", () => {

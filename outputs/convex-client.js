@@ -2706,7 +2706,7 @@ function renderHostility() {
     ? ' Peaceful decay in <b data-local-countdown-at="' + Number(pressure.nextDecayAt) + '">' + formatDuration(Math.max(0, Math.ceil((pressure.nextDecayAt - Date.now()) / 60000))) + '</b>.'
     : "";
   if ($("hostility-summary")) $("hostility-summary").innerHTML = '<strong>' + escapeHtml(nextState) + '</strong><span>Neutral conquest, raids, Plateau Run victories, and Deep Plains operations raise Hostility.' + decay + '</span>';
-  const explanation = 'Hostility is shared world pressure from 0–100. Aggressive victories by any player raise it for everyone; long peaceful stretches lower it. Higher Hostility makes Parshendi raids and expeditions more dangerous but more rewarding. At Agitated (34), retaliations can begin. At Vengeful (68), the Deep Plains open.';
+  const explanation = 'Hostility is your kingdom’s individual pressure from 0–100. Your aggressive victories raise it; other players’ actions do not affect your Hostility. Long peaceful stretches lower it. Higher Hostility makes your Parshendi raids and expeditions more dangerous but more rewarding. At Agitated (34), retaliations against your holdings can begin. At Vengeful (68), the Deep Plains open for you.';
   document.querySelectorAll("[data-hostility-explanation]").forEach((element) => { element.dataset.uiExplanation = explanation; element.title = explanation; });
 
   const warning = pressure.warning;
