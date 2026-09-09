@@ -1109,9 +1109,9 @@ function buildingEffectValues(key, level) {
   if (key === "watchtower") {
     const effects = [
       "No passive territory survey · Highstorm arrival within about 4 hours",
-      "Reveals plateau names, types, attributes, and broad resistance ranges · Highstorm arrival within about 2 hours",
-      "Adds narrow resistance estimates · Highstorm arrival within about 1 hour",
-      "Maintains narrow estimates and adds +1 Counter-Intelligence · Exact Highstorm arrival time",
+      "Reveals plateau names, types, attributes, and broad resistance ranges · View other players’ Parshendi sphere raids · Highstorm arrival within about 2 hours",
+      "Adds narrow resistance estimates · View other players’ Parshendi sphere raids · Highstorm arrival within about 1 hour",
+      "Maintains narrow estimates and adds +1 Counter-Intelligence · View other players’ Parshendi sphere raids · Exact Highstorm arrival time",
     ];
     return {
       current: effects[Math.min(3, level)],
@@ -1129,7 +1129,9 @@ function buildingEffectValues(key, level) {
   if (key === "espionageNetwork") {
     const caps = [0, 50, 100, 150];
     const boosts = [0, 5, 10, 15];
-    return { current: level ? caps[Math.min(3, level)] + " Intel/rival · +" + boosts[Math.min(3, level)] + " mission boost" : "Espionage unavailable", next: caps[Math.min(3, level + 1)] + " Intel/rival · +" + boosts[Math.min(3, level + 1)] + " mission boost" };
+    const recruits = ["", "Informants", "Informants and Spies", "Informants, Spies, and Ghostbloods"];
+    const unlocks = ["", "Informants", "Spies", "Ghostbloods"];
+    return { current: level ? "Recruit " + recruits[Math.min(3, level)] + " · " + caps[Math.min(3, level)] + " Intel/rival · +" + boosts[Math.min(3, level)] + " mission boost" : "Espionage unavailable", next: "Unlocks " + unlocks[Math.min(3, level + 1)] + " · " + caps[Math.min(3, level + 1)] + " Intel/rival · +" + boosts[Math.min(3, level + 1)] + " mission boost" };
   }
   const current = soulcastBunkerCapacity(level);
   const next = soulcastBunkerCapacity(level + 1);
