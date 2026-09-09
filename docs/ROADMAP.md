@@ -134,6 +134,10 @@ addresses Sphere abundance.
 
 # LATER
 
+-   Test casualty lottery balance: evaluate whether selected units (such as
+    Shardbearers) should receive deliberate survival preference while preserving
+    total casualty counts. Observe the fair lottery first; no unit preference
+    is implemented now.
 -   Narak/shared endgame
 -   Great Fabrials
 -   Fourth Bridge

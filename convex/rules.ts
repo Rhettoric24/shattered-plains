@@ -762,6 +762,23 @@ function seededUnitRoll(seed: string) {
   return (hash >>> 0) / 4294967296;
 }
 
+function casualtyShuffleRandom(seed: string) {
+  // Mulberry32 advances one shared stream: similar troop names/indices must
+  // not become correlated rankings. Keep this separate from casualty rounding.
+  let state = seededUnitRoll(`${seed}:shuffle`) * 4294967296;
+  return (bound: number) => {
+    const limit = 4294967296 - (4294967296 % bound);
+    let value: number;
+    do {
+      state = (state + 0x6d2b79f5) | 0;
+      let mixed = Math.imul(state ^ (state >>> 15), state | 1);
+      mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), mixed | 61);
+      value = (mixed ^ (mixed >>> 14)) >>> 0;
+    } while (value >= limit);
+    return value % bound;
+  };
+}
+
 export function applySurvivalLosses(
   units: Partial<UnitCounts>,
   baseCasualtyRate: number,
@@ -792,18 +809,15 @@ export function applySurvivalLosses(
     seededUnitRoll(`${seed}:rounding`) < expectedCasualties - wholeCasualties ? 1 : 0;
   const casualtyCount = Math.min(unitPool.length, wholeCasualties + fractionalCasualty);
 
-  const lost = unitPool
-    .map((key, index) => ({
-      key,
-      order: seededUnitRoll(`${seed}:casualty:${key}:${index}`),
-      index,
-    }))
-    .sort((left, right) => left.order - right.order)
-    .slice(0, casualtyCount);
+  const randomIndex = casualtyShuffleRandom(seed);
+  for (let index = unitPool.length - 1; index > 0; index -= 1) {
+    const other = randomIndex(index + 1);
+    [unitPool[index], unitPool[other]] = [unitPool[other], unitPool[index]];
+  }
 
-  for (const entry of lost) {
-    survivors[entry.key] -= 1;
-    casualties[entry.key] += 1;
+  for (const key of unitPool.slice(0, casualtyCount)) {
+    survivors[key] -= 1;
+    casualties[key] += 1;
   }
 
   return {
