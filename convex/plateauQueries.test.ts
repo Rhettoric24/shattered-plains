@@ -102,9 +102,10 @@ describe("scoped plateau queries", () => {
     expect(boards[2].neutral[0]).toMatchObject({
       _id: plateauId, name: "The Broken Crown", type: "sphere", highground: true, large: true,
       resistance: { mode: "estimate", label: "Defended", min: 258, max: 316 },
-      baseNeutralDefense: 321, parshendiReclamationCount: 2,
+
     });
-    expect(boards[3].neutral[0]).toEqual(boards[2].neutral[0]);
+    expect(boards[2].neutral[0]).not.toHaveProperty("baseNeutralDefense");
+    expect(boards[3].neutral[0].resistance).toEqual({ mode: "exact", label: "Defended", value: 287 });
   });
 
   test("territory dossiers do not leak a plateau name or traits before level one", async () => {
@@ -167,7 +168,7 @@ describe("scoped plateau queries", () => {
     expect((await player.query(api.intelligence.listDossiers, {})).territories).toHaveLength(0);
   });
 
-  test("Siege and Territory Intelligence share the same best valid resistance report", async () => {
+  test("Siege and Territory Intelligence share Watchtower disclosure even with an exact legacy report", async () => {
     const t = convexTest(schema, modules);
     const subject = "shared-territory-disclosure";
     const viewerId = await addPlayer(t, subject, "Viewer", 0);
@@ -190,7 +191,7 @@ describe("scoped plateau queries", () => {
       player.query(api.plateaus.getSiegeBoard, {}),
       player.query(api.intelligence.listDossiers, {}),
     ]);
-    expect(board.neutral.find((plateau) => plateau._id === plateauId)?.resistance).toEqual({ mode: "exact", label: "Fortified", value: 527 });
-    expect(dossiers.territories.find((report) => report.plateauId === plateauId)?.resistance).toEqual({ mode: "exact", label: "Fortified", value: 527 });
+    expect(board.neutral.find((plateau) => plateau._id === plateauId)?.resistance).toEqual({ mode: "label", label: "Defended" });
+    expect(dossiers.territories.find((report) => report.plateauId === plateauId)?.resistance).toEqual({ mode: "label", label: "Defended" });
   });
 });

@@ -57,7 +57,7 @@ export const listDossiers = query({
         plateauType: level >= 1 ? report.plateauType ?? null : null,
         highground: level >= 1 ? report.highground ?? false : false,
         large: level >= 1 ? report.large ?? false : false,
-        bonusFactText: report.bonusObservedAt && effectiveIntelLevel(1, report.bonusObservedAt, now) >= 1 ? report.bonusFactText ?? null : null,
+        bonusFactText: level >= 3 && report.bonusObservedAt && effectiveIntelLevel(1, report.bonusObservedAt, now) >= 1 ? report.bonusFactText ?? null : null,
       };
     }))).filter((report): report is NonNullable<typeof report> => report !== null);
 
@@ -86,6 +86,7 @@ export const listDossiers = query({
           plateauType: plateau.type,
           highground: plateau.highground,
           large: plateau.large ?? false,
+          bonusFactText: null,
         });
       }
     }

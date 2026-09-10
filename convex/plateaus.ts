@@ -1,3 +1,4 @@
+import { effectiveLedgerIntelLevel } from "./espionageRules";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
@@ -29,6 +30,7 @@ import {
   effectiveIntelLevel,
   intelligenceFreshness,
   presentIntelNumber,
+  intelText,
   territoryResistanceDisclosure,
   watchtowerCounterIntelligence,
   watchtowerTerritoryLevel,
@@ -268,6 +270,9 @@ export const getMyPlateauState = query({
           attackerName: siege.targetType === "parshendi_retaliation" ? "Parshendi" : siege.attackerId ? names.get(String(siege.attackerId)) ?? "Unknown" : "Unknown",
           defenderName: siege.defenderId ? names.get(String(siege.defenderId)) ?? "Unknown" : "Parshendi",
           attackerIntel,
+          defenderIntel: siege.targetType === "neutral"
+            ? presentIntelNumber(siegePlateaus.find(p => p._id === siege.plateauId)?.neutralDefenseRemaining, passiveTerritoryLevel)
+            : presentIntelNumber(siege.defenderPower ?? 0, isDefender ? 3 : persistentMilitaryDisclosureLevel(militaryIntelAmount(intelResources.find(r => r.targetPlayerId === siege.defenderId)))),
           ...(isAttacker ? { attackerUnits: siege.attackerUnits, attackerPower: siege.attackerPower, attackerSpeed: siege.attackerSpeed, ardentiaConclave: Boolean(siege.ardentiaConclave) } : {}),
           ...(isDefender ? { defenderUnits: siege.defenderUnits, defenderPower: siege.defenderPower, defenderSpeed: siege.defenderSpeed, defenderCommittedAt: siege.defenderCommittedAt ?? null, defenderFabrialKind: siege.defenderFabrialKind, fortifyPercent: siege.fortifyPercent, emergencyDefensePercent: siege.emergencyDefensePercent, emergencyDefenseSpheresSpent: siege.emergencyDefenseSpheresSpent } : {}),
           departAt: siege.departAt,
@@ -384,12 +389,8 @@ export const getSiegeBoard = query({
         q.eq("viewerPlayerId", viewer._id).eq("targetType", "territory"),
       )
       .take(100);
-    const kingdomReports = await ctx.db
-      .query("intelligenceReports")
-      .withIndex("by_viewerPlayerId_and_targetType", (q) =>
-        q.eq("viewerPlayerId", viewer._id).eq("targetType", "kingdom"),
-      )
-      .take(100);
+    const ledgerReports = await ctx.db.query("kingdomIntelligence")
+      .withIndex("by_viewerPlayerId_and_targetPlayerId_and_category", q => q.eq("viewerPlayerId", viewer._id)).take(1000);
     const reportsByPlateau = new Map(
       territoryReports
         .filter((report) => report.plateauId)
@@ -398,24 +399,12 @@ export const getSiegeBoard = query({
     const now = Date.now();
     const watchtowerLevel = Math.min(3, viewer.buildings.watchtower ?? 0);
     const passiveTerritoryLevel = watchtowerTerritoryLevel(watchtowerLevel);
-    const kingdomLevel = (targetPlayerId: Id<"players"> | undefined) => {
-      if (!targetPlayerId) return 0;
-      const report = kingdomReports.find((entry) => entry.targetPlayerId === targetPlayerId);
-      const target = playersById.get(String(targetPlayerId));
-      if (!report || !target) return 0;
-      return Math.max(
-        0,
-        effectiveIntelLevel(report.level, report.observedAt, now) -
-          watchtowerCounterIntelligence(target.buildings.watchtower ?? 0),
-      );
-    };
-    const visibleSieges = activeSieges.filter((siege) => {
-      if (siege.attackerId === viewer._id || siege.defenderId === viewer._id) return true;
-      if (!siege.attackerId) return false;
-      return Math.max(kingdomLevel(siege.attackerId), kingdomLevel(siege.defenderId)) >= 4;
-    });
+    const visibleSieges = activeSieges.filter(siege =>
+      siege.attackerId === viewer._id || siege.defenderId === viewer._id ||
+      (siege.targetType !== "player" ? passiveTerritoryLevel >= 1 :
+        intelResources.some(resource => (resource.targetPlayerId === siege.attackerId || resource.targetPlayerId === siege.defenderId) && militaryIntelAmount(resource) >= 75)));
     const plateauById = new Map([...neutral, ...allOwned].map((plateau) => [String(plateau._id), plateau]));
-    const dossierTerritories = territoryReports.map((report) => {
+    const dossierTerritories = territoryReports.filter(report => report.plateauId && plateauById.get(String(report.plateauId))?.status === "neutral").map((report) => {
       const plateau = report.plateauId ? plateauById.get(String(report.plateauId)) : undefined;
       const disclosure = territoryResistanceDisclosure({
         currentResistance: plateau?.neutralDefenseRemaining,
@@ -435,7 +424,7 @@ export const getSiegeBoard = query({
         plateauType: level >= 1 ? report.plateauType ?? null : null,
         highground: level >= 1 ? report.highground ?? false : false,
         large: level >= 1 ? report.large ?? false : false,
-        bonusFactText: report.bonusObservedAt && effectiveIntelLevel(1, report.bonusObservedAt, now) >= 1 ? report.bonusFactText ?? null : null,
+        bonusFactText: level >= 3 && report.bonusObservedAt && effectiveIntelLevel(1, report.bonusObservedAt, now) >= 1 ? report.bonusFactText ?? null : null,
       };
     });
     if (watchtowerLevel > 0) {
@@ -486,7 +475,7 @@ export const getSiegeBoard = query({
           status: plateau.status,
           intelligenceLevel,
           resistance: disclosure.resistance,
-          ...(intelligenceLevel >= 2 ? {
+          ...(intelligenceLevel >= 3 ? {
             parshendiReclamationCount: plateau.parshendiReclamationCount ?? 0,
             baseNeutralDefense: plateau.baseNeutralDefense ?? plateau.neutralDefenseInitial,
           } : {}),
@@ -502,11 +491,8 @@ export const getSiegeBoard = query({
       rivals: allOwned
         .filter((plateau) => plateau.ownerPlayerId !== viewer._id)
         .map((plateau) => {
-          const report = reportsByPlateau.get(String(plateau._id));
-          const reportLevel = report
-            ? effectiveIntelLevel(report.level, report.observedAt, now)
-            : 0;
-          const intelligenceLevel = Math.max(passiveTerritoryLevel, reportLevel);
+          const report = ledgerReports.find(row => row.targetPlayerId === plateau.ownerPlayerId && row.category === "territory");
+          const intelligenceLevel = report ? effectiveLedgerIntelLevel(report.achievedLevel, report.observedAt, now) : 0;
           const ownerName = plateau.ownerPlayerId
             ? playerNames[plateau.ownerPlayerId] ?? "Unknown"
             : "Neutral";
@@ -568,9 +554,11 @@ export const getSiegeBoard = query({
             : "Parshendi",
           attackerIntel: isAttacker
             ? presentIntelNumber(siege.attackerPower, 3)
-            : persistentMilitaryPower(
+            : siege.targetType === "parshendi_retaliation"
+              ? presentIntelNumber(siege.attackerPower, passiveTerritoryLevel)
+              : persistentMilitaryPower(
                 siege.attackerPower,
-                opponentId ? intelResources.find((row) => row.targetPlayerId === opponentId) : null,
+                siege.attackerId ? intelResources.find((row) => row.targetPlayerId === siege.attackerId) : null,
               ),
           ...(isAttacker
             ? {
@@ -598,8 +586,11 @@ export const getSiegeBoard = query({
           battleStartedAt: siege.battleStartedAt ?? null,
           role: isAttacker ? "attacker" : isDefender ? "defender" : "observer",
           militaryIntel,
+          defenderIntel: siege.targetType === "neutral"
+            ? presentIntelNumber(plateauById.get(String(siege.plateauId))?.neutralDefenseRemaining, passiveTerritoryLevel)
+            : presentIntelNumber(siege.defenderPower ?? 0, isDefender ? 3 : persistentMilitaryDisclosureLevel(militaryIntelAmount(intelResources.find(resource => resource.targetPlayerId === siege.defenderId)))),
           reinforcements: visibleReinforcements,
-          investigations: ownInvestigations.map(row => ({ id: row._id, status: row.status, outcome: row.outcome ?? null, resolveAt: row.resolveAt, casualties: row.casualties ?? null, report: row.report ?? null })),
+          investigations: ownInvestigations.map(row => ({ id: row._id, status: row.status, outcome: row.outcome ?? null, resolveAt: row.resolveAt, casualties: row.casualties ?? null, report: row.report ? { observedAt: row.report.observedAt, power: typeof row.report.power === "number" ? presentIntelNumber(row.report.power, persistentMilitaryDisclosureLevel(militaryIntel)) : militaryIntel >= 25 ? row.report.power : undefined, ...(militaryIntel >= 75 ? { units: row.report.units, reinforcements: row.report.reinforcements } : {}) } : null })),
           resolveAt: siege.resolveAt,
           status: siege.status,
         };
@@ -991,7 +982,7 @@ export const resolveSiegeInvestigation = internalMutation({
         : { observedAt: now, power: currentPower, units: currentUnits, reinforcements: incoming };
     await ctx.db.patch(investigator._id, { operatives: addOperatives(investigator.operatives, losses.survivors), lastActiveAt: now });
     await ctx.db.patch(investigation._id, { status: "resolved", outcome, casualties: losses.casualties, ...(report ? { report } : {}), resolvedAt: now });
-    const summary = outcome === "failure" ? "The investigation failed to produce reliable battlefield information." : outcome === "partial" ? "A partial battlefield estimate is ready." : outcome === "success" ? "An exact snapshot of the present enemy force is ready." : "The enemy force and all inbound reinforcements were fully exposed.";
+    const summary = outcome === "failure" ? "The investigation failed to produce reliable battlefield information." : "A battlefield report is ready. Disclosure follows your current Military Ledger Intel.";
     await createNotification(ctx, { playerId: investigator._id, category: "missions", eventType: "siege_investigation_resolved", title: `Siege Investigation: ${outcome[0].toUpperCase()}${outcome.slice(1)}`, body: `${summary} Operative casualties: ${Object.values(losses.casualties).reduce((sum, count) => sum + count, 0)}.`, destinationView: "plains", destinationTab: "sieges", entityId: String(siege._id), dedupeKey: `siege-investigation:${investigation._id}`, createdAt: now });
     if (outcome === "failure" || outcome === "success") await createNotification(ctx, { playerId: target._id, category: "missions", eventType: "siege_investigation_detected", title: "Siege Espionage Detected", body: outcome === "success" ? `${investigator.name}'s agents penetrated your siege lines.` : "Your counter-intelligence disrupted an investigation around the siege.", destinationView: "plains", destinationTab: "sieges", entityId: String(siege._id), dedupeKey: `siege-investigation:${investigation._id}:target`, createdAt: now });
     return { resolved: true, outcome };
@@ -1243,7 +1234,7 @@ export const resolveSiege = internalMutation({
         await observePlateauNeutralized(ctx, { plateauId: plateau._id, previousOwnerId: defender._id, now });
         await completeRetaliation(ctx, { retaliationId: siege.retaliationId, defended: false, now });
         subject = "Plateau Reclaimed";
-        resultText = `The Parshendi reclaimed ${plateau.name}. Its reclamation count is now ${reclamationCount}, raising neutral defense to ${nextDefense} Power. Casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
+        resultText = `The Parshendi reclaimed ${plateau.name}. Its reclamation count is now ${reclamationCount}, raising neutral defense to ${intelText(presentIntelNumber(nextDefense, watchtowerTerritoryLevel(defender.buildings.watchtower ?? 0)))} Power. Casualties: ${casualtySummary(defenderLossResult.casualties)}.`;
       }
 
       const defenderPrevented = (siege.defenderFabrialPreventedCasualties ?? 0) + defenderLossResult.prevented;
@@ -1349,7 +1340,7 @@ export const resolveSiege = internalMutation({
           playerInitiated: false,
           now,
         });
-        resultText = `${attacker.name} claimed ${plateau.name} (${plateauTypeName(plateau.type)}) against ${resistanceLabel(plateau.neutralDefenseRemaining).toLowerCase()} resistance. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
+        resultText = `${attacker.name} claimed ${plateau.name} (${plateauTypeName(plateau.type)}) against ${intelText(presentIntelNumber(plateau.neutralDefenseRemaining, watchtowerTerritoryLevel(attacker.buildings.watchtower ?? 0)))} resistance. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
       } else {
         await ctx.db.patch(plateau._id, {
           neutralDefenseRemaining: Math.max(
@@ -1359,7 +1350,7 @@ export const resolveSiege = internalMutation({
           activeSiegeId: undefined,
           updatedAt: now,
         });
-        resultText = `${attacker.name} weakened ${resistanceLabel(plateau.neutralDefenseRemaining).toLowerCase()} Parshendi resistance on ${plateau.name}. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
+        resultText = `${attacker.name} weakened ${intelText(presentIntelNumber(plateau.neutralDefenseRemaining, watchtowerTerritoryLevel(attacker.buildings.watchtower ?? 0)))} Parshendi resistance on ${plateau.name}. Casualties: ${casualtySummary(lossResult.casualties)}.${investigationText} The expedition assessment is available in Intelligence.`;
       }
 
       await ctx.db.patch(attacker._id, {

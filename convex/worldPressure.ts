@@ -8,7 +8,7 @@ import { ownedUnitsIncludingAway } from "./provisionHelpers";
 import { completedResearch } from "./researchHelpers";
 import { activeSeason, awardSeasonPoints } from "./seasonLedger";
 import { effectivePower, emptyUnits, identityPlateauType } from "./rules";
-import { effectiveIntelLevel, presentIntelNumber, watchtowerTerritoryLevel } from "./intelligenceRules";
+import { presentIntelNumber, watchtowerTerritoryLevel, intelText } from "./intelligenceRules";
 import {
   clampHostility,
   hostilityProgress,
@@ -390,18 +390,7 @@ export const getStatus = query({
     const progress = hostilityProgress(effective.hostility);
     const retaliation = await activeRetaliation(ctx, player._id);
     const passiveIntelLevel = watchtowerTerritoryLevel(Math.min(3, player.buildings.watchtower ?? 0));
-    const territoryReport = retaliation
-      ? await ctx.db
-          .query("intelligenceReports")
-          .withIndex("by_viewerPlayerId_and_plateauId", (q) =>
-            q.eq("viewerPlayerId", player._id).eq("plateauId", retaliation.targetPlateauId),
-          )
-          .unique()
-      : null;
-    const intelLevel = Math.max(
-      passiveIntelLevel,
-      territoryReport ? effectiveIntelLevel(territoryReport.level, territoryReport.observedAt, now) : 0,
-    );
+    const intelLevel = passiveIntelLevel;
     const plateau = retaliation ? await ctx.db.get(retaliation.targetPlateauId) : null;
     const warning = retaliation
       ? {
@@ -412,10 +401,10 @@ export const getStatus = query({
             : intelLevel === 1
               ? "A substantial Parshendi warband appears to be gathering."
               : "Scouts have identified the likely target and strength of the gathering force.",
+          estimatedStrength: presentIntelNumber(retaliation.power, intelLevel),
           ...(intelLevel >= 2 && plateau ? {
             targetPlateauId: plateau._id,
             targetName: plateau.name,
-            estimatedStrength: presentIntelNumber(retaliation.power, intelLevel),
             launchWindowStartAt: retaliation.launchAt - 30 * 60 * 1000,
             launchWindowEndAt: retaliation.launchAt + 30 * 60 * 1000,
           } : {}),
@@ -508,21 +497,10 @@ export const beginRetaliationFormation = internalMutation({
       updatedAt: now,
     });
     await ctx.db.patch(row._id, { nextRetaliationAt: undefined, retaliationScheduleToken: undefined, updatedAt: now });
-    const report = await ctx.db
-      .query("intelligenceReports")
-      .withIndex("by_viewerPlayerId_and_plateauId", (q) =>
-        q.eq("viewerPlayerId", player._id).eq("plateauId", target._id),
-      )
-      .unique();
-    const intelLevel = Math.max(
-      watchtowerTerritoryLevel(Math.min(3, player.buildings.watchtower ?? 0)),
-      report ? effectiveIntelLevel(report.level, report.observedAt, now) : 0,
-    );
+    const intelLevel = watchtowerTerritoryLevel(player.buildings.watchtower ?? 0);
     const body = intelLevel >= 2
-      ? `A Parshendi warband is gathering. Likely target: ${target.name}. Estimated strength: ${presentIntelNumber(power, intelLevel)?.label ?? "unknown"}.`
-      : intelLevel === 1
-        ? "A substantial Parshendi warband appears to be gathering near your holdings."
-        : "Parshendi activity appears to be increasing near your holdings.";
+      ? `A Parshendi warband is gathering. Likely target: ${target.name}. Power: ${intelText(presentIntelNumber(power, intelLevel))}.`
+      : `A Parshendi warband is gathering near your holdings. Power: ${intelText(presentIntelNumber(power, intelLevel))}.`;
     await ctx.db.insert("messages", { toPlayerId: player._id, kind: "system", subject: "Parshendi Activity", body, eventType: "parshendi_retaliation_forming", destinationView: "intelligence", destinationTab: "territory", createdAt: now });
     await createNotification(ctx, {
       playerId: player._id,
@@ -584,7 +562,7 @@ export const launchRetaliation = internalMutation({
     });
     const row = await pressureRow(ctx, player._id);
     if (row) await ctx.db.patch(row._id, { lastRetaliationLaunchAt: now, updatedAt: now });
-    const body = `A ${retaliation.power}-Power Parshendi force has launched an attack against ${target.name}. Commit defenders before it arrives.`;
+    const body = `A Parshendi force has launched an attack against ${target.name}. Power: ${intelText(presentIntelNumber(retaliation.power, watchtowerTerritoryLevel(player.buildings.watchtower ?? 0)))}. Commit defenders before it arrives.`;
     await ctx.db.insert("messages", { toPlayerId: player._id, kind: "system", subject: "Parshendi Retaliation", body, eventType: "parshendi_retaliation_launched", destinationView: "plains", destinationTab: "sieges", entityType: "siege", entityId: String(siegeId), createdAt: now });
     await createNotification(ctx, {
       playerId: player._id,

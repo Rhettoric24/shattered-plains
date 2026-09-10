@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireCurrentPlayer } from "./ownership";
 import { createNotification } from "./notificationHelpers";
+import { discloseStoredMessage } from "./messageIntel";
 
 export const listInbox = query({
   args: {},
@@ -14,7 +15,7 @@ export const listInbox = query({
       .take(60);
 
     return {
-      messages,
+      messages: await Promise.all(messages.map(async message => message.kind === "player" ? message : ({ ...message, body: await discloseStoredMessage(ctx, player, message) }))),
       unreadCount: messages.filter((message) => !message.readAt).length,
     };
   },

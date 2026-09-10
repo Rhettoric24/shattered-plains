@@ -1,7 +1,7 @@
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { casualtySummary, effectivePower } from "./rules";
-import { effectiveIntelLevel, watchtowerCounterIntelligence } from "./intelligenceRules";
+import { ledgerMilitaryLevel } from "./intelligenceRules";
 
 type ReportSource =
   | "player_raid"
@@ -15,18 +15,11 @@ export async function currentKingdomIntelLevel(
   target: Doc<"players">,
   now: number,
 ) {
-  const report = await ctx.db
-    .query("intelligenceReports")
-    .withIndex("by_viewerPlayerId_and_targetPlayerId", (q) =>
-      q.eq("viewerPlayerId", viewerPlayerId).eq("targetPlayerId", target._id),
-    )
-    .unique();
-  if (!report) return 0;
-  return Math.max(
-    0,
-    effectiveIntelLevel(report.level, report.observedAt, now) -
-      watchtowerCounterIntelligence(target.buildings.watchtower ?? 0),
-  );
+  const resource = await ctx.db.query("kingdomIntelResources")
+    .withIndex("by_viewerPlayerId_and_targetPlayerId", q => q.eq("viewerPlayerId", viewerPlayerId).eq("targetPlayerId", target._id)).unique();
+  const amount = resource?.militaryAmount ?? resource?.amount ?? 0;
+  return ledgerMilitaryLevel(amount);
+
 }
 
 export function casualtyIntelSummary(
@@ -34,7 +27,10 @@ export function casualtyIntelSummary(
   level: number,
 ) {
   const total = Object.values(casualties).reduce((sum, count) => sum + Number(count || 0), 0);
-  if (level <= 0) return "Enemy casualties could not be confirmed.";
+  if (level <= 0) {
+    const label = total === 0 ? "no visible" : total <= 5 ? "light" : total <= 20 ? "moderate" : "heavy";
+    return `Observers report ${label} enemy losses.`;
+  }
   if (level === 1) {
     const label = total === 0 ? "no visible" : total <= 5 ? "light" : total <= 20 ? "moderate" : "heavy";
     return `Observers report ${label} enemy losses.`;

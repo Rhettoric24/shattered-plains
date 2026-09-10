@@ -1,3 +1,4 @@
+import { chasmfiendIntel, neutralRewardIntel, intelText, watchtowerTerritoryLevel } from "./intelligenceRules";
 import { v } from "convex/values";
 import { env, internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
@@ -6,6 +7,7 @@ import { internal } from "./_generated/api";
 import { requireCurrentPlayer } from "./ownership";
 import { createNotification } from "./notificationHelpers";
 import { normalizeVapidKey } from "./pushKeys";
+import { discloseStoredMessage } from "./messageIntel";
 
 const categoryArgs = {
   combat: v.boolean(), missions: v.boolean(), research: v.boolean(),
@@ -38,7 +40,7 @@ export const list = query({
     const state = await ctx.db.query("notificationState").withIndex("by_playerId", (q) => q.eq("playerId", player._id)).unique();
     const subscriptions = await ctx.db.query("pushSubscriptions").withIndex("by_playerId", (q) => q.eq("playerId", player._id)).take(20);
     return {
-      notifications,
+      notifications: await Promise.all(notifications.map(async notification => notification.eventType === "player_message" ? notification : ({ ...notification, body: await discloseStoredMessage(ctx, player, notification) }))),
       unreadCount: state?.unreadCount ?? 0,
       preferences: {
         combat: state?.combat ?? true, missions: state?.missions ?? true,
@@ -159,7 +161,9 @@ export const deliveryData = internalQuery({
     const notification = await ctx.db.get(args.notificationId);
     if (!notification) return null;
     const subscriptions = await ctx.db.query("pushSubscriptions").withIndex("by_playerId", (q) => q.eq("playerId", notification.playerId)).take(20);
-    return { notification, subscriptions: subscriptions.filter((entry) => !entry.disabledAt) };
+    const player = await ctx.db.get(notification.playerId);
+    const body = player && notification.eventType !== "player_message" ? await discloseStoredMessage(ctx, player, notification) : notification.body;
+    return { notification: { ...notification, body }, subscriptions: subscriptions.filter((entry) => !entry.disabledAt) };
   },
 });
 
@@ -192,14 +196,17 @@ export const notifyPlateauRunOpenBatch = internalMutation({
   },
   handler: async (ctx, args) => {
     const page = await ctx.db.query("players").paginate(args.paginationOpts);
+    const run = await ctx.db.get(args.plateauRunId);
     for (const player of page.page) {
+      const level = watchtowerTerritoryLevel(player.buildings.watchtower ?? 0);
+      const body = run ? `A Chasmfiend has appeared. Power: ${intelText(chasmfiendIntel(run.difficulty, level))}. Sphere pool: ${intelText(neutralRewardIntel(run.spherePool, level))}.` : args.body;
       const notification = await createNotification(ctx, {
         playerId: player._id, category: "plateau_runs", eventType: "plateau_run_open",
-        title: "Plateau Run Open", body: args.body, destinationView: "plains", destinationTab: "plateau-runs",
+        title: "Plateau Run Open", body, destinationView: "plains", destinationTab: "plateau-runs",
         entityId: String(args.plateauRunId), dedupeKey: `plateau-run:${args.plateauRunId}:open`, createdAt: args.createdAt,
       });
       if (notification.created) await ctx.db.insert("messages", {
-        toPlayerId: player._id, kind: "system", subject: "Plateau Run Open", body: args.body,
+        toPlayerId: player._id, kind: "system", subject: "Plateau Run Open", body,
         eventType: "plateau_run_open", destinationView: "plains", destinationTab: "plateau-runs",
         entityType: "plateau_run", entityId: String(args.plateauRunId), createdAt: args.createdAt,
       });

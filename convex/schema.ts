@@ -553,6 +553,7 @@ export default defineSchema({
     .index("by_missionId", ["missionId"]),
 
   seasons: defineTable({
+    chasmfiendsDefeated: v.optional(v.number()),
     number: v.number(),
     name: v.string(),
     status: v.union(v.literal("active"), v.literal("closed")),

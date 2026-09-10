@@ -79,13 +79,13 @@ async function resolveTwoPlayerRun(args: {
 }
 
 describe("Plateau Run join order and winner selection", () => {
-  test("ramps a four-player Chasmfiend from 750 to 2750 Power over fourteen days", () => {
+  test("ramps a four-player Chasmfiend from 750 to 2750 Power over forty-two victories", () => {
     const startsAt = 1_000_000;
     const fullStrengthAt = startsAt + 14 * 24 * 60 * 60 * 1000;
     expect(plateauRunBaseDifficulty(4)).toBe(750);
-    expect(plateauRunSeasonMultiplier(startsAt, startsAt)).toBe(1);
-    expect(plateauRunSeasonMultiplier(startsAt, fullStrengthAt)).toBeCloseTo(11 / 3);
-    expect(plateauRunBaseDifficulty(4) * plateauRunSeasonMultiplier(startsAt, fullStrengthAt)).toBeCloseTo(2750);
+    expect(plateauRunSeasonMultiplier(0)).toBe(1);
+    expect(plateauRunSeasonMultiplier(42)).toBeCloseTo(11 / 3);
+    expect(plateauRunBaseDifficulty(4) * plateauRunSeasonMultiplier(42)).toBeCloseTo(2750);
   });
 
   test("uses Chasmfiend maturity labels for Plateau Run Power", () => {
@@ -102,8 +102,8 @@ describe("Plateau Run join order and winner selection", () => {
     const startsAt = 1_000_000;
     const fullStrengthAt = startsAt + 14 * 24 * 60 * 60 * 1000;
     const fourPlayerPool = 6000 + 4 * 3000;
-    expect(fourPlayerPool * plateauRunRewardMultiplier(startsAt, startsAt)).toBe(18000);
-    expect(fourPlayerPool * plateauRunRewardMultiplier(startsAt, fullStrengthAt)).toBe(27000);
+    expect(fourPlayerPool * plateauRunRewardMultiplier(0)).toBe(18000);
+    expect(fourPlayerPool * plateauRunRewardMultiplier(42)).toBe(27000);
   });
 
   test("uses 10%, 7%, 5%, then 0% join-order Speed bonuses", () => {
@@ -137,7 +137,8 @@ describe("Plateau Run join order and winner selection", () => {
     expect(result.pressures.map((row) => row.hostility).sort()).toEqual([6, 6]);
     expect(result.messages).toHaveLength(2);
     for (const message of result.messages) {
-      expect(message.body).toContain("combined Power");
+      expect(message.body).not.toContain("combined Power");
+      expect(message.body).toContain("Chasmfiend Power: Young");
       expect(message.body).toContain("Your contribution:");
       expect(message.body).toContain("Gemheart race: Final Speed");
       expect(message.body).toContain("Reward:");

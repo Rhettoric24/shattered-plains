@@ -218,7 +218,7 @@ export const PLATEAU_RUN_RULES = {
   difficultyBase: 250,
   difficultyPerActivePlayer: 125,
   minimumDifficulty: 600,
-  fullStrengthAfterMs: 14 * 24 * 60 * 60 * 1000,
+  fullStrengthAfterKills: 42,
   fullStrengthMultiplier: 11 / 3,
   difficultyVariancePercent: 5,
   sphereRewardBase: 6000,
@@ -230,13 +230,13 @@ export const PLATEAU_RUN_RULES = {
   joinOrderSpeedBonuses: [0.1, 0.07, 0.05],
 } as const;
 
-export function plateauRunSeasonMultiplier(seasonStartsAt: number, now: number) {
-  const progress = Math.min(1, Math.max(0, now - seasonStartsAt) / PLATEAU_RUN_RULES.fullStrengthAfterMs);
+export function plateauRunSeasonMultiplier(kills: number) {
+  const progress = Math.min(1, Math.max(0, kills) / PLATEAU_RUN_RULES.fullStrengthAfterKills);
   return 1 + progress * (PLATEAU_RUN_RULES.fullStrengthMultiplier - 1);
 }
 
-export function plateauRunRewardMultiplier(seasonStartsAt: number, now: number) {
-  const progress = Math.min(1, Math.max(0, now - seasonStartsAt) / PLATEAU_RUN_RULES.fullStrengthAfterMs);
+export function plateauRunRewardMultiplier(kills: number) {
+  const progress = Math.min(1, Math.max(0, kills) / PLATEAU_RUN_RULES.fullStrengthAfterKills);
   return 1 + progress * (PLATEAU_RUN_RULES.sphereRewardFullStrengthMultiplier - 1);
 }
 

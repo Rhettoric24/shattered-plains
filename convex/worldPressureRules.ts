@@ -1,3 +1,4 @@
+import { presentIntelNumber, watchtowerTerritoryLevel } from "./intelligenceRules";
 export const WORLD_PRESSURE_RULES = {
   hostility: {
     min: 0,
@@ -160,19 +161,7 @@ export function raidDefenseDisclosure(args: {
   broadMinimum: number;
   broadMaximum: number;
 }) {
-  const broadMinimum = Math.max(0, Math.round(Math.min(args.broadMinimum, args.broadMaximum)));
-  const broadMaximum = Math.max(broadMinimum, Math.round(Math.max(args.broadMinimum, args.broadMaximum)));
-  const defense = Math.max(broadMinimum, Math.min(broadMaximum, Math.round(args.defense)));
-  const level = Math.max(0, Math.min(5, Math.floor(args.intelligenceLevel)));
-  if (level >= 5) return { level, mode: "exact" as const, value: defense };
-  if (level === 0) return { level, mode: "range" as const, min: broadMinimum, max: broadMaximum };
-  const uncertainty = level === 1 ? 35 : level === 2 ? 20 : 10;
-  return {
-    level,
-    mode: "estimate" as const,
-    min: Math.max(broadMinimum, defense - uncertainty),
-    max: Math.min(broadMaximum, defense + uncertainty),
-  };
+  return presentIntelNumber(args.defense, watchtowerTerritoryLevel(args.intelligenceLevel));
 }
 
 export function reclamationDefense(baseDefense: number, reclamationCount: number) {

@@ -32,6 +32,7 @@ import type * as http from "../http.js";
 import type * as intelligence from "../intelligence.js";
 import type * as intelligenceHelpers from "../intelligenceHelpers.js";
 import type * as intelligenceRules from "../intelligenceRules.js";
+import type * as messageIntel from "../messageIntel.js";
 import type * as messages from "../messages.js";
 import type * as notificationHelpers from "../notificationHelpers.js";
 import type * as notificationPush from "../notificationPush.js";
@@ -88,6 +89,7 @@ declare const fullApi: ApiFromModules<{
   intelligence: typeof intelligence;
   intelligenceHelpers: typeof intelligenceHelpers;
   intelligenceRules: typeof intelligenceRules;
+  messageIntel: typeof messageIntel;
   messages: typeof messages;
   notificationHelpers: typeof notificationHelpers;
   notificationPush: typeof notificationPush;

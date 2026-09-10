@@ -63,16 +63,16 @@ describe("World Pressure integration", () => {
       const visible = await player.query(api.raids.listVisibleRaids, {});
       expect(visible[0]).not.toHaveProperty("defensePower");
       expect(visible[0]).not.toHaveProperty("rewardSpheres");
-      expect(visible[0].rewardIntel).toEqual({ minimum: 1200, maximum: 2400, label: "Rich" });
+      expect(visible[0].rewardIntel?.mode).toBe(watchtower === 0 ? "label" : watchtower === 1 ? "range" : watchtower === 2 ? "estimate" : "exact");
       disclosures.push(visible[0].defenseIntel);
       expect((await t.run((ctx) => ctx.db.get(raidId)))?.defensePower).toBe(163);
     }
     expect(disclosures).toEqual([
-      { level: 0, mode: "range", min: 100, max: 200 },
-      { level: 1, mode: "estimate", min: 128, max: 198 },
-      { level: 2, mode: "estimate", min: 143, max: 183 },
-      { level: 3, mode: "estimate", min: 153, max: 173 },
-      { level: 5, mode: "exact", value: 163 },
+      { mode: "label", label: "Guarded" },
+      { mode: "range", label: "Guarded", min: 121, max: 240 },
+      { mode: "estimate", label: "Guarded", min: 146, max: 180 },
+      { mode: "exact", label: "Guarded", value: 163 },
+      { mode: "exact", label: "Guarded", value: 163 },
     ]);
   });
 
@@ -379,13 +379,13 @@ describe("World Pressure integration", () => {
     const asPlayer = t.withIdentity({ subject: String(userId) });
     const rumor = (await asPlayer.query(api.raids.listVisibleRaids, {}))[0] as any;
     expect(rumor.defensePower).toBeUndefined();
-    expect(rumor.defenseIntel).toMatchObject({ mode: "range", min: 100, max: 200 });
+    expect(rumor.defenseIntel).toMatchObject({ mode: "label", label: "Guarded" });
     await t.run(async (ctx) => {
       const player = (await ctx.db.get(playerId))!;
       await ctx.db.patch(playerId, { buildings: { ...player.buildings, watchtower: 2 } });
     });
     const assessed = (await asPlayer.query(api.raids.listVisibleRaids, {}))[0] as any;
-    expect(assessed.defenseIntel).toMatchObject({ mode: "estimate", min: 143, max: 183 });
+    expect(assessed.defenseIntel).toMatchObject({ mode: "estimate", min: 146, max: 180 });
     await t.run(async (ctx) => {
       const player = (await ctx.db.get(playerId))!;
       await ctx.db.patch(playerId, { buildings: { ...player.buildings, watchtower: 5 } });

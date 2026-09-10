@@ -187,6 +187,29 @@ Human siege armies face exposure instead.
 
 # Hostility
 
+## 2026-09-09 — Standard intelligence and Chasmfiend progression
+
+Approved: Watchtower governs Parshendi and neutral numerical intelligence:
+0 = label, I = broad band, II = narrow estimate, III = exact. Apply this
+to neutral territory, raids, Chasmfiends, retaliation, and their Spanreeds.
+Conclave/legacy reports do not bypass Watchtower's numerical tier.
+Player forces and PvP use Ledger intelligence: label below 25 Military
+Intel, estimate at 25–74, exact at 75+. Rival territory uses Territory
+Ledger knowledge. Watchtower does not disclose rival player statistics.
+Own troop counts, casualties, and actual rewards received remain exact.
+
+Chasmfiend Power and Sphere pool growth now follow successful kills per
+season, not elapsed days. Preserve base values, active-player scaling,
+±5% variance, and the old growth ceiling; reach that ceiling after 42
+victories (the former 14 days × three scheduled hunts). Empty/failed hunts
+do not increment the counter; repeated settlement cannot increment twice.
+Existing seasons start the new counter at zero without a backfill.
+Already-open hunts retain their snapshotted difficulty and rewards.
+
+Implementation is local pending release. Existing exact neutral prose is
+filtered on inbox/notification reads; previously delivered push alerts
+cannot be recalled. Reports remain historical observations, not live scans.
+
 ### DECIDED --- Repeated aggression changes the world
 
 Neutral combat is not consequence-free farming.
@@ -255,12 +278,12 @@ offline" is not optimal.
 ### DECIDED --- Plateau Runs are escalating Chasmfiend bosses
 
 Plateau Runs should begin as difficult shared encounters and become much
-harder as a season progresses. For the friend-test tuning pass, four active
-players produce about 750 base Power at season start and about 2,750 before
-variance at full strength after 14 real days. Maturity labels communicate
-the escalation without adding persistence or specialty reward rules yet.
-The ordinary Sphere pool starts at 6,000 plus 3,000 per active player and
-ramps to 1.5× over the season-strength window, with ±5% variance.
+harder as the crew defeats Chasmfiends. For the friend-test tuning pass, four
+active players produce about 750 base Power at zero victories and about 2,750
+before variance at full strength after 42 victories. Maturity labels and
+Watchtower-gated Power communicate the escalation. The ordinary Sphere pool
+starts at 6,000 plus 3,000 per active player and ramps to 1.5× over the same
+victory window, with ±5% variance.
 
 ### DEFERRED --- Narak
 

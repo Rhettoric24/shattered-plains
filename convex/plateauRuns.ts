@@ -39,7 +39,7 @@ import {
 import { applyHostility } from "./worldPressure";
 import { WORLD_PRESSURE_RULES } from "./worldPressureRules";
 import { economyIntelDisclosureLevel } from "./espionageRules";
-import { presentIntelNumber } from "./intelligenceRules";
+import { presentIntelNumber, presentSpeedIntel, chasmfiendIntel, neutralRewardIntel, intelText, watchtowerTerritoryLevel } from "./intelligenceRules";
 import { applyFabrialCasualtyProtection, soulcasterRecovery } from "./fabrialRules";
 import { reserveFabrial, settleReusableFabrial } from "./fabrialHelpers";
 
@@ -98,7 +98,7 @@ async function createPlateauRun(
   );
   const difficulty = Math.round(
     plateauRunBaseDifficulty(activeCount) *
-      plateauRunSeasonMultiplier(scoringSeason.startsAt, now) *
+      plateauRunSeasonMultiplier(scoringSeason.chasmfiendsDefeated ?? 0) *
       (1 + difficultyVariance / 100),
   );
   const sphereVariance = seededInt(
@@ -108,7 +108,7 @@ async function createPlateauRun(
   );
   const spherePool = Math.round(
     (PLATEAU_RUN_RULES.sphereRewardBase + activeCount * PLATEAU_RUN_RULES.sphereRewardPerActivePlayer) *
-      plateauRunRewardMultiplier(scoringSeason.startsAt, now) *
+      plateauRunRewardMultiplier(scoringSeason.chasmfiendsDefeated ?? 0) *
       (1 + sphereVariance / 100),
   );
   const closesAt = now + PLATEAU_RUN_RULES.joinRealMs;
@@ -134,7 +134,7 @@ async function createPlateauRun(
 
   await insertGameEvent(ctx, {
     kind: "plateau_run",
-    text: `A ${options.source === "schedule" ? "scheduled " : ""}Plateau Run opened for ${activeCount} active warcamps. Difficulty ${difficulty}.`,
+    text: `A ${options.source === "schedule" ? "scheduled " : ""}Plateau Run opened for ${activeCount} active warcamps. A ${plateauRunPowerLabel(difficulty)} Chasmfiend awaits.`,
     createdAt: now,
   });
 
@@ -220,7 +220,8 @@ export const getCurrent = query({
           committedAt: commitment.committedAt,
           joinOrder: index + 1,
           joinOrderSpeedBonus,
-          speedScore: plateauRunFinalSpeed(commitment.speed, index, commitment.doctrineJoinSpeedMultiplier ?? 1, (commitment.bridgedTravelReductionPercent ?? 0) / 100),
+          speedIntel: presentSpeedIntel(plateauRunFinalSpeed(commitment.speed, index, commitment.doctrineJoinSpeedMultiplier ?? 1, (commitment.bridgedTravelReductionPercent ?? 0) / 100), presentationLevel),
+          ...(commitment.playerId === viewer._id ? { speedScore: plateauRunFinalSpeed(commitment.speed, index, commitment.doctrineJoinSpeedMultiplier ?? 1, (commitment.bridgedTravelReductionPercent ?? 0) / 100) } : {}),
           playerName: player?.name ?? "Unknown",
           powerIntel: presentIntelNumber(commitment.power, presentationLevel),
         };
@@ -229,8 +230,10 @@ export const getCurrent = query({
           : shared;
       }));
 
+    const { difficulty, spherePool, ...safeRun } = run;
+    const level = watchtowerTerritoryLevel(viewer.buildings.watchtower ?? 0);
     return {
-      run,
+      run: { ...safeRun, difficultyIntel: chasmfiendIntel(difficulty, level), rewardIntel: neutralRewardIntel(spherePool, level) },
       commitments: decoratedCommitments,
     };
   },
@@ -515,7 +518,7 @@ export const resolvePlateauRun = internalMutation({
           toPlayerId: player._id,
           kind: "system",
           subject: "Plateau Run Failed",
-          body: `The hunt failed: combined Power ${combinedPower.toFixed(2)} did not reach the Chasmfiend's ${run.difficulty} Power. Your contribution: ${effectivePowerText}. Gemheart race: ${speedReport}. Reward: none. Casualties: ${casualtySummary(lossResult.casualties)}.${lossResult.prevented ? ` ${entry.fabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${lossResult.prevented} casualties.` : ""}${reusable.lost ? ` The retreat became chaotic. The ${entry.fabrialKind === "halfShard" ? "Half-Shard" : "Soulcaster"} was lost.` : ""}`,
+          body: `The hunt failed. Chasmfiend Power: ${intelText(chasmfiendIntel(run.difficulty, watchtowerTerritoryLevel(player.buildings.watchtower ?? 0)))}. Your contribution: ${effectivePowerText}. Gemheart race: ${speedReport}. Reward: none. Casualties: ${casualtySummary(lossResult.casualties)}.${lossResult.prevented ? ` ${entry.fabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${lossResult.prevented} casualties.` : ""}${reusable.lost ? ` The retreat became chaotic. The ${entry.fabrialKind === "halfShard" ? "Half-Shard" : "Soulcaster"} was lost.` : ""}`,
           eventType: "plateau_run_resolved", destinationView: "plains", destinationTab: "plateau-runs", entityType: "plateau_run", entityId: String(run._id),
           createdAt: now,
         });
@@ -533,7 +536,7 @@ export const resolvePlateauRun = internalMutation({
       });
   await insertGameEvent(ctx, {
         kind: "plateau_run",
-        text: `The Plateau Run failed. Combined power ${combinedPower.toFixed(2)} did not beat ${run.difficulty}.`,
+        text: `The Plateau Run failed against a ${plateauRunPowerLabel(run.difficulty)} Chasmfiend.`,
         createdAt: now,
       });
 
@@ -625,7 +628,7 @@ export const resolvePlateauRun = internalMutation({
         toPlayerId: player._id,
         kind: "system",
         subject: isWinner ? "Gemheart Claimed" : "Plateau Run Reward",
-        body: `The hunt succeeded: combined Power ${combinedPower.toFixed(2)} defeated the Chasmfiend's ${run.difficulty} Power. Your contribution: ${effectivePowerText}. Gemheart race: ${speedReport}. Reward: ${rewardReport}. Casualties: ${casualtySummary(lossResult.casualties)}.${lossResult.prevented ? ` ${entry.fabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${lossResult.prevented} casualties.` : ""}${recovery.bonus ? ` Your Soulcaster recovered an additional ${recovery.bonus} Spheres beyond the army's normal Plunder capacity.` : ""}`,
+        body: `The hunt succeeded. Chasmfiend Power: ${intelText(chasmfiendIntel(run.difficulty, watchtowerTerritoryLevel(player.buildings.watchtower ?? 0)))}. Your contribution: ${effectivePowerText}. Gemheart race: ${speedReport}. Reward: ${rewardReport}. Casualties: ${casualtySummary(lossResult.casualties)}.${lossResult.prevented ? ` ${entry.fabrialKind === "halfShard" ? "Half-Shard" : "Painrial"} protection prevented ${lossResult.prevented} casualties.` : ""}${recovery.bonus ? ` Your Soulcaster recovered an additional ${recovery.bonus} Spheres beyond the army's normal Plunder capacity.` : ""}`,
         eventType: "plateau_run_resolved", destinationView: "plains", destinationTab: "plateau-runs", entityType: "plateau_run", entityId: String(run._id),
         createdAt: now,
       });
@@ -649,6 +652,10 @@ export const resolvePlateauRun = internalMutation({
       });
     }
 
+    if (run.scoringSeasonId) {
+      const season = await ctx.db.get(run.scoringSeasonId);
+      if (season) await ctx.db.patch(season._id, { chasmfiendsDefeated: (season.chasmfiendsDefeated ?? 0) + 1 });
+    }
     const winnerPlayer = await ctx.db.get(winner.playerId);
     await ctx.db.patch(run._id, {
       status: "resolved",
@@ -657,7 +664,7 @@ export const resolvePlateauRun = internalMutation({
     });
   await insertGameEvent(ctx, {
       kind: "gemheart",
-      text: `${winnerPlayer?.name ?? "A warcamp"} claimed the Gemheart. Combined power ${combinedPower.toFixed(2)} beat ${run.difficulty}.`,
+      text: `${winnerPlayer?.name ?? "A warcamp"} claimed the Gemheart after defeating a ${plateauRunPowerLabel(run.difficulty)} Chasmfiend.`,
       createdAt: now,
     });
 

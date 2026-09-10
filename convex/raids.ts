@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { intelText, presentIntelNumber, presentSpeedIntel, neutralRewardIntel, watchtowerTerritoryLevel, ledgerMilitaryLevel } from "./intelligenceRules";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireAdmin } from "./admin";
@@ -43,7 +44,6 @@ import { applyFabrialCasualtyProtection, soulcasterRecovery, type FabrialKey } f
 import { reserveFabrial, settleReusableFabrial } from "./fabrialHelpers";
 import {
   hostilityScaledValue,
-  raidDefenseDisclosure,
   seededFraction,
   seededInt,
   WORLD_PRESSURE_RULES,
@@ -271,67 +271,25 @@ export const listVisibleRaids = query({
       .withIndex("by_status_arrival", (q) => q.eq("status", "pending"))
       .collect();
 
-    const visible = pending.filter((raid) => {
-      const watchtower = viewer.buildings.watchtower ?? 0;
-      if (raid.attackerId === viewer._id) return true;
-      if (
-        (raid.targetType === "open_acres" ||
-          raid.targetType === "parshendi_spheres") &&
-        watchtower >= 1
-      ) {
-        return true;
-      }
-      if (raid.targetPlayerId === viewer._id && watchtower >= 3) return true;
-      if (watchtower >= 5) return true;
-      return false;
+    const resources = await ctx.db.query("kingdomIntelResources")
+      .withIndex("by_viewerPlayerId_and_targetPlayerId", q => q.eq("viewerPlayerId", viewer._id)).take(200);
+    const visible = pending.filter(raid => raid.attackerId === viewer._id || raid.targetPlayerId === viewer._id ||
+      (raid.targetType !== "player" && (viewer.buildings.watchtower ?? 0) >= 1));
+    return visible.map(raid => {
+      const own = raid.attackerId === viewer._id;
+      const resource = resources.find(row => row.targetPlayerId === raid.attackerId);
+      const armyLevel = own ? 3 : ledgerMilitaryLevel(resource?.militaryAmount ?? resource?.amount ?? 0);
+      const level = watchtowerTerritoryLevel(viewer.buildings.watchtower ?? 0);
+      const { defensePower, rewardSpheres, units, power, speed, ...safeRaid } = raid;
+      return {
+        ...safeRaid,
+        ...(own ? { units, power, speed } : {}),
+        powerIntel: presentIntelNumber(power, armyLevel),
+        speedIntel: presentSpeedIntel(speed, armyLevel),
+        ...(defensePower !== undefined ? { defenseIntel: presentIntelNumber(defensePower, level) } : {}),
+        ...(rewardSpheres !== undefined ? { rewardIntel: neutralRewardIntel(rewardSpheres, level) } : {}),
+      };
     });
-    return await Promise.all(visible.map(async (raid) => {
-      if (
-        (raid.targetType !== "parshendi_spheres" && raid.targetType !== "deep_plains") ||
-        raid.defensePower === undefined
-      ) return raid;
-
-      const hostility = raid.hostilityAtLaunch ?? 0;
-      const isDeepPlains = raid.targetType === "deep_plains";
-      const baseRange = isDeepPlains
-        ? WORLD_PRESSURE_RULES.deepPlains.defensePower
-        : [COMBAT_RULES.parshendiSphereRaidMinDefense, COMBAT_RULES.parshendiSphereRaidMaxDefense] as const;
-      const factor = isDeepPlains
-        ? WORLD_PRESSURE_RULES.deepPlains.difficultyHostilityFactor
-        : WORLD_PRESSURE_RULES.neutralRaid.difficultyHostilityFactor;
-      const conclaveBoost = raid.attackerId === viewer._id && raid.conclaveId ? 2 : 0;
-      const intelligenceLevel = Math.max(0, Math.min(5, (viewer.buildings.watchtower ?? 0) + conclaveBoost));
-      const defenseIntel = raidDefenseDisclosure({
-        defense: raid.defensePower,
-        intelligenceLevel,
-        broadMinimum: hostilityScaledValue(baseRange[0], hostility, factor),
-        broadMaximum: hostilityScaledValue(baseRange[1], hostility, factor),
-      });
-      const { defensePower: _hiddenDefensePower, ...safeRaid } = raid;
-      if (raid.targetType === "parshendi_spheres") {
-        const minimumReward = hostilityScaledValue(
-          COMBAT_RULES.parshendiSphereRaidMinReward,
-          hostility,
-          WORLD_PRESSURE_RULES.neutralRaid.rewardHostilityFactor,
-        );
-        const maximumReward = hostilityScaledValue(
-          COMBAT_RULES.parshendiSphereRaidMaxReward,
-          hostility,
-          WORLD_PRESSURE_RULES.neutralRaid.rewardHostilityFactor,
-        );
-        const { rewardSpheres: _hiddenRewardSpheres, ...safeOrdinaryRaid } = safeRaid;
-        return {
-          ...safeOrdinaryRaid,
-          defenseIntel,
-          rewardIntel: {
-            minimum: minimumReward,
-            maximum: maximumReward,
-            label: rewardLabel((minimumReward + maximumReward) / 2),
-          },
-        };
-      }
-      return { ...safeRaid, defenseIntel };
-    }));
   },
 });
 
@@ -465,8 +423,8 @@ export const resolveRaid = internalMutation({
         lastActiveAt: now,
       });
       resultText = won
-        ? `${attacker.name} overcame ${resistanceLabel(defense).toLowerCase()} resistance and recovered ${recovered} spheres from a ${rewardLabel(reward).toLowerCase()} cache.${stormActive ? " Highstorm: Parshendi Power +40%. Highstorm Jackpot: Sphere reward pool ×2." : ""}${leftBehind > 0 ? " Some spheres were left behind because the army lacked Plunder." : ""}${gemheartFound ? " The army returned with 1 Gemheart." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`
-        : `${attacker.name} failed against ${resistanceLabel(defense).toLowerCase()} resistance during ${raid.targetType === "deep_plains" ? "a Deep Plains Raid" : "a sphere raid"}.${stormActive ? " Highstorm: Parshendi Power +40%." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`;
+        ? `${attacker.name} overcame ${intelText(presentIntelNumber(defense, watchtowerTerritoryLevel(attacker.buildings.watchtower ?? 0)))} resistance and recovered ${recovered} spheres from a ${intelText(neutralRewardIntel(reward, watchtowerTerritoryLevel(attacker.buildings.watchtower ?? 0)))} Sphere cache.${stormActive ? " Highstorm: Parshendi Power +40%. Highstorm Jackpot: Sphere reward pool ×2." : ""}${leftBehind > 0 ? " Some spheres were left behind because the army lacked Plunder." : ""}${gemheartFound ? " The army returned with 1 Gemheart." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`
+        : `${attacker.name} failed against ${intelText(presentIntelNumber(defense, watchtowerTerritoryLevel(attacker.buildings.watchtower ?? 0)))} resistance during ${raid.targetType === "deep_plains" ? "a Deep Plains Raid" : "a sphere raid"}.${stormActive ? " Highstorm: Parshendi Power +40%." : ""} Casualties: ${casualtySummary(lossResult.casualties)}.`;
       if (won) {
         await applyHostility(ctx, {
           playerId: attacker._id,
@@ -530,7 +488,7 @@ export const resolveRaid = internalMutation({
           lastActiveAt: now,
         });
 
-        const attackerReportLevel = won ? 2 : 1;
+        const attackerReportLevel = await currentKingdomIntelLevel(ctx, attacker._id, defender, now);
         await recordKingdomReport(ctx, {
           viewerPlayerId: attacker._id,
           target: defender,

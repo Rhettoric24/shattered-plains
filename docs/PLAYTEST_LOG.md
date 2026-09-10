@@ -131,3 +131,28 @@ system.
 Before friend test consider tap stat explanations, one core-loop hint,
 Gemheart warning, Intelligence terminology/purpose, and Survive
 wording.
+
+## 2026-09-09 --- Friend test: Chasmfiend difficulty and Watchtower reveals
+
+### Observation
+
+Rhett reports that Chasmfiends in Plateau Runs seem to escalate in
+difficulty very quickly and feel impossible unless the whole crew joins.
+This records player feedback; the scaling formula has not been audited
+as part of this entry.
+
+### Hypothesis
+
+Progression tied to elapsed days may outpace the participating crew.
+Consider scaling Chasmfiend Power and Sphere pools with Chasmfiends
+killed instead.
+
+### Action
+
+Record for later discussion in `IDEA_VAULT.md`. Also consider Watchtower
+level revealing Chasmfiend numbers and raid Sphere pools. No gameplay,
+UI, or deployment changes requested; thresholds and formulas remain open.
+
+### Related systems
+
+Plateau Runs, Chasmfiends, Watchtower, raid rewards, Intelligence.

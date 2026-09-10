@@ -1109,9 +1109,9 @@ function buildingEffectValues(key, level) {
   if (key === "watchtower") {
     const effects = [
       "No passive territory survey · Highstorm arrival within about 4 hours",
-      "Reveals plateau names, types, attributes, and broad resistance ranges · View other players’ Parshendi sphere raids · Highstorm arrival within about 2 hours",
-      "Adds narrow resistance estimates · View other players’ Parshendi sphere raids · Highstorm arrival within about 1 hour",
-      "Maintains narrow estimates and adds +1 Counter-Intelligence · View other players’ Parshendi sphere raids · Exact Highstorm arrival time",
+      "Reveals plateau identities and broad Parshendi and neutral Power and Sphere bands · View other players’ Parshendi sphere raids · Highstorm arrival within about 2 hours",
+      "Reveals narrow Parshendi and neutral Power and Sphere estimates · View other players’ Parshendi sphere raids · Highstorm arrival within about 1 hour",
+      "Reveals exact Parshendi and neutral Power and Sphere pools · View other players’ Parshendi sphere raids · Exact Highstorm arrival time",
     ];
     return {
       current: effects[Math.min(3, level)],
@@ -1840,6 +1840,7 @@ function deepPlainsTargetPreview() {
   const rewardFactor = 1 + hostility * Number(rules.rewardHostilityFactor || 0.4);
   const defense = rules.defensePower || [220, 320];
   const reward = rules.sphereReward || [3000, 5000];
+  if (Number(state.me.buildings?.watchtower || 0) === 0) return "Deep Plains resistance: " + neutralDefenseLabel((defense[0] + defense[1]) / 2 * difficultyFactor) + ". Sphere cache: " + plateauRunLootLabel((reward[0] + reward[1]) / 2 * rewardFactor) + ".";
   return "Estimated Power " + number(Math.round(defense[0] * difficultyFactor)) + "–" + number(Math.round(defense[1] * difficultyFactor)) + ", Sphere pool " + number(Math.round(reward[0] * rewardFactor)) + "–" + number(Math.round(reward[1] * rewardFactor));
 }
 
@@ -1879,12 +1880,13 @@ function sphereTargetPreview() {
   const minimumDefense = Math.round(configValue("parshendiSphereRaidMinDefense", 1) * defenseFactor);
   const maximumDefense = Math.round(configValue("parshendiSphereRaidMaxDefense", 4) * defenseFactor);
   const averageReward = (configValue("parshendiSphereRaidMinReward", 1200) + configValue("parshendiSphereRaidMaxReward", 2400)) / 2 * (1 + hostility * Number(rules.rewardHostilityFactor || 1));
+  if (Number(state.me.buildings?.watchtower || 0) === 0) return "Enemy resistance: " + neutralDefenseLabel((minimumDefense + maximumDefense) / 2) + "\nSphere cache: " + plateauRunLootLabel(averageReward);
   return "Possible enemy Power: " + minimumDefense + "–" + maximumDefense + "\nEstimated reward: " + plateauRunLootLabel(averageReward);
 }
 
 function plateauTargetPreview(stats) {
   if (!state.plateauRun) return "No plateau run is open";
-  return "Hunt difficulty: " + plateauRunDifficultyLabel(state.plateauRun.difficultyPower) + ". Total Sphere pool: " + number(state.plateauRun.spherePool) + ".";
+  return "Hunt difficulty: " + formatDisclosedPower(state.plateauRun.difficultyIntel) + ". Total Sphere pool: " + formatDisclosedPower(state.plateauRun.rewardIntel) + ".";
 }
 
 function neutralSiegePreview(stats) {
@@ -2068,9 +2070,7 @@ function siegeCard(siege) {
     ? "Committed defense " + formatStat(defensePower) + ", Emergency +" + number(siege.emergencyDefensePercent) + "%, Final " + formatStat(finalDefense)
     : isAttacker && investigatedPower
       ? "Investigated defender Power " + investigatedPower
-    : siege.targetType === "player" || siege.targetType === "parshendi_retaliation"
-      ? "Defenses unknown"
-      : "Parshendi hold " + neutralDefenseLabel(plateau?.neutralDefenseRemaining || 0);
+    : "Defender Power " + formatIntelValue(siege.defenderIntel);
   const defenderPanel = isDefender && (siege.targetType === "player" || siege.targetType === "parshendi_retaliation") ? siegeDefenderPanel(siege, plateau) : "";
   const v2Panel = siege.siegeVersion >= 2 && siege.targetType === "player" ? siegeV2Panel(siege) : "";
   const conclaveText = isAttacker && siege.ardentiaConclave ? ' Ardentia Scout Conclave attached.' : '';
@@ -2081,7 +2081,7 @@ function latestSiegeInvestigationPower(siege) {
   const entry = [...(siege.investigations || [])].reverse().find((investigation) => investigation.status === "resolved" && investigation.report?.power !== undefined);
   if (!entry) return "";
   const power = typeof entry.report.power === "object" ? formatIntelValue(entry.report.power) : formatStat(entry.report.power);
-  return (entry.outcome === "partial" ? "approximately " : "") + power + (entry.outcome === "partial" ? "" : " (exact snapshot)");
+  return power + (entry.report.power?.mode === "exact" ? " (exact snapshot)" : " (Ledger assessment)");
 }
 
 function siegeV2Panel(siege) {
@@ -2272,16 +2272,16 @@ function raidListMarkup(raids, emptyText) {
     const direction = raid.attackerId === state.me.id ? "Outgoing" : raid.targetId === state.me.id ? "Incoming" : "Observed";
     const isMine = raid.attackerId === state.me.id;
     const prize = raid.targetType === "parshendi_spheres"
-      ? (raid.rewardIntel?.label || "Estimated") + " sphere loot"
+      ? formatDisclosedPower(raid.rewardIntel) + " sphere loot"
       : raid.targetType === "deep_plains"
-        ? plateauRunLootLabel(raid.rewardSpheres || 0) + " sphere loot"
+        ? formatDisclosedPower(raid.rewardIntel) + " sphere loot"
       : "land pressure";
     const force = isMine
       ? escapeHtml(raid.unitSummary) + ' for ' + prize
-      : 'Force appears ' + operationPowerLabel(raid.power) + ' with ' + operationSpeedLabel(raid.speed) + ' pace';
+      : 'Force appears ' + formatDisclosedPower(raid.powerIntel) + ' with ' + formatDisclosedPower(raid.speedIntel) + ' pace';
     const details = isMine
       ? 'Power ' + formatStat(raid.power) + ', Speed ' + formatStat(raid.speed) + ', travel ' + formatDuration(raid.travelMinutes) + '.'
-      : 'Estimated strength ' + operationPowerLabel(raid.power) + ', travel ' + formatDuration(raid.travelMinutes) + '.';
+      : 'Estimated strength ' + formatDisclosedPower(raid.powerIntel) + ', travel ' + formatDuration(raid.travelMinutes) + '.';
     const defenseMarkup = raidDefenseMarkup(raid.defenseIntel);
     const activityLabel = direction === "Outgoing" ? "My Raid" : "World Raid";
     return '<article class="list-item raid-item ' + direction.toLowerCase() + '"><strong>' + activityLabel + ':</strong> ' + escapeHtml(raid.attackerName) + ' to <strong>' + escapeHtml(raid.targetName) + '</strong><span>' + force + '</span>' + defenseMarkup + '<small>' + details + ' Resolves ' + arrival + ' (<span data-local-countdown-at="' + Number(raid.arrivalAt) + '">' + formatDuration(remaining) + '</span> left).</small></article>';
@@ -2319,7 +2319,7 @@ function renderPlateau() {
   }
   $("plateau-run-submit").textContent = myCommitment ? "Update commitment" : "Commit to plateau run";
   $("cancel-plateau-commitment").classList.toggle("hidden", !myCommitment);
-  status.innerHTML = '<div class="plateau-card"><strong>Join window open</strong><span><b data-local-countdown-at="' + Number(run.joinUntil) + '">' + formatDuration(remaining) + '</b> left</span><small>Difficulty ' + plateauRunDifficultyLabel(run.difficultyPower) + '. Loot: ' + number(run.gemheartReward) + ' Gemheart and ' + number(run.spherePool) + ' Spheres.</small></div>';
+  status.innerHTML = '<div class="plateau-card"><strong>Join window open</strong><span><b data-local-countdown-at="' + Number(run.joinUntil) + '">' + formatDuration(remaining) + '</b> left</span><small>Difficulty ' + formatDisclosedPower(run.difficultyIntel) + '. Loot: ' + number(run.gemheartReward) + ' Gemheart and ' + formatDisclosedPower(run.rewardIntel) + ' Spheres.</small></div>';
   participants.innerHTML = run.participants.length ? run.participants.map((entry) => {
     const bonus = entry.joinOrderSpeedBonus ? " +" + Math.round(entry.joinOrderSpeedBonus * 100) + "% join speed" : "";
     const isMine = entry.playerId === state.me.id;
@@ -2328,7 +2328,7 @@ function renderPlateau() {
       : "Committed Power " + formatIntelValue(entry.powerIntel);
     const detailText = isMine
       ? "Power " + formatStat(entry.power) + ", speed " + formatStat(entry.speed) + ", speed score " + formatStat(entry.speedScore) + (entry.travelMinutes ? ", travel " + formatDuration(entry.travelMinutes) : "")
-      : "Military Intel reading; pace appears " + operationSpeedLabel(entry.speedScore);
+      : "Military Intel reading; pace appears " + formatDisclosedPower(entry.speedIntel);
     return '<article class="list-item"><strong>' + escapeHtml(entry.playerName) + '</strong><span>' + forceText + '</span><small>' + detailText + bonus + ', joined #' + entry.joinOrder + '.</small></article>';
   }).join("") : '<div class="empty">No committed warcamps yet.</div>';
 }
@@ -2717,11 +2717,11 @@ function renderHostility() {
   const intelPanel = $("retaliation-intelligence-panel");
   intelPanel?.classList.toggle("hidden", !warning);
   if (warning) {
-    const details = warning.targetName
-      ? ' Likely target: ' + warning.targetName + '. Estimated strength: ' + formatIntelValue(warning.estimatedStrength) + (warning.launchWindowStartAt ? '. Expected launch in ' + formatDuration(Math.max(0, Math.ceil((warning.launchWindowStartAt - Date.now()) / 60000))) + '–' + formatDuration(Math.max(0, Math.ceil((warning.launchWindowEndAt - Date.now()) / 60000))) : '') + '.'
-      : '';
+    const details = ' Strength: ' + formatIntelValue(warning.estimatedStrength) + '.' + (warning.targetName
+      ? ' Likely target: ' + warning.targetName + (warning.launchWindowStartAt ? '. Expected launch in ' + formatDuration(Math.max(0, Math.ceil((warning.launchWindowStartAt - Date.now()) / 60000))) + '–' + formatDuration(Math.max(0, Math.ceil((warning.launchWindowEndAt - Date.now()) / 60000))) : '') + '.'
+      : '');
     if ($("retaliation-warning")) $("retaliation-warning").innerHTML = '<strong>' + escapeHtml(warning.phase === "launched" ? "Retaliation launched" : "Force gathering") + '</strong><span>' + escapeHtml(warning.message + details) + '</span>';
-    if ($("retaliation-intelligence")) $("retaliation-intelligence").innerHTML = '<strong>' + escapeHtml(warning.targetName || "Parshendi movements") + '</strong><p>' + escapeHtml(warning.message + details) + '</p><small>Knowledge supplied by existing Watchtower and Territory Intelligence coverage.</small>';
+    if ($("retaliation-intelligence")) $("retaliation-intelligence").innerHTML = '<strong>' + escapeHtml(warning.targetName || "Parshendi movements") + '</strong><p>' + escapeHtml(warning.message + details) + '</p><small>Knowledge supplied by your Watchtower.</small>';
   }
   $("deep-plains-panel")?.classList.toggle("hidden", hostility < Number(state.config.worldPressure?.rules?.deepPlains?.unlockMinimumHostility || 68));
 }
@@ -3049,7 +3049,7 @@ function renderIntelligence() {
   const watchtower = state.intelligence?.watchtower || { level: 0, territoryLevel: 0, counterIntelligence: 0 };
   const watchtowerStatus = $("watchtower-intelligence-status");
   if (watchtowerStatus) {
-    const coverage = ["No passive surveys", "Identities, traits, and broad ranges", "Narrow resistance estimates", "Narrow estimates and Counter-Intelligence"][Math.min(3, watchtower.level)] || "No passive surveys";
+    const coverage = ["No passive surveys", "Identities, traits, and broad ranges", "Narrow resistance estimates", "Exact Parshendi Power and rewards"][Math.min(3, watchtower.level)] || "No passive surveys";
     watchtowerStatus.innerHTML = pulseItem("Watchtower", "Level " + watchtower.level) + pulseItem("Territory coverage", coverage) + pulseItem("Counter-Intelligence", watchtower.counterIntelligence ? "+" + watchtower.counterIntelligence : "None");
   }
 
@@ -3182,6 +3182,8 @@ function decorateRaids(raids, players, unitsConfig) {
     speed: raid.speed,
     acres: raid.acres || 0,
     defenseIntel: raid.defenseIntel,
+    powerIntel: raid.powerIntel,
+    speedIntel: raid.speedIntel,
     rewardSpheres: raid.rewardSpheres,
     rewardIntel: raid.rewardIntel,
     arrivalAt: raid.arriveAt,
@@ -3254,6 +3256,7 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
         unitSummary: attackerUnitsKnown ? unitSummary(attackerUnits, unitsConfig) : "Force details unknown",
         attackerPower: siege.attackerPower || 0,
         attackerIntel: siege.attackerIntel || null,
+        defenderIntel: siege.defenderIntel || null,
         attackerSpeed: siege.attackerSpeed || 0,
         defenderUnits: normalizeUnitObject(siege.defenderUnits || {}, Object.keys(unitsConfig)),
         defenderPower: siege.defenderPower || 0,
@@ -3282,8 +3285,8 @@ function decoratePlateauRun(plateauRun, unitsConfig) {
   return {
     id: plateauRun.run._id,
     joinUntil: plateauRun.run.closesAt,
-    difficultyPower: plateauRun.run.difficulty,
-    spherePool: plateauRun.run.spherePool,
+    difficultyIntel: plateauRun.run.difficultyIntel,
+    rewardIntel: plateauRun.run.rewardIntel,
     gemheartReward: plateauRun.run.gemheartReward,
     participants: plateauRun.commitments.map((entry) => ({
       id: entry._id,
@@ -3293,6 +3296,7 @@ function decoratePlateauRun(plateauRun, unitsConfig) {
       unitSummary: unitSummary(entry.units, unitsConfig),
       power: entry.power,
       powerIntel: entry.powerIntel,
+      speedIntel: entry.speedIntel,
       speed: entry.speed,
       speedScore: entry.speedScore,
       travelMinutes: entry.travelMinutes || null,

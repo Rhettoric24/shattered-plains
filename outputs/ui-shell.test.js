@@ -98,10 +98,10 @@ describe("post-overhaul shell", () => {
     expect(client).toContain('view: "plains", tab: "sieges"');
   });
 
-  test("presents Plateau Runs as Chasmfiends with exact Sphere loot", () => {
+  test("presents Plateau Runs as Chasmfiends with disclosed Sphere loot", () => {
     expect(client).toContain('return "Young Chasmfiend"');
     expect(client).toContain('return "Legendary Chasmfiend"');
-    expect(client).toContain("number(run.spherePool) + ' Spheres.");
+    expect(client).toContain("formatDisclosedPower(run.rewardIntel) + ' Spheres.");
     expect(client).not.toContain("a ' + plateauRunLootLabel(run.spherePool) + ' sphere pool");
     expect(html).toContain("Work together to take on the mighty Chasmfiend.");
     expect(html).toContain("The fastest final army also contributes +10% Power to the hunt and claims the Gemheart");
@@ -154,8 +154,8 @@ describe("post-overhaul shell", () => {
     expect(client).toContain("Highstorm arrival within about 2 hours");
     expect(client).toContain("Highstorm arrival within about 1 hour");
     expect(client).toContain("Exact Highstorm arrival time");
-    expect(client).toContain("Reveals plateau names, types, attributes, and broad resistance ranges");
-    expect(client).toContain("Maintains narrow estimates and adds +1 Counter-Intelligence");
+    expect(client).toContain("Reveals plateau identities and broad Parshendi and neutral Power and Sphere bands");
+    expect(client).toContain("Reveals exact Parshendi and neutral Power and Sphere pools");
   });
 
   test("renders three accessible persisted Recruitment disclosure groups", () => {

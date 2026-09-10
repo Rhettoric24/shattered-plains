@@ -103,6 +103,32 @@ Chasmfiend hunts per day?
 Do not add persistence to ordinary Plateau Runs until their immediate
 join, contribution, speed, and reward loop proves fun in testing.
 
+# Deferred friend-test ideas — 2026-09-09
+
+### Chasmfiend progression by kills
+
+Friend-test feedback: regular Plateau Run Chasmfiends seem to become
+too difficult too quickly, with success feeling impossible unless the
+whole crew joins. This is a player observation, not a verified balance
+diagnosis.
+
+Consider increasing Chasmfiend Power and Sphere pools per Chasmfiend
+killed instead of per elapsed day. The intent is to explore progression
+that follows successful hunts rather than time alone.
+
+Before implementation, decide the counter's scope and reset behavior,
+starting values, and increase per kill. No formula is approved yet.
+
+### Watchtower reveals for Chasmfiends and raid rewards
+
+Consider revealing Chasmfiend numbers based on Watchtower level, and
+revealing raid Sphere pools based on Watchtower level. Exact fields,
+levels, precision, and applicable raid types remain to be decided.
+
+Approved for implementation on 2026-09-09: Watchtower's four numerical
+tiers and kill-based progression. See `DESIGN_LEDGER.md` for the selected
+rules and `PLAYTEST_LOG.md` for the original feedback.
+
 # Diplomacy / Trade
 
 Potential direction: low Hostility can support diplomacy/trade while

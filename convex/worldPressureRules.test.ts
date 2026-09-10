@@ -85,11 +85,11 @@ describe("World Pressure rules", () => {
   });
 
   test("narrows one true raid defense without changing it", () => {
-    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 0, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ mode: "range", min: 100, max: 200 });
-    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 1, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ mode: "estimate", min: 128, max: 198 });
-    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 2, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ min: 143, max: 183 });
-    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 3, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ min: 153, max: 173 });
-    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 4, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ min: 153, max: 173 });
+    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 0, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ mode: "label", label: "Guarded" });
+    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 1, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ mode: "range", min: 121, max: 240 });
+    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 2, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ min: 146, max: 180 });
+    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 3, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ mode: "exact", value: 163 });
+    expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 4, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ mode: "exact", value: 163 });
     expect(raidDefenseDisclosure({ defense: 163, intelligenceLevel: 5, broadMinimum: 100, broadMaximum: 200 })).toMatchObject({ mode: "exact", value: 163 });
   });
 
