@@ -1210,6 +1210,7 @@ export const resolveSiege = internalMutation({
       if (!parshendiWon) {
         const reward = await completeRetaliation(ctx, { retaliationId: siege.retaliationId, defended: true, now });
         await ctx.db.patch(plateau._id, { activeSiegeId: undefined, updatedAt: now });
+        await reconcileRetaliationSchedule(ctx, defender._id, now);
         await recordSuccessfulDefensiveSiege(ctx, defender._id, now);
         subject = "Parshendi Retaliation Defeated";
         resultText = `${defender.name} held ${plateau.name} against the Parshendi. Reward: ${reward?.spheres ?? 0} Spheres. Casualties: ${casualtySummary(defenderLossResult.casualties)}.`;

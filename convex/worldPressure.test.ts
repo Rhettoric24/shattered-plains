@@ -76,7 +76,7 @@ describe("World Pressure integration", () => {
     ]);
   });
 
-  test("player aggression resets peace while retaliation gains do not", async () => {
+  test("player aggression resets peace while non-player updates only materialize decay", async () => {
     const t = convexTest(schema, modules);
     const playerId = await addPlayer(t, "Alethi");
     const anchor = 1_000_000;
@@ -84,12 +84,83 @@ describe("World Pressure integration", () => {
     const interval = WORLD_PRESSURE_RULES.hostility.peacefulIntervalMs;
     await t.run((ctx) => applyHostility(ctx, {
       playerId,
-      gain: WORLD_PRESSURE_RULES.hostility.gains.retaliationVictory,
+      gain: 0,
       playerInitiated: false,
       now: anchor + interval,
     }));
     const row = await t.run(async (ctx) => await ctx.db.query("kingdomWorldPressure").withIndex("by_playerId", (q) => q.eq("playerId", playerId)).unique());
-    expect(row).toMatchObject({ hostility: 88, lastPlayerAggressionAt: anchor, decayIntervalsApplied: 1 });
+    expect(row).toMatchObject({ hostility: 83, lastPlayerAggressionAt: anchor, decayIntervalsApplied: 1 });
+  });
+
+  test("defeating an incoming Parshendi retaliation does not raise or reset Hostility", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const playerId = await addPlayer(t, "Retaliation Defender");
+    await t.run((ctx) => createFreshSeason(ctx, 1, now));
+    const plateauId = await t.run(async (ctx) => {
+      await applyHostility(ctx, { playerId, gain: 50, playerInitiated: true, now: now - 1000 });
+      return await ctx.db.insert("plateaus", {
+        name: "Held Ground",
+        type: "sphere",
+        status: "owned",
+        origin: "neutral",
+        ownerPlayerId: playerId,
+        highground: false,
+        large: false,
+        neutralDefenseInitial: 200,
+        neutralDefenseRemaining: 0,
+        heldSince: now - 1000,
+        createdAt: now - 1000,
+        updatedAt: now - 1000,
+      });
+    });
+    const { retaliationId, siegeId } = await t.run(async (ctx) => {
+      const retaliationId = await ctx.db.insert("parshendiRetaliations", {
+        playerId,
+        targetPlateauId: plateauId,
+        phase: "launched",
+        active: true,
+        hostilityAtFormation: 50,
+        militaryCapacity: 200,
+        seasonDay: 1,
+        power: 100,
+        formationAt: now,
+        launchAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const defenderUnits = { ...emptyUnits(), spearman: 200 };
+      const siegeId = await ctx.db.insert("sieges", {
+        plateauId,
+        defenderId: playerId,
+        targetType: "parshendi_retaliation",
+        attackerUnits: emptyUnits(),
+        attackerPower: 100,
+        attackerSpeed: 0,
+        defenderUnits,
+        defenderPower: 200,
+        defenderSpeed: 0,
+        fortifyPercent: 0,
+        retaliationId,
+        departAt: now,
+        resolveAt: now,
+        status: "pending",
+      });
+      await ctx.db.patch(plateauId, { activeSiegeId: siegeId });
+      await ctx.db.patch(retaliationId, { siegeId });
+      return { retaliationId, siegeId };
+    });
+
+    await t.mutation(internal.plateaus.resolveSiege, { siegeId });
+    const result = await t.run(async (ctx) => ({
+      pressure: await ctx.db.query("kingdomWorldPressure").withIndex("by_playerId", (q) => q.eq("playerId", playerId)).unique(),
+      retaliation: await ctx.db.get(retaliationId),
+      player: await ctx.db.get(playerId),
+    }));
+    expect(result.pressure).toMatchObject({ hostility: 50, lastPlayerAggressionAt: now - 1000 });
+    expect(result.pressure?.nextRetaliationAt).toBeGreaterThan(now);
+    expect(result.retaliation).toMatchObject({ active: false, phase: "resolved", outcome: "defended" });
+    expect(result.player!.spheres).toBeGreaterThan(1000);
   });
 
   test("successful ordinary raid grants its snapshotted pool once and preserves Hostility behavior", async () => {

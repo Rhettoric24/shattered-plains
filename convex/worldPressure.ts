@@ -346,12 +346,6 @@ export async function completeRetaliation(
           now: args.now,
         });
       }
-      await applyHostility(ctx, {
-        playerId: player._id,
-        gain: WORLD_PRESSURE_RULES.hostility.gains.retaliationVictory,
-        playerInitiated: false,
-        now: args.now,
-      });
       return { spheres };
     }
   }

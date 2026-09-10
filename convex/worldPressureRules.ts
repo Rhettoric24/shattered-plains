@@ -12,7 +12,6 @@ export const WORLD_PRESSURE_RULES = {
       gemheartPlateau: 6,
       neutralRaidVictory: 8,
       plateauRunVictory: 6,
-      retaliationVictory: 5,
       deepPlainsVictory: 10,
     },
   },

@@ -218,6 +218,11 @@ Neutral combat is not consequence-free farming.
 
 Players can de-escalate.
 
+### DECIDED --- Retaliation defense is not player aggression
+
+Defending against an incoming Parshendi retaliation does not raise
+Hostility or reset the peaceful-decay clock.
+
 ### DECIDED --- Reclaimed neutral plateaus become harder
 
 Repeated reclamation increases resistance.

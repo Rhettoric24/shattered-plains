@@ -322,7 +322,8 @@ At sufficient Hostility, Parshendi retaliation can target eligible
 territory. Committed defenders matter. Highground/Emergency Defense
 apply. A Parshendi victory can neutralize territory and increase future
 reclamation difficulty. Highstorms can expose defenders and strengthen
-Parshendi opposition.
+Parshendi opposition. Defending against an incoming retaliation does not
+raise Hostility or reset peaceful decay.
 
 # Plateaus / Plateau Runs
 
