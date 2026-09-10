@@ -248,18 +248,17 @@ Shardbearers. Do not solve only with absurd pricing.
 
 # Intelligence
 
-### DECIDED --- Economy Intel is authoritative/spendable
+### DECIDED --- Rival Intel is persistent and category-specific
 
-0--100 `economyAmount`; Sphere Heist consumes 50.
+Each viewer/rival pair has four independent 0--100 pools: Military,
+Economy, Research, and Territory. Investigations reward only the selected
+category. The former generic investigation-boost pool, incidental category
+reports, bonus discoveries, and freshness decay are retired.
 
-### DECIDED --- Economy Intel disclosure does not freshness-decay
-
-Ledger amount controls disclosure.
-
-### TESTING --- Intel terminology needs clarity
-
-Rival Intel, Economy Intel, Ledger quality, and other categories may
-blur together.
+Every Ledger category uses the same disclosure thresholds: 0--24 shows a
+descriptive label, 25--74 shows an estimated score, and 75--100 shows the
+exact current score. Economy Intel may still be spent on Sphere Heists and
+Military Intel may still be spent on active PvP siege investigations.
 
 # Sieges
 

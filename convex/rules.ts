@@ -415,7 +415,7 @@ export const BUILDING_RULES = {
     levelCosts: [3000, 7500, 15000],
     maxLevel: 3,
     constructionTimeMs: 0,
-    description: "Recruits operatives, stores rival-specific Intel, and unlocks covert investigations.",
+    description: "Unlocks operatives and investigations that build persistent 0–100 Intel separately in each rival Ledger category.",
   },
 } as const;
 

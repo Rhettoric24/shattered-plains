@@ -291,27 +291,32 @@ describe("post-overhaul shell", () => {
     expect(client).toContain("state.config.startingGemhearts");
   });
 
-  test("explains the two friend-test Intelligence models and separate spend pools", () => {
+  test("explains the unified four-category rival Intelligence model", () => {
     expect(html).toContain("Intelligence helps you judge rival strength before committing armies, operatives, or resources.");
-    expect(html).toContain("Friend-test note: two Intelligence models");
-    expect(html).toContain("Persistent Intel · Military and Economy");
-    expect(html).not.toContain("0–24 shows a qualitative label, 25–74 an estimate, and 75–100 an exact ledger snapshot");
-    expect(html).toContain("Military Intel can be spent in blocks of 50 by participants investigating an active PvP siege");
-    expect(html).toContain("Report Intel · Research and Territory");
-    expect(html).toContain("lose one level every six hours");
-    expect(html).toContain("do not unlock separate Research or Territory operations in this friend test");
-    expect(html).toContain("Separate boost pool:");
-    expect(html).toContain("spending it does not lower persistent Military disclosure");
+    expect(html).toContain("How rival Intelligence works");
+    expect(html).toContain("Military, Economy, Research, and Territory each have their own persistent 0–100 meter against each rival");
+    expect(html).toContain("Investigating one category never raises another category");
+    expect(html).toContain("0–24 Intel shows a descriptive label, 25–74 shows a numerical estimate, and 75–100 shows the exact score");
+    expect(html).toContain("These meters do not decay");
+    expect(html).toContain("a Sphere Heist costs 50 Economy Intel");
+    expect(html).toContain("investigating an active PvP siege costs 50 Military Intel");
+    expect(html).not.toContain("Intel boost");
+    expect(client).not.toContain("espionage-intel-spend");
   });
 
-  test("shows persistent Intel totals without explaining their presentation tier", () => {
-    expect(client).toContain('cell[category + "Intel"]');
-    expect(client).toContain('cell[category + "IntelCap"]');
-    expect(client).toContain('amount >= 50 ? "operation-ready"');
-    expect(client).not.toContain("persistentIntelTier");
-    expect(client).not.toContain("— ' + escapeHtml(intelLevelName(cell.currentLevel))");
-    expect(client).not.toContain('class="intel-markers"');
-    expect(css).not.toContain(".intel-markers");
+  test("shows the same persistent Intel status for every Ledger category", () => {
+    expect(client).toContain("number(cell.intelAmount || 0)");
+    expect(client).toContain("number(cell.intelCap || 100)");
+    expect(client).toContain('cell.currentLevel >= 2 ? "Exact score" : cell.currentLevel >= 1 ? "Estimated score" : "Descriptive label"');
+    expect(client).toContain('pulseItem("Intel model", "4 categories · 0–100 each")');
+    expect(client).toContain('pulseItem("Disclosure", "25 estimate · 75 exact")');
+    expect(client).not.toContain("Mission boost cap");
+  });
+
+  test("describes the unified Intel model on the Ghostblood building card", () => {
+    expect(client).toContain('const intelEffect = "Four persistent 0–100 category Intel pools per rival"');
+    expect(client).not.toContain("mission boost");
+    expect(client).not.toContain("Intel/rival");
   });
 
   test("keeps contextual navigation at fixed dimensions across spaces", () => {

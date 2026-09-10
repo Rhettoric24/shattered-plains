@@ -536,6 +536,8 @@ export default defineSchema({
     amount: v.number(),
     economyAmount: v.optional(v.number()),
     militaryAmount: v.optional(v.number()),
+    researchAmount: v.optional(v.number()),
+    territoryAmount: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_viewerPlayerId_and_targetPlayerId", ["viewerPlayerId", "targetPlayerId"]),
 

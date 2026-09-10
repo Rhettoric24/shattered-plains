@@ -12,10 +12,9 @@ export const ESPIONAGE_RULES = {
     name: "Ghostblood Network",
     levelCosts: [3000, 7500, 15000],
     constructionTimesMs: [0, 0, 0],
-    intelCaps: [50, 100, 150],
-    missionIntelSpendCaps: [5, 10, 15],
     maxLevel: 3,
   },
+  categoryIntel: { cap: 100, estimateAt: 25, exactAt: 75 },
   operatives: {
     informant: { name: "Informant", networkLevel: 1, spyPower: 1, provisionsCost: 3, sphereCost: 150, trainingTimeMs: 0 },
     spy: { name: "Spy", networkLevel: 2, spyPower: 3, provisionsCost: 2, sphereCost: 750, trainingTimeMs: 0 },
@@ -27,7 +26,6 @@ export const ESPIONAGE_RULES = {
   sphereHeist: {
     economyIntelCap: 100,
     economyIntelCost: 50,
-    disclosure: { estimateAt: 25, exactAt: 75 },
     treasuryPercent: 0.05,
     minimumHaul: 1000,
     maximumHaul: 10000,
@@ -55,8 +53,10 @@ export const ESPIONAGE_RULES = {
       { max: 49, label: "Far-reaching" }, { max: null, label: "Dominant" },
     ],
   },
-  bonusDiscovery: { failureChance: 0, partialChance: 0, successChance: 0, overwhelmChance: 1, quality: 1 },
 } as const;
+
+// Old report precision is frozen at the cutover so fallback reads cannot keep decaying.
+export const LEGACY_INTEL_CUTOVER_AT = Date.UTC(2026, 8, 9, 0, 0, 0);
 
 export type EspionageOutcome = keyof typeof ESPIONAGE_RULES.intelRewards;
 
@@ -102,11 +102,6 @@ export function operativeProvisions(value?: Partial<OperativeCounts>) {
   return OPERATIVE_TIERS.reduce((sum, tier) => sum + counts[tier] * ESPIONAGE_RULES.operatives[tier].provisionsCost, 0);
 }
 
-export function networkValue(values: readonly number[], level: number) {
-  if (level <= 0) return 0;
-  return values[Math.min(values.length, Math.floor(level)) - 1] ?? 0;
-}
-
 export function resolveEspionageOutcome(finalPower: number, counterIntelligence: number): EspionageOutcome {
   const power = Math.max(0, finalPower);
   const defense = Math.max(0, counterIntelligence);
@@ -118,10 +113,10 @@ export function resolveEspionageOutcome(finalPower: number, counterIntelligence:
   return "overwhelm";
 }
 
-export function economyIntelDisclosureLevel(amount: number) {
-  const value = Math.max(0, Math.min(ESPIONAGE_RULES.sphereHeist.economyIntelCap, Math.floor(amount)));
-  if (value >= ESPIONAGE_RULES.sphereHeist.disclosure.exactAt) return 2;
-  if (value >= ESPIONAGE_RULES.sphereHeist.disclosure.estimateAt) return 1;
+export function categoryIntelDisclosureLevel(amount: number) {
+  const value = Math.max(0, Math.min(ESPIONAGE_RULES.categoryIntel.cap, Math.floor(amount)));
+  if (value >= ESPIONAGE_RULES.categoryIntel.exactAt) return 2;
+  if (value >= ESPIONAGE_RULES.categoryIntel.estimateAt) return 1;
   return 0;
 }
 
@@ -160,16 +155,13 @@ export function sphereHeistCasualties(committed: Partial<OperativeCounts>, outco
   return { casualties, survivors, lost: operativeCount(casualties) };
 }
 
-export function effectiveLedgerIntelLevel(level: number, observedAt: number, now: number) {
+export function effectiveLegacyReportLevel(level: number, observedAt: number, now: number) {
   const steps = Math.floor(Math.max(0, now - observedAt) / ESPIONAGE_RULES.decayStepMs);
   return Math.max(0, Math.min(2, Math.floor(level) - steps));
 }
 
-export function nextDecayAt(level: number, observedAt: number, now: number) {
-  const current = effectiveLedgerIntelLevel(level, observedAt, now);
-  if (current <= 0) return null;
-  const elapsedSteps = Math.floor(Math.max(0, now - observedAt) / ESPIONAGE_RULES.decayStepMs);
-  return observedAt + (elapsedSteps + 1) * ESPIONAGE_RULES.decayStepMs;
+export function legacyReportIntelAmount(level: number, observedAt: number, now: number) {
+  return legacyEconomyIntelAmount(effectiveLegacyReportLevel(level, observedAt, Math.min(now, LEGACY_INTEL_CUTOVER_AT)));
 }
 
 export function qualitativeScore(category: EspionageCategory, score: number) {
@@ -184,17 +176,6 @@ export function estimateScore(score: number) {
     min: Math.max(0, Math.floor((score - radius) / rule.rounding) * rule.rounding),
     max: Math.ceil((score + radius) / rule.rounding) * rule.rounding,
   };
-}
-
-export function seededIndex(seed: string, size: number) {
-  let hash = 2166136261;
-  for (let index = 0; index < seed.length; index += 1) { hash ^= seed.charCodeAt(index); hash = Math.imul(hash, 16777619); }
-  return size <= 0 ? 0 : (hash >>> 0) % size;
-}
-
-export function secondaryCategory(targeted: EspionageCategory, seed: string): EspionageCategory {
-  const choices = ESPIONAGE_CATEGORIES.filter((category) => category !== targeted);
-  return choices[seededIndex(seed, choices.length)];
 }
 
 export function isEspionageCategory(value: string): value is EspionageCategory {

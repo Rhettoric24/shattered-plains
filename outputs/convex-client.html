@@ -262,12 +262,12 @@
             <section class="panel full-panel kingdom-intelligence-panel">
               <div class="section-heading"><p class="eyebrow">Season Intelligence</p><h2>Kingdom Intelligence</h2><p class="hint">Intelligence helps you judge rival strength before committing armies, operatives, or resources.<sup>*</sup></p></div>
               <details class="intel-model-note">
-                <summary><span aria-hidden="true">*</span> Friend-test note: two Intelligence models</summary>
+                <summary><span aria-hidden="true">*</span> How rival Intelligence works</summary>
                 <div class="intel-model-grid">
-                  <section><strong>Persistent Intel · Military and Economy</strong><p>Each category builds its own 0–100 meter against each rival, and these meters do not decay. Economy Intel can be spent in blocks of 50 on Sphere Heists; Military Intel can be spent in blocks of 50 by participants investigating an active PvP siege.</p></section>
-                  <section><strong>Report Intel · Research and Territory</strong><p>Investigations produce a Level 0–2 report of that rival’s ledger score. Reports lose one level every six hours, so reinvestigating refreshes an aging report. These categories do not unlock separate Research or Territory operations in this friend test.</p></section>
+                  <section><strong>Four separate Intel categories</strong><p>Military, Economy, Research, and Territory each have their own persistent 0–100 meter against each rival. Investigating one category never raises another category.</p></section>
+                  <section><strong>One disclosure scale</strong><p>0–24 Intel shows a descriptive label, 25–74 shows a numerical estimate, and 75–100 shows the exact score. These meters do not decay.</p></section>
                 </div>
-                <p class="intel-model-footnote"><strong>Separate boost pool:</strong> Military, Research, and Territory investigations can also earn Rival Intel. Rival Intel may be spent before a later investigation to add Spy Power; spending it does not lower persistent Military disclosure.</p>
+                <p class="intel-model-footnote">Some operations consume their matching category: a Sphere Heist costs 50 Economy Intel, and investigating an active PvP siege costs 50 Military Intel.</p>
               </details>
               <div id="kingdom-intelligence-table" class="kingdom-intelligence-scroll"></div>
             </section>
@@ -289,12 +289,11 @@
                   <button type="submit">Assign defenders</button>
                 </form>
                 <form id="espionage-mission-form" class="contained-form espionage-form">
-                  <div class="form-wide"><h3 id="espionage-operation-heading">Launch operation</h3><p id="espionage-operation-hint" class="hint">Investigations gather seasonal knowledge and rival-specific Intel.</p></div>
+                  <div class="form-wide"><h3 id="espionage-operation-heading">Launch operation</h3><p id="espionage-operation-hint" class="hint">Investigations build persistent Intel in the selected Ledger category.</p></div>
                   <label>Operation<select id="espionage-operation"><option value="investigation">Ledger Investigation</option><option value="sphere_heist">Sphere Heist</option></select></label>
                   <label>Rival kingdom<select id="espionage-target"></select></label>
                   <label id="espionage-category-field">Ledger category<select id="espionage-category"><option value="military">Military</option><option value="economy">Economy</option><option value="research">Research</option><option value="territory">Territory</option></select></label>
                   <div id="espionage-mission-operatives" class="operative-input-grid form-wide"></div>
-                  <label id="espionage-intel-boost-field">Intel boost<input id="espionage-intel-spend" type="number" min="0" value="0" inputmode="numeric"></label>
                   <div id="sphere-heist-requirement" class="rule-callout form-wide hidden"></div>
                   <div id="espionage-mission-preview" class="mission-summary form-wide operation-outlook"></div>
                   <button id="launch-espionage-mission" data-mission-launch type="button">Launch 2-hour investigation</button>

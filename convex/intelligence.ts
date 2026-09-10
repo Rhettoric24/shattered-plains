@@ -92,7 +92,7 @@ export const listDossiers = query({
     }
 
     return {
-      // Kingdom dossiers were superseded by kingdomIntelligence/getKingdomLedger.
+      // Kingdom dossiers were superseded by espionage.getKingdomLedger.
       // Keep the response key for old clients; Territory remains this query's live consumer.
       kingdoms: [],
       territories,

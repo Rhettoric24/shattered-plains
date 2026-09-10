@@ -38,7 +38,7 @@ import {
 } from "./rules";
 import { applyHostility } from "./worldPressure";
 import { WORLD_PRESSURE_RULES } from "./worldPressureRules";
-import { economyIntelDisclosureLevel } from "./espionageRules";
+import { categoryIntelDisclosureLevel } from "./espionageRules";
 import { presentIntelNumber, presentSpeedIntel, chasmfiendIntel, neutralRewardIntel, intelText, watchtowerTerritoryLevel } from "./intelligenceRules";
 import { applyFabrialCasualtyProtection, soulcasterRecovery } from "./fabrialRules";
 import { reserveFabrial, settleReusableFabrial } from "./fabrialHelpers";
@@ -212,7 +212,7 @@ export const getCurrent = query({
         )));
         const ledgerLevel = commitment.playerId === viewer._id
           ? 2
-          : economyIntelDisclosureLevel(militaryIntel);
+          : categoryIntelDisclosureLevel(militaryIntel);
         const presentationLevel = ledgerLevel === 2 ? 3 : ledgerLevel === 1 ? 2 : 0;
         const shared = {
           _id: commitment._id,

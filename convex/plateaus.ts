@@ -1,4 +1,4 @@
-import { effectiveLedgerIntelLevel } from "./espionageRules";
+import { categoryIntelDisclosureLevel, legacyReportIntelAmount } from "./espionageRules";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
@@ -492,7 +492,11 @@ export const getSiegeBoard = query({
         .filter((plateau) => plateau.ownerPlayerId !== viewer._id)
         .map((plateau) => {
           const report = ledgerReports.find(row => row.targetPlayerId === plateau.ownerPlayerId && row.category === "territory");
-          const intelligenceLevel = report ? effectiveLedgerIntelLevel(report.achievedLevel, report.observedAt, now) : 0;
+          const resource = intelResources.find(row => row.targetPlayerId === plateau.ownerPlayerId);
+          const territoryIntel = resource?.territoryAmount ?? (report
+            ? legacyReportIntelAmount(report.achievedLevel, report.observedAt, now)
+            : 0);
+          const intelligenceLevel = categoryIntelDisclosureLevel(territoryIntel);
           const ownerName = plateau.ownerPlayerId
             ? playerNames[plateau.ownerPlayerId] ?? "Unknown"
             : "Neutral";

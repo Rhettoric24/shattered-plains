@@ -2,7 +2,7 @@ import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { espionageMissionAvailability, sphereHeistAvailability, syncEspionageControlLock } from "./espionage-ui-state.js";
 import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
 import { createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, routeNeedsPlateauBoard, routeNeedsTerritoryIntelligence, runMutationAction } from "./data-loading-state.js";
-import { formatDisclosedPower, kingdomIntelTimingRows, plateauIdentityPresentation, raidDefenseMarkup } from "./intelligence-ui-state.js";
+import { formatDisclosedPower, plateauIdentityPresentation, raidDefenseMarkup } from "./intelligence-ui-state.js";
 
 const CONVEX_URL =
   window.SHATTERED_PLAINS_CONFIG?.convexUrl ||
@@ -18,7 +18,7 @@ const ESPIONAGE_UI_DEFAULTS = {
     levelCosts: [3000, 7500, 15000],
     maxLevel: 3,
     constructionTimeMs: 0,
-    description: "Recruits operatives, stores rival-specific Intel, and unlocks covert investigations.",
+    description: "Unlocks operatives and investigations that build persistent 0–100 Intel separately in each rival Ledger category.",
   },
   operatives: {
     informant: { name: "Informant", networkLevel: 1, spyPower: 1, provisionsCost: 3, sphereCost: 150, trainingTimeMs: 0 },
@@ -28,16 +28,12 @@ const ESPIONAGE_UI_DEFAULTS = {
   network: {
     name: "Ghostblood Network",
     levelCosts: [3000, 7500, 15000],
-    intelCaps: [50, 100, 150],
-    missionIntelSpendCaps: [5, 10, 15],
     maxLevel: 3,
-    currentIntelCap: 0,
-    currentMissionIntelSpendCap: 0,
   },
+  categoryIntel: { cap: 100, estimateAt: 25, exactAt: 75 },
   sphereHeist: {
     economyIntelCap: 100,
     economyIntelCost: 50,
-    disclosure: { estimateAt: 25, exactAt: 75 },
     treasuryPercent: 0.05,
     minimumHaul: 1000,
     maximumHaul: 10000,
@@ -1127,11 +1123,13 @@ function buildingEffectValues(key, level) {
     };
   }
   if (key === "espionageNetwork") {
-    const caps = [0, 50, 100, 150];
-    const boosts = [0, 5, 10, 15];
     const recruits = ["", "Informants", "Informants and Spies", "Informants, Spies, and Ghostbloods"];
     const unlocks = ["", "Informants", "Spies", "Ghostbloods"];
-    return { current: level ? "Recruit " + recruits[Math.min(3, level)] + " · " + caps[Math.min(3, level)] + " Intel/rival · +" + boosts[Math.min(3, level)] + " mission boost" : "Espionage unavailable", next: "Unlocks " + unlocks[Math.min(3, level + 1)] + " · " + caps[Math.min(3, level + 1)] + " Intel/rival · +" + boosts[Math.min(3, level + 1)] + " mission boost" };
+    const intelEffect = "Four persistent 0–100 category Intel pools per rival";
+    return {
+      current: level ? "Recruit " + recruits[Math.min(3, level)] + " · " + intelEffect : "Espionage unavailable",
+      next: "Unlocks " + unlocks[Math.min(3, level + 1)] + " · " + intelEffect,
+    };
   }
   const current = soulcastBunkerCapacity(level);
   const next = soulcastBunkerCapacity(level + 1);
@@ -1323,7 +1321,6 @@ function renderConclaveControls() {
   if ($("espionage-target")) lastSelections.espionageTarget = $("espionage-target").value;
   if ($("espionage-operation")) lastSelections.espionageOperation = $("espionage-operation").value;
   if ($("espionage-category")) lastSelections.espionageCategory = $("espionage-category").value;
-  if ($("espionage-intel-spend")) lastSelections.espionageIntelSpend = $("espionage-intel-spend").value;
   document.querySelectorAll("[data-espionage-mission-tier]").forEach((input) => { lastSelections.espionageMission[input.dataset.espionageMissionTier] = input.value; });
   document.querySelectorAll("[data-espionage-defense-tier]").forEach((input) => { lastSelections.espionageDefense[input.dataset.espionageDefenseTier] = input.value; });
 }
@@ -2854,12 +2851,7 @@ function intelligenceTooltip(report) {
 
 function kingdomIntelCellStatus(row, category, cell) {
   if (row.own) return "";
-  if (category === "military" || category === "economy") {
-    const amount = Number(cell[category + "Intel"] || 0);
-    const cap = Number(cell[category + "IntelCap"] || 100);
-    return '<small class="persistent-intel-status ' + (amount >= 50 ? "operation-ready" : "") + '"><span>Intel</span><strong>' + number(amount) + '/' + number(cap) + '</strong></small>';
-  }
-  return '<small class="report-intel-status">Report ' + number(cell.currentLevel) + '/2</small>';
+  return '<small class="persistent-intel-status"><span>Intel</span><strong>' + number(cell.intelAmount || 0) + '/' + number(cell.intelCap || 100) + '</strong></small>';
 }
 
 function renderKingdomIntelligence() {
@@ -2881,7 +2873,8 @@ function renderKingdomIntelligence() {
       const body = '<strong>' + escapeHtml(cell.presentation.display) + '</strong>' + (row.own && cell.presentation.label ? '<small class="score-quality">' + escapeHtml(cell.presentation.label) + '</small>' : '') + kingdomIntelCellStatus(row, category, cell);
       return '<td>' + (row.own ? '<div class="intel-cell own">' + body + '</div>' : '<button type="button" class="intel-cell" data-kingdom-intel-player="' + escapeHtml(row.playerId) + '" data-kingdom-intel-category="' + category + '">' + body + '</button>') + '</td>';
     }).join("");
-    const totalBody = '<strong>' + escapeHtml(row.total.display) + '</strong>' + (row.own ? '' : '<small class="report-intel-status">Report ' + number(row.total.currentLevel) + '/2</small>');
+    const disclosure = row.total.currentLevel >= 2 ? "Exact" : row.total.currentLevel >= 1 ? "Estimate" : "Incomplete total";
+    const totalBody = '<strong>' + escapeHtml(row.total.display) + '</strong>' + (row.own ? '' : '<small class="report-intel-status">' + disclosure + '</small>');
     const total = row.own ? '<div class="intel-cell own">' + totalBody + '</div>' : '<button type="button" class="intel-cell" data-kingdom-intel-player="' + escapeHtml(row.playerId) + '" data-kingdom-intel-category="total">' + totalBody + '</button>';
     return '<tr class="' + (row.own ? 'own-row' : '') + '"><th scope="row">' + escapeHtml(row.kingdomName) + (row.own ? '<small>Your kingdom</small>' : '') + '</th>' + cells + '<td>' + total + '</td></tr>';
   }).join("") + '</tbody></table>';
@@ -2894,21 +2887,17 @@ function openKingdomIntelDetail(playerId, category) {
   if (!row || !dialog) return;
   if (category === "total") {
     $("kingdom-intel-dialog-title").textContent = row.kingdomName + " — Total Intelligence";
-    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid"><span>Current Intel</span><strong>Level ' + row.total.currentLevel + ' / 2</strong><span>Displayed information</span><strong>' + escapeHtml(row.total.display) + '</strong></div><p class="hint">A numerical Total is shown only when every category has sufficient intelligence. Hidden values are never used to fill arithmetic gaps.</p>';
+    const disclosure = row.total.currentLevel >= 2 ? "Exact" : row.total.currentLevel >= 1 ? "Estimate" : "Incomplete";
+    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid"><span>Disclosure</span><strong>' + disclosure + '</strong><span>Displayed information</span><strong>' + escapeHtml(row.total.display) + '</strong></div><p class="hint">A numerical Total is shown only when every category has sufficient Intel. Hidden values are never used to fill arithmetic gaps.</p>';
   } else {
     const cell = row.cells[category];
     if (!cell) return;
-    const next = cell.nextDecayAt ? formatDuration(Math.max(0, Math.ceil((cell.nextDecayAt - Date.now()) / 60000))) : "No further decay scheduled";
-    const observed = cell.observedAt ? intelligenceReportAge(cell.observedAt) : "Never investigated";
-    const timingRows = kingdomIntelTimingRows(category, { freshness: cell.freshness || "Unknown", updated: observed, next })
-      .map((entry) => '<span>' + escapeHtml(entry.label) + '</span><strong>' + escapeHtml(entry.value) + '</strong>')
-      .join("");
-    const discoveries = (cell.discoveries || []).map((fact) => '<article class="bonus-discovery"><strong>Bonus Discovery</strong><p>' + escapeHtml(fact.text) + '</p><small>Observed ' + escapeHtml(new Date(fact.observedAt).toLocaleString()) + '</small></article>').join("");
     $("kingdom-intel-dialog-title").textContent = row.kingdomName + " — " + cell.categoryName + " Intelligence";
-    const persistentResource = (category === "military" || category === "economy") && !row.own
-      ? '<span>' + escapeHtml(category === "military" ? "Military Intel" : "Economy Intel") + '</span><strong>' + number(cell[category + "Intel"] || 0) + '/' + number(cell[category + "IntelCap"] || 100) + '</strong>'
+    const disclosure = cell.currentLevel >= 2 ? "Exact score" : cell.currentLevel >= 1 ? "Estimated score" : "Descriptive label";
+    const persistentResource = !row.own
+      ? '<span>' + escapeHtml(cell.categoryName + " Intel") + '</span><strong>' + number(cell.intelAmount || 0) + '/' + number(cell.intelCap || 100) + '</strong>'
       : '';
-    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid"><span>Current Intel</span><strong>Level ' + cell.currentLevel + ' / 2</strong><span>Best achieved</span><strong>Level ' + cell.bestLevel + ' / 2</strong>' + persistentResource + '<span>Current information</span><strong>' + escapeHtml(cell.presentation.display) + '</strong>' + timingRows + '<span>Source</span><strong>' + escapeHtml(cell.source) + '</strong></div>' + discoveries + (row.own ? '' : '<button type="button" class="investigate-category" data-investigate-kingdom="' + escapeHtml(row.playerId) + '" data-investigate-category="' + escapeHtml(category) + '">Investigate this category</button>');
+    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid">' + persistentResource + '<span>Disclosure</span><strong>' + disclosure + '</strong><span>Current information</span><strong>' + escapeHtml(cell.presentation.display) + '</strong><span>Source</span><strong>' + escapeHtml(cell.source) + '</strong></div>' + (row.own ? '' : '<button type="button" class="investigate-category" data-investigate-kingdom="' + escapeHtml(row.playerId) + '" data-investigate-category="' + escapeHtml(category) + '">Investigate this category</button>');
     $("kingdom-intel-dialog-content").querySelector("[data-investigate-kingdom]")?.addEventListener("click", (event) => {
       dialog.close();
       showRoute({ view: "intelligence", tab: "operations", kingdom: event.currentTarget.dataset.investigateKingdom, category: event.currentTarget.dataset.investigateCategory });
@@ -2936,7 +2925,7 @@ function updateEspionagePreview() {
   const base = Object.entries(counts).reduce((sum, [tier, count]) => sum + count * Number(rules.operatives?.[tier]?.spyPower || 0), 0);
   const target = (state.espionage?.targets || []).find((entry) => entry.playerId === $("espionage-target")?.value);
   const operation = $("espionage-operation")?.value || "investigation";
-  const boost = operation === "sphere_heist" ? 0 : Math.max(0, Math.floor(Number($("espionage-intel-spend")?.value) || 0));
+  const category = $("espionage-category")?.value || "military";
   const selected = Object.values(counts).reduce((sum, count) => sum + count, 0);
   const launch = $("launch-espionage-mission");
   const heistRules = rules.sphereHeist || ESPIONAGE_UI_DEFAULTS.sphereHeist;
@@ -2961,8 +2950,8 @@ function updateEspionagePreview() {
   }
   preview.innerHTML = '<div class="outlook-heading"><span>Operation outlook</span><strong>' + escapeHtml(target?.name || "Choose a rival") + '</strong></div><div class="outlook-grid">' +
     outlookCell("Selected", number(selected) + " operatives", Object.entries(counts).map(([tier, count]) => number(count) + " " + (rules.operatives?.[tier]?.name || tier)).join("\n")) +
-    outlookCell("Spy Power", number(base + boost), number(base) + " from operatives\n+" + number(boost) + " from Intel") +
-    outlookCell("Intel spent", number(boost), number(target?.intel || 0) + "/" + number(target?.intelCap || 0) + " rival Intel available") +
+    outlookCell("Spy Power", number(base), "All Spy Power comes from the committed operatives") +
+    outlookCell(category[0].toUpperCase() + category.slice(1) + " Intel", number(target?.[category + "Intel"] || 0) + "/" + number(target?.[category + "IntelCap"] || 100), "This investigation can add 0, 5, 10, or 15 Intel to this category, based on its outcome") +
     outlookCell("Target Counter-Intel", "Unknown", "An exact rival Counter-Intelligence value is not revealed by the current rules.") +
     '</div>';
 }
@@ -2973,7 +2962,7 @@ function renderEspionage() {
   const heistRules = rules.sphereHeist || ESPIONAGE_UI_DEFAULTS.sphereHeist;
   const networkLocked = Number(espionage.networkLevel || 0) < 1;
   const status = $("espionage-network-status");
-  if (status) status.innerHTML = pulseItem("Ghostblood Network", "Level " + Number(espionage.networkLevel || 0)) + pulseItem("Counter-Intelligence", number(espionage.counterIntelligence || 0)) + pulseItem("Intel capacity", number(rules.network?.currentIntelCap || 0) + " per rival") + pulseItem("Mission boost cap", "+" + number(rules.network?.currentMissionIntelSpendCap || 0));
+  if (status) status.innerHTML = pulseItem("Ghostblood Network", "Level " + Number(espionage.networkLevel || 0)) + pulseItem("Counter-Intelligence", number(espionage.counterIntelligence || 0)) + pulseItem("Intel model", "4 categories · 0–100 each") + pulseItem("Disclosure", "25 estimate · 75 exact");
   $("espionage-network-locked")?.classList.toggle("hidden", !networkLocked);
   const roster = $("espionage-roster");
   if (roster) roster.innerHTML = Object.entries(rules.operatives || {}).map(([tier, rule]) => {
@@ -3002,14 +2991,9 @@ function renderEspionage() {
   const isHeist = operation === "sphere_heist";
   if ($("espionage-category") && lastSelections.espionageCategory) $("espionage-category").value = lastSelections.espionageCategory;
   const selectedTarget = (espionage.targets || []).find((target) => target.playerId === targetSelect?.value);
-  if ($("espionage-intel-spend")) {
-    $("espionage-intel-spend").max = String(Math.min(Number(selectedTarget?.intel || 0), Number(rules.network?.currentMissionIntelSpendCap || 0)));
-    $("espionage-intel-spend").value = String(Math.min(Number($("espionage-intel-spend").max), Math.max(0, Math.floor(Number(lastSelections.espionageIntelSpend) || 0))));
-  }
   $("espionage-category-field")?.classList.toggle("hidden", isHeist);
-  $("espionage-intel-boost-field")?.classList.toggle("hidden", isHeist);
   if ($("espionage-operation-heading")) $("espionage-operation-heading").textContent = isHeist ? "Launch Sphere Heist" : "Launch investigation";
-  if ($("espionage-operation-hint")) $("espionage-operation-hint").textContent = isHeist ? "Spend Economy Intel to attempt an authoritative Sphere transfer. Failure can kill committed operatives." : "Investigations gather seasonal knowledge and rival-specific Intel.";
+  if ($("espionage-operation-hint")) $("espionage-operation-hint").textContent = isHeist ? "Spend Economy Intel to attempt an authoritative Sphere transfer. Failure can kill committed operatives." : "Investigations build persistent Intel only in the selected Ledger category.";
   const heistAvailability = sphereHeistAvailability(selectedTarget?.economyIntel, heistRules.economyIntelCost);
   const heistRequirement = $("sphere-heist-requirement");
   if (heistRequirement) {
@@ -3018,9 +3002,10 @@ function renderEspionage() {
       ? '<strong>Ready: ' + number(heistAvailability.requiredIntel) + ' Economy Intel</strong><span>' + number(heistAvailability.availableIntel) + '/' + number(heistRules.economyIntelCap) + ' available against ' + escapeHtml(selectedTarget?.name || "this rival") + '; ' + number(heistAvailability.remainingIntel) + ' will remain after launch.</span>'
       : '<strong>Requires ' + number(heistAvailability.requiredIntel) + ' Economy Intel</strong><span>' + number(heistAvailability.availableIntel) + '/' + number(heistRules.economyIntelCap) + ' available against ' + escapeHtml(selectedTarget?.name || "this rival") + '. Economy investigations can improve this access.</span>';
   }
-  document.querySelectorAll("[data-espionage-mission-tier], #espionage-intel-spend").forEach((input) => input.addEventListener("input", updateEspionagePreview));
-  if (targetSelect) targetSelect.onchange = () => { captureSelections(); lastSelections.espionageTarget = targetSelect.value; lastSelections.espionageIntelSpend = "0"; renderEspionage(); };
-  if (operationSelect) operationSelect.onchange = () => { captureSelections(); lastSelections.espionageOperation = operationSelect.value; lastSelections.espionageIntelSpend = "0"; renderEspionage(); };
+  document.querySelectorAll("[data-espionage-mission-tier]").forEach((input) => input.addEventListener("input", updateEspionagePreview));
+  if (targetSelect) targetSelect.onchange = () => { captureSelections(); lastSelections.espionageTarget = targetSelect.value; renderEspionage(); };
+  if (operationSelect) operationSelect.onchange = () => { captureSelections(); lastSelections.espionageOperation = operationSelect.value; renderEspionage(); };
+  if ($("espionage-category")) $("espionage-category").onchange = () => { captureSelections(); lastSelections.espionageCategory = $("espionage-category").value; updateEspionagePreview(); };
   updateEspionagePreview();
   const missions = $("espionage-missions");
   if (missions) missions.innerHTML = (espionage.missions || []).map((mission) => {
@@ -3029,7 +3014,7 @@ function renderEspionage() {
     const casualties = Object.values(mission.casualties || {}).reduce((sum, count) => sum + Number(count || 0), 0);
     const result = pending ? number(mission.finalSpyPower) + ' Spy Power committed' : mission.operation === "sphere_heist"
       ? (mission.outcome || "resolved").replace(/^./, (letter) => letter.toUpperCase()) + ' · ' + number(mission.spheresStolen || 0) + ' Spheres stolen · ' + number(casualties) + ' lost · Identity ' + (mission.identityExposed ? 'exposed' : 'hidden')
-      : (mission.outcome || 'resolved').replace(/^./, (letter) => letter.toUpperCase()) + (mission.incidentalCategory ? ' · Incidental ' + mission.incidentalCategory : '') + (mission.bonusDiscoveryId ? ' · Bonus Discovery' : '');
+      : (mission.outcome || 'resolved').replace(/^./, (letter) => letter.toUpperCase());
     const missionName = mission.operation === "sphere_heist" ? "Sphere Heist" : mission.category[0].toUpperCase() + mission.category.slice(1) + " Investigation";
     const committed = Object.entries(mission.operatives || {}).filter(([, count]) => Number(count || 0) > 0).map(([tier, count]) => '<span>' + escapeHtml(rules.operatives?.[tier]?.name || tier) + '<b>' + number(count) + '</b></span>').join("");
     return '<article class="list-item espionage-mission-row"><strong>' + escapeHtml(mission.targetName) + ' — ' + escapeHtml(missionName) + '</strong><span>' + escapeHtml(result) + '</span>' + (committed ? '<div class="operative-state-line operation-personnel">' + committed + '</div>' : '') + '<small>' + time + '</small></article>';
@@ -3731,10 +3716,9 @@ $("launch-espionage-mission")?.addEventListener("click", async () => {
   if (!targetPlayerId) return alert("Choose a rival kingdom.");
   const operatives = selectedEspionageOperatives();
   const operation = $("espionage-operation")?.value || "investigation";
-  const intelSpend = Math.max(0, Math.floor(Number($("espionage-intel-spend").value) || 0));
   const category = $("espionage-category").value;
   const basePower = Object.entries(operatives).reduce((sum, [tier, count]) => sum + count * Number(state.espionage?.rules?.operatives?.[tier]?.spyPower || 0), 0);
-  const power = basePower + (operation === "sphere_heist" ? 0 : intelSpend);
+  const power = basePower;
   const target = (state.espionage?.targets || []).find((entry) => entry.playerId === targetPlayerId);
   if (operation === "sphere_heist") {
     const heistRules = state.espionage?.rules?.sphereHeist || ESPIONAGE_UI_DEFAULTS.sphereHeist;
@@ -3745,10 +3729,9 @@ $("launch-espionage-mission")?.addEventListener("click", async () => {
     action(() => client.mutation(refs.launchSphereHeist, { targetPlayerId, operatives }));
     return;
   }
-  if (!await confirmConsequentialMission({ title: "Launch investigation?", html: '<strong>' + escapeHtml(target?.name || "Rival kingdom") + ' · ' + escapeHtml(category) + '</strong><span>' + number(power) + ' final Spy Power</span><span>' + number(intelSpend) + ' Intel will be consumed immediately.</span>' })) return;
+  if (!await confirmConsequentialMission({ title: "Launch investigation?", html: '<strong>' + escapeHtml(target?.name || "Rival kingdom") + ' · ' + escapeHtml(category) + '</strong><span>' + number(power) + ' Spy Power</span><span>Builds only ' + escapeHtml(category[0].toUpperCase() + category.slice(1)) + ' Intel; no Intel is spent.</span>' })) return;
   lastSelections.espionageMission = {};
-  lastSelections.espionageIntelSpend = "0";
-  action(() => client.mutation(refs.launchInvestigation, { targetPlayerId, category, operatives, intelSpend }));
+  action(() => client.mutation(refs.launchInvestigation, { targetPlayerId, category, operatives }));
 });
 ["espionage-defense-form"].forEach((formId) => $(formId)?.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.target.closest("button")) event.preventDefault();

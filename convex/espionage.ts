@@ -11,25 +11,20 @@ import { plateauAttributeCountsForPlayer, plateauCountsForPlayer } from "./plate
 import { ownedOperativesIncludingAway, ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import { ensureActiveSeason } from "./seasonLedger";
 import { SEASON_CATEGORIES } from "./seasonScoringRules";
-import { UNIT_RULES, normalizeUnits, roundResource } from "./rules";
+import { roundResource } from "./rules";
 import {
   ESPIONAGE_CATEGORIES,
   ESPIONAGE_RULES,
   OPERATIVE_TIERS,
   addOperatives,
-  economyIntelDisclosureLevel,
-  effectiveLedgerIntelLevel,
+  categoryIntelDisclosureLevel,
   emptyOperatives,
   estimateScore,
-  networkValue,
-  nextDecayAt,
   normalizeOperatives,
   operativeCount,
   qualitativeScore,
   resolveEspionageOutcome,
-  secondaryCategory,
-  seededIndex,
-  legacyEconomyIntelAmount,
+  legacyReportIntelAmount,
   sphereHeistCasualties,
   sphereHeistPayout,
   spyPower,
@@ -47,38 +42,34 @@ function networkLevel(player: Doc<"players">) {
   return Math.max(0, Math.min(ESPIONAGE_RULES.network.maxLevel, Math.floor(player.buildings.espionageNetwork ?? 0)));
 }
 
-function safeRules(level: number) {
+function safeRules() {
   return {
     categories: SEASON_CATEGORIES,
     missionDurationMs: ESPIONAGE_RULES.missionDurationMs,
     operatives: ESPIONAGE_RULES.operatives,
+    categoryIntel: ESPIONAGE_RULES.categoryIntel,
     sphereHeist: ESPIONAGE_RULES.sphereHeist,
-    network: {
-      ...ESPIONAGE_RULES.network,
-      currentIntelCap: networkValue(ESPIONAGE_RULES.network.intelCaps, level),
-      currentMissionIntelSpendCap: networkValue(ESPIONAGE_RULES.network.missionIntelSpendCaps, level),
-    },
+    network: ESPIONAGE_RULES.network,
   };
 }
 
-function economyIntelAmount(resource: Doc<"kingdomIntelResources"> | null | undefined) {
-  return Math.max(0, Math.min(
-    ESPIONAGE_RULES.sphereHeist.economyIntelCap,
-    Math.floor(resource?.economyAmount ?? 0),
-  ));
-}
-
-function militaryIntelAmount(resource: Doc<"kingdomIntelResources"> | null | undefined) {
-  return Math.max(0, Math.min(
-    ESPIONAGE_RULES.sphereHeist.economyIntelCap,
-    Math.floor(resource?.militaryAmount ?? resource?.amount ?? 0),
-  ));
-}
-
-function economyIntelAmountForWrite(resource: Doc<"kingdomIntelResources"> | null | undefined, legacyReport: Doc<"kingdomIntelligence"> | null | undefined) {
-  return resource?.economyAmount === undefined
-    ? legacyEconomyIntelAmount(legacyReport?.achievedLevel ?? 0)
-    : economyIntelAmount(resource);
+function categoryIntelAmount(
+  resource: Doc<"kingdomIntelResources"> | null | undefined,
+  category: EspionageCategory,
+  legacyReport?: Doc<"kingdomIntelligence"> | null,
+  now = Date.now(),
+) {
+  const stored = category === "military"
+    ? resource?.militaryAmount ?? resource?.amount
+    : category === "economy"
+      ? resource?.economyAmount
+      : category === "research"
+        ? resource?.researchAmount
+        : resource?.territoryAmount;
+  if (stored !== undefined) return Math.max(0, Math.min(ESPIONAGE_RULES.categoryIntel.cap, Math.floor(stored)));
+  return legacyReport
+    ? legacyReportIntelAmount(legacyReport.achievedLevel, legacyReport.observedAt, now)
+    : 0;
 }
 
 async function intelResource(ctx: MutationCtx, viewerPlayerId: Id<"players">, targetPlayerId: Id<"players">) {
@@ -89,99 +80,22 @@ async function intelResource(ctx: MutationCtx, viewerPlayerId: Id<"players">, ta
 
 async function applyIntelReward(ctx: MutationCtx, attacker: Doc<"players">, targetPlayerId: Id<"players">, category: EspionageCategory, reward: number, now: number) {
   const row = await intelResource(ctx, attacker._id, targetPlayerId);
-  if (category === "economy" || category === "military") {
-    const report = await ctx.db.query("kingdomIntelligence")
-      .withIndex("by_viewerPlayerId_and_targetPlayerId_and_category", (q) =>
-        q.eq("viewerPlayerId", attacker._id).eq("targetPlayerId", targetPlayerId).eq("category", "economy"))
-      .unique();
-    const cap = ESPIONAGE_RULES.sphereHeist.economyIntelCap;
-    const amount = Math.min(cap, category === "economy" ? economyIntelAmountForWrite(row, report) + reward : militaryIntelAmount(row) + reward);
-    const field = category === "economy" ? { economyAmount: amount } : { militaryAmount: amount, amount };
-    if (row) await ctx.db.patch(row._id, { ...field, updatedAt: now });
-    else await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attacker._id, targetPlayerId, amount: 0, ...field, updatedAt: now });
-    return { amount, cap, resource: category };
-  }
-  const cap = networkValue(ESPIONAGE_RULES.network.intelCaps, networkLevel(attacker));
-  const amount = Math.min(cap, Math.max(0, (row?.amount ?? 0) + reward));
-  if (row) await ctx.db.patch(row._id, { amount, updatedAt: now });
-  else await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attacker._id, targetPlayerId, amount, updatedAt: now });
-  return { amount, cap, resource: "general" as const };
-}
-
-async function categoryScore(ctx: MutationCtx, seasonId: Id<"seasons">, playerId: Id<"players">, category: EspionageCategory) {
-  const score = await ctx.db.query("seasonScores")
-    .withIndex("by_seasonId_and_playerId", (q) => q.eq("seasonId", seasonId).eq("playerId", playerId))
-    .unique();
-  return Math.max(0, Number(score?.categoryTotals?.[category] ?? 0));
-}
-
-async function observeCategory(ctx: MutationCtx, args: {
-  viewerPlayerId: Id<"players">;
-  targetPlayerId: Id<"players">;
-  seasonId: Id<"seasons">;
-  category: EspionageCategory;
-  increment: number;
-  cap: 1 | 2;
-  missionId: Id<"espionageMissions">;
-  now: number;
-}) {
-  const existing = await ctx.db.query("kingdomIntelligence")
+  const report = await ctx.db.query("kingdomIntelligence")
     .withIndex("by_viewerPlayerId_and_targetPlayerId_and_category", (q) =>
-      q.eq("viewerPlayerId", args.viewerPlayerId).eq("targetPlayerId", args.targetPlayerId).eq("category", args.category))
+      q.eq("viewerPlayerId", attacker._id).eq("targetPlayerId", targetPlayerId).eq("category", category))
     .unique();
-  const current = existing ? effectiveLedgerIntelLevel(existing.achievedLevel, existing.observedAt, args.now) : 0;
-  if (current > args.cap) return { updated: false, level: current };
-  const achievedLevel = Math.min(args.cap, current + args.increment);
-  if (achievedLevel <= 0) return { updated: false, level: current };
-  const observedScore = await categoryScore(ctx, args.seasonId, args.targetPlayerId, args.category);
-  const record = {
-    viewerPlayerId: args.viewerPlayerId,
-    targetPlayerId: args.targetPlayerId,
-    category: args.category,
-    achievedLevel,
-    bestLevel: Math.max(existing?.bestLevel ?? 0, achievedLevel),
-    observedScore,
-    observedAt: args.now,
-    source: `${SEASON_CATEGORIES[args.category].name} Investigation`,
-    missionId: args.missionId,
-  };
-  if (existing) await ctx.db.patch(existing._id, record);
-  else await ctx.db.insert("kingdomIntelligence", record);
-  return { updated: true, level: achievedLevel };
-}
-
-async function createBonusDiscovery(ctx: MutationCtx, mission: Doc<"espionageMissions">, target: Doc<"players">, now: number) {
-  const candidates: Array<{ kind: string; text: string }> = [];
-  if (mission.category === "military") {
-    const units = normalizeUnits(target.units);
-    const composition = Object.entries(units).filter(([, count]) => count > 0)
-      .map(([key, count]) => `${count} ${UNIT_RULES[key as keyof typeof UNIT_RULES].name}${count === 1 ? "" : "s"}`).join(", ") || "no combat units at home";
-    candidates.push({ kind: "unit_composition", text: `Observed home-force composition: ${composition}.` });
-    const away = await ctx.db.query("raids").withIndex("by_attacker", (q) => q.eq("attackerId", target._id)).take(50);
-    const sieges = await ctx.db.query("sieges").withIndex("by_attacker", (q) => q.eq("attackerId", target._id)).take(50);
-    const awayCount = away.filter((row) => row.status === "pending").length + sieges.filter((row) => row.status === "pending").length;
-    candidates.push({ kind: "forces_away", text: awayCount > 0 ? `${awayCount} military force${awayCount === 1 ? " is" : "s are"} currently away from the warcamp.` : "No military forces were observed away from the warcamp." });
-  } else if (mission.category === "economy") {
-    candidates.push({ kind: "sphere_store", text: `Observed Sphere store: ${Math.floor(target.spheres).toLocaleString()}.` });
-    candidates.push({ kind: "gemheart_holdings", text: `Observed Gemheart holdings: ${Math.floor(target.gemhearts).toLocaleString()}.` });
-  } else if (mission.category === "research") {
-    const research = await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", target._id)).unique();
-    if (research?.activeProject) candidates.push({ kind: "active_research", text: `Active research: ${research.activeProject}, level ${research.activeLevel ?? 1}${research.projectedCompletionAt ? `, projected complete ${new Date(research.projectedCompletionAt).toISOString()}` : ""}.` });
-    else if (research?.activeDoctrine) candidates.push({ kind: "active_doctrine", text: `Active doctrine study: ${research.activeDoctrine}.` });
-    else candidates.push({ kind: "research_idle", text: "No active research project was observed." });
-    const completedCount = Object.values(research?.completedLevels ?? {}).reduce((sum, level) => sum + Math.max(0, Number(level)), 0);
-    candidates.push({ kind: "research_depth", text: `Observed completed research levels across all libraries: ${completedCount}.` });
-  } else {
-    const plateaus = await ctx.db.query("plateaus").withIndex("by_owner", (q) => q.eq("ownerPlayerId", target._id)).take(100);
-    const valuable = plateaus.filter((plateau) => plateau.type === "ancient" || plateau.type === "ancient_ruins" || plateau.type === "gemheart");
-    candidates.push({ kind: "territory_roster", text: `Observed territory: ${plateaus.length} plateau${plateaus.length === 1 ? "" : "s"}${plateaus.length ? ` (${plateaus.map((plateau) => plateau.name).join(", ")})` : ""}.` });
-    candidates.push({ kind: "valuable_territory", text: valuable.length ? `Valuable holdings: ${valuable.map((plateau) => `${plateau.name} (${plateau.type.replaceAll("_", " ")})`).join(", ")}.` : "No Ancient or Gemheart holdings were observed." });
-  }
-  const fact = candidates[seededIndex(`${mission._id}:bonus`, candidates.length)];
-  return await ctx.db.insert("espionageBonusDiscoveries", {
-    viewerPlayerId: mission.attackerId, targetPlayerId: mission.targetPlayerId, category: mission.category,
-    missionId: mission._id, factKind: fact.kind, text: fact.text, observedAt: now,
-  });
+  const cap = ESPIONAGE_RULES.categoryIntel.cap;
+  const amount = Math.min(cap, categoryIntelAmount(row, category, report, now) + reward);
+  const field = category === "military"
+    ? { militaryAmount: amount, amount: 0 }
+    : category === "economy"
+      ? { economyAmount: amount }
+      : category === "research"
+        ? { researchAmount: amount }
+        : { territoryAmount: amount };
+  if (row) await ctx.db.patch(row._id, { ...field, updatedAt: now });
+  else await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attacker._id, targetPlayerId, amount: 0, ...field, updatedAt: now });
+  return { amount, cap, resource: category };
 }
 
 export const getStatus = query({
@@ -196,12 +110,14 @@ export const getStatus = query({
       .withIndex("by_attackerId_and_departAt", (q) => q.eq("attackerId", player._id)).order("desc").take(20);
     const resources = await ctx.db.query("kingdomIntelResources")
       .withIndex("by_viewerPlayerId_and_targetPlayerId", (q) => q.eq("viewerPlayerId", player._id)).take(200);
+    const reports = await ctx.db.query("kingdomIntelligence")
+      .withIndex("by_viewerPlayerId_and_targetPlayerId_and_category", (q) => q.eq("viewerPlayerId", player._id)).take(1000);
     const targets = await ctx.db.query("players").take(200);
     const names = new Map(targets.map((target) => [String(target._id), target.name]));
     let onMission = emptyOperatives();
     for (const mission of pending) onMission = addOperatives(onMission, mission.operatives);
     const resourcesByTarget = new Map(resources.map((row) => [String(row.targetPlayerId), row]));
-    const cap = networkValue(ESPIONAGE_RULES.network.intelCaps, level);
+    const reportsByTargetAndCategory = new Map(reports.map((report) => [`${report.targetPlayerId}:${report.category}`, report]));
     const now = Date.now();
     return {
       networkLevel: level,
@@ -209,25 +125,37 @@ export const getStatus = query({
       defending: normalizeOperatives(player.defendingOperatives),
       onMission,
       counterIntelligence: spyPower(player.defendingOperatives),
-      targets: targets.filter((target) => target._id !== player._id && !target.isAdminObserver).map((target) => ({
-        playerId: target._id, name: target.name,
-        intel: resourcesByTarget.get(String(target._id))?.amount ?? 0, intelCap: cap,
-        economyIntel: economyIntelAmount(resourcesByTarget.get(String(target._id))),
-        economyIntelCap: ESPIONAGE_RULES.sphereHeist.economyIntelCap,
-        militaryIntel: militaryIntelAmount(resourcesByTarget.get(String(target._id))),
-        militaryIntelCap: ESPIONAGE_RULES.sphereHeist.economyIntelCap,
-      })),
+      targets: targets.filter((target) => target._id !== player._id && !target.isAdminObserver).map((target) => {
+        const resource = resourcesByTarget.get(String(target._id));
+        const amount = (category: EspionageCategory) => categoryIntelAmount(
+          resource,
+          category,
+          reportsByTargetAndCategory.get(`${target._id}:${category}`),
+          now,
+        );
+        return {
+          playerId: target._id,
+          name: target.name,
+          militaryIntel: amount("military"),
+          economyIntel: amount("economy"),
+          researchIntel: amount("research"),
+          territoryIntel: amount("territory"),
+          militaryIntelCap: ESPIONAGE_RULES.categoryIntel.cap,
+          economyIntelCap: ESPIONAGE_RULES.categoryIntel.cap,
+          researchIntelCap: ESPIONAGE_RULES.categoryIntel.cap,
+          territoryIntelCap: ESPIONAGE_RULES.categoryIntel.cap,
+        };
+      }),
       missions: recent.map((mission) => ({
         missionId: mission._id, targetPlayerId: mission.targetPlayerId, targetName: names.get(String(mission.targetPlayerId)) ?? "Unknown kingdom",
-        operation: mission.operation ?? "investigation", category: mission.category, operatives: mission.operatives, baseSpyPower: mission.baseSpyPower, intelSpent: mission.intelSpent,
+        operation: mission.operation ?? "investigation", category: mission.category, operatives: mission.operatives, baseSpyPower: mission.baseSpyPower,
         finalSpyPower: mission.finalSpyPower, departAt: mission.departAt, resolveAt: mission.resolveAt,
         resolvedAt: mission.resolvedAt ?? null, status: mission.status, outcome: mission.outcome ?? null,
-        incidentalCategory: mission.incidentalCategory ?? null, bonusDiscoveryId: mission.bonusDiscoveryId ?? null,
         economyIntelSpent: mission.economyIntelSpent ?? 0, economyIntelRemaining: mission.economyIntelRemaining ?? null,
         spheresStolen: mission.spheresStolen ?? 0, casualties: normalizeOperatives(mission.casualties),
         identityExposed: mission.identityExposed ?? null,
       })),
-      rules: safeRules(level),
+      rules: safeRules(),
     };
   },
 });
@@ -238,7 +166,7 @@ export const getKingdomLedger = query({
     const viewer = await requireCurrentPlayer(ctx);
     const now = Date.now();
     if (networkLevel(viewer) < 1) {
-      return { locked: true, season: null, generatedAt: now, decayStepMs: ESPIONAGE_RULES.decayStepMs, rows: [] };
+      return { locked: true, season: null, generatedAt: now, rows: [] };
     }
     const season = await ctx.db.query("seasons").withIndex("by_status", (q) => q.eq("status", "active")).unique();
     const players = await ctx.db.query("players").take(200);
@@ -246,35 +174,21 @@ export const getKingdomLedger = query({
       .withIndex("by_viewerPlayerId_and_targetPlayerId_and_category", (q) => q.eq("viewerPlayerId", viewer._id)).take(1000);
     const resources = await ctx.db.query("kingdomIntelResources")
       .withIndex("by_viewerPlayerId_and_targetPlayerId", (q) => q.eq("viewerPlayerId", viewer._id)).take(200);
-    const discoveries = await ctx.db.query("espionageBonusDiscoveries")
-      .withIndex("by_viewerPlayerId_and_observedAt", (q) => q.eq("viewerPlayerId", viewer._id)).order("desc").take(200);
     const scores = season ? await ctx.db.query("seasonScores")
       .withIndex("by_seasonId_and_playerId", (q) => q.eq("seasonId", season._id)).take(200) : [];
     const reportMap = new Map(reports.map((report) => [`${report.targetPlayerId}:${report.category}`, report]));
     const resourceMap = new Map(resources.map((resource) => [String(resource.targetPlayerId), resource]));
     const scoreMap = new Map(scores.map((score) => [String(score.playerId), score]));
-    const discoveryMap = new Map<string, typeof discoveries>();
-    for (const discovery of discoveries) {
-      const key = `${discovery.targetPlayerId}:${discovery.category}`;
-      const rows = discoveryMap.get(key) ?? [];
-      if (rows.length < 10) rows.push(discovery);
-      discoveryMap.set(key, rows);
-    }
     const rows = players.filter((target) => !target.isAdminObserver).map((target) => {
       const own = target._id === viewer._id;
       const score = scoreMap.get(String(target._id));
       const actual = Object.fromEntries(ESPIONAGE_CATEGORIES.map((category) => [category, Math.max(0, Number(score?.categoryTotals?.[category] ?? 0))])) as Record<EspionageCategory, number>;
       const cells = Object.fromEntries(ESPIONAGE_CATEGORIES.map((category) => {
         const report = reportMap.get(`${target._id}:${category}`);
-        const reportLevel = report ? effectiveLedgerIntelLevel(report.achievedLevel, report.observedAt, now) : 0;
         const resource = resourceMap.get(String(target._id));
-        const targetEconomyIntel = economyIntelAmount(resource);
-        const currentLevel = own
-          ? 2
-          : category === "economy" || category === "military"
-            ? economyIntelDisclosureLevel(category === "economy" ? targetEconomyIntel : militaryIntelAmount(resource))
-            : reportLevel;
-        const observed = own ? actual[category] : report?.observedScore ?? actual[category];
+        const intelAmount = own ? ESPIONAGE_RULES.categoryIntel.cap : categoryIntelAmount(resource, category, report, now);
+        const currentLevel = own ? 2 : categoryIntelDisclosureLevel(intelAmount);
+        const observed = actual[category];
         const broadLabel = qualitativeScore(category, actual[category]);
         const presentation = currentLevel === 2
           ? { mode: "exact" as const, value: observed, display: observed.toLocaleString(), ...(own ? { label: broadLabel } : {}) }
@@ -283,13 +197,10 @@ export const getKingdomLedger = query({
             : { mode: "qualitative" as const, label: broadLabel, display: broadLabel };
         return [category, {
           category, categoryName: SEASON_CATEGORIES[category].name, currentLevel,
-          bestLevel: own ? 2 : category === "economy" || category === "military" ? Math.max(report?.bestLevel ?? 0, currentLevel) : report?.bestLevel ?? 0,
-          presentation, observedAt: own ? now : category === "economy" ? report?.observedAt ?? resource?.updatedAt ?? null : report?.observedAt ?? null,
-          nextDecayAt: own || !report || category === "economy" || category === "military" ? null : nextDecayAt(report.achievedLevel, report.observedAt, now),
-          source: own ? "Your Season Ledger" : category === "economy" ? report?.source ?? "Persistent Economy Intel" : category === "military" ? report?.source ?? "Persistent Military Intel" : report?.source ?? "General reputation",
-          ...(category === "economy" && !own ? { economyIntel: targetEconomyIntel, economyIntelCap: ESPIONAGE_RULES.sphereHeist.economyIntelCap } : {}),
-          ...(category === "military" && !own ? { militaryIntel: militaryIntelAmount(resource), militaryIntelCap: ESPIONAGE_RULES.sphereHeist.economyIntelCap } : {}),
-          discoveries: (discoveryMap.get(`${target._id}:${category}`) ?? []).map((entry) => ({ id: entry._id, kind: entry.factKind, text: entry.text, observedAt: entry.observedAt })),
+          presentation,
+          source: own ? "Your Season Ledger" : `Persistent ${SEASON_CATEGORIES[category].name} Intel`,
+          intelAmount,
+          intelCap: ESPIONAGE_RULES.categoryIntel.cap,
         }];
       })) as Record<EspionageCategory, any>;
       const levels = ESPIONAGE_CATEGORIES.map((category) => cells[category].currentLevel);
@@ -309,30 +220,44 @@ export const getKingdomLedger = query({
       }
       return { playerId: target._id, kingdomName: target.name, own, cells, total };
     }).sort((left, right) => left.own ? -1 : right.own ? 1 : left.kingdomName.localeCompare(right.kingdomName));
-    return { season: season ? { id: season._id, name: season.name } : null, generatedAt: now, decayStepMs: ESPIONAGE_RULES.decayStepMs, rows };
+    return { season: season ? { id: season._id, name: season.name } : null, generatedAt: now, rows };
   },
 });
 
-export const materializeLegacyEconomyIntelAmounts = internalMutation({
+export const materializeLegacyCategoryIntelAmounts = internalMutation({
   args: {
     reportCursor: v.union(v.string(), v.null()),
   },
   handler: async (ctx, args) => {
     const reports = await ctx.db.query("kingdomIntelligence").paginate({ cursor: args.reportCursor, numItems: 50 });
     let migrated = 0;
+    const now = Date.now();
 
     for (const report of reports.page) {
-      if (report.category !== "economy") continue;
       const resource = await intelResource(ctx, report.viewerPlayerId, report.targetPlayerId);
-      if (resource?.economyAmount !== undefined) continue;
-      const economyAmount = legacyEconomyIntelAmount(report.achievedLevel);
-      if (resource) await ctx.db.patch(resource._id, { economyAmount, updatedAt: Date.now() });
+      const existing = report.category === "military"
+        ? resource?.militaryAmount
+        : report.category === "economy"
+          ? resource?.economyAmount
+          : report.category === "research"
+            ? resource?.researchAmount
+            : resource?.territoryAmount;
+      if (existing !== undefined) continue;
+      const amount = legacyReportIntelAmount(report.achievedLevel, report.observedAt, now);
+      const field = report.category === "military"
+        ? { militaryAmount: amount }
+        : report.category === "economy"
+          ? { economyAmount: amount }
+          : report.category === "research"
+            ? { researchAmount: amount }
+            : { territoryAmount: amount };
+      if (resource) await ctx.db.patch(resource._id, { ...field, updatedAt: now });
       else await ctx.db.insert("kingdomIntelResources", {
         viewerPlayerId: report.viewerPlayerId,
         targetPlayerId: report.targetPlayerId,
         amount: 0,
-        economyAmount,
-        updatedAt: Date.now(),
+        ...field,
+        updatedAt: now,
       });
       migrated += 1;
     }
@@ -408,7 +333,7 @@ function validateOffensiveCommitment(attacker: Doc<"players">, level: number, re
 }
 
 export const launchInvestigation = mutation({
-  args: { targetPlayerId: v.id("players"), category: categoryValidator, operatives: operativeCountsValidator, intelSpend: v.number() },
+  args: { targetPlayerId: v.id("players"), category: categoryValidator, operatives: operativeCountsValidator, intelSpend: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const attacker = await requireCompetitivePlayer(ctx);
     const level = networkLevel(attacker);
@@ -418,25 +343,18 @@ export const launchInvestigation = mutation({
     if (!target) throw new Error("Target kingdom not found.");
     if (target.isAdminObserver) throw new Error("Administrative observers cannot be targeted.");
     const { commitment, remaining } = validateOffensiveCommitment(attacker, level, args.operatives);
-    const intelSpend = Math.floor(args.intelSpend);
-    const spendCap = networkValue(ESPIONAGE_RULES.network.missionIntelSpendCaps, level);
-    if (intelSpend < 0 || intelSpend > spendCap || intelSpend !== args.intelSpend) throw new Error(`Spend between 0 and ${spendCap} Intel.`);
-    const resource = await intelResource(ctx, attacker._id, target._id);
-    if (intelSpend > (resource?.amount ?? 0)) throw new Error("Not enough Intel against this rival.");
     const now = Date.now();
     const season = await ensureActiveSeason(ctx, now);
     const baseSpyPower = spyPower(commitment);
-    const finalSpyPower = baseSpyPower + intelSpend;
+    const finalSpyPower = baseSpyPower;
     const resolveAt = now + ESPIONAGE_RULES.missionDurationMs;
     await ctx.db.patch(attacker._id, { operatives: remaining, lastActiveAt: now });
-    if (resource) await ctx.db.patch(resource._id, { amount: resource.amount - intelSpend, updatedAt: now });
-    else if (intelSpend === 0) await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attacker._id, targetPlayerId: target._id, amount: 0, updatedAt: now });
     const missionId = await ctx.db.insert("espionageMissions", {
       attackerId: attacker._id, targetPlayerId: target._id, seasonId: season._id, operation: "investigation", category: args.category,
-      operatives: commitment, baseSpyPower, intelSpent: intelSpend, finalSpyPower, departAt: now, resolveAt, status: "pending",
+      operatives: commitment, baseSpyPower, intelSpent: 0, finalSpyPower, departAt: now, resolveAt, status: "pending",
     });
     await ctx.scheduler.runAt(resolveAt, internal.espionage.resolveInvestigation, { missionId });
-    return { missionId, resolveAt, baseSpyPower, intelSpent: intelSpend, finalSpyPower };
+    return { missionId, resolveAt, baseSpyPower, intelSpent: 0, finalSpyPower };
   },
 });
 
@@ -457,7 +375,7 @@ export const launchSphereHeist = mutation({
       .withIndex("by_viewerPlayerId_and_targetPlayerId_and_category", (q) =>
         q.eq("viewerPlayerId", attacker._id).eq("targetPlayerId", target._id).eq("category", "economy"))
       .unique();
-    const economyIntel = economyIntelAmountForWrite(resource, economyReport);
+    const economyIntel = categoryIntelAmount(resource, "economy", economyReport, now);
     const cost = ESPIONAGE_RULES.sphereHeist.economyIntelCost;
     if (economyIntel < cost) throw new Error(`Sphere Heist requires ${cost} Economy Intel against this rival.`);
     const economyIntelRemaining = economyIntel - cost;
@@ -554,31 +472,13 @@ export const resolveInvestigation = internalMutation({
     const outcome = resolveEspionageOutcome(mission.finalSpyPower, stormCounterIntelligence(spyPower(target.defendingOperatives), stormActive));
     const reward = stormInvestigationIntel(ESPIONAGE_RULES.intelRewards[outcome], outcome === "success" || outcome === "overwhelm", stormActive);
     const intel = await applyIntelReward(ctx, attacker, target._id, mission.category, reward, now);
-    let incidentalCategory: EspionageCategory | undefined;
-    if (outcome === "partial" || outcome === "success" || outcome === "overwhelm") {
-      incidentalCategory = secondaryCategory(mission.category, `${mission._id}:secondary`);
-      await observeCategory(ctx, { viewerPlayerId: attacker._id, targetPlayerId: target._id, seasonId: mission.seasonId, category: incidentalCategory, increment: 1, cap: 1, missionId: mission._id, now });
-    }
-    if (outcome === "success" || outcome === "overwhelm") {
-      await observeCategory(ctx, { viewerPlayerId: attacker._id, targetPlayerId: target._id, seasonId: mission.seasonId, category: mission.category, increment: 2, cap: 2, missionId: mission._id, now });
-    }
-    let bonusDiscoveryId: Id<"espionageBonusDiscoveries"> | undefined;
-    if (outcome === "overwhelm") bonusDiscoveryId = await createBonusDiscovery(ctx, mission, target, now);
     await ctx.db.patch(attacker._id, { operatives: addOperatives(attacker.operatives, mission.operatives), lastActiveAt: now });
-    await ctx.db.patch(mission._id, {
-      status: "resolved", outcome, resolvedAt: now,
-      ...(incidentalCategory ? { incidentalCategory } : {}), ...(bonusDiscoveryId ? { bonusDiscoveryId } : {}),
-    });
+    await ctx.db.patch(mission._id, { status: "resolved", outcome, resolvedAt: now });
     const categoryName = SEASON_CATEGORIES[mission.category].name;
     const resultText = outcome === "failure"
       ? `The ${categoryName} investigation failed to produce reliable information. Your operatives returned safely.`
-      : outcome === "partial"
-        ? `The ${categoryName} investigation was disrupted, but incidental ${SEASON_CATEGORIES[incidentalCategory!].name} intelligence was recovered.`
-        : outcome === "success"
-          ? `The ${categoryName} investigation succeeded and also uncovered incidental ${SEASON_CATEGORIES[incidentalCategory!].name} intelligence.`
-          : `The ${categoryName} investigation overwhelmed the target's defenses and produced a Bonus Discovery.`;
-    const intelName = intel.resource === "economy" ? "Economy Intel" : intel.resource === "military" ? "Military Intel" : "Intel";
-    await ctx.db.insert("messages", { toPlayerId: attacker._id, kind: "system", subject: `${categoryName} Investigation: ${outcome[0].toUpperCase()}${outcome.slice(1)}`, body: `${resultText}${stormActive ? ` Storm Cover: effective Counter-Intelligence reduced by 50%.${outcome === "success" || outcome === "overwhelm" ? " Investigation Intel +50%." : ""}` : ""} ${intelName} gained: ${reward}; stored against ${target.name}: ${intel.amount}/${intel.cap}.`, eventType: "espionage_resolved", destinationView: "intelligence", destinationTab: "ledger", entityType: "espionage_mission", entityId: String(mission._id), kingdomId: target._id, intelligenceCategory: mission.category, createdAt: now });
+      : `The ${categoryName} investigation gained ${reward} ${categoryName} Intel against ${target.name}.`;
+    await ctx.db.insert("messages", { toPlayerId: attacker._id, kind: "system", subject: `${categoryName} Investigation: ${outcome[0].toUpperCase()}${outcome.slice(1)}`, body: `${resultText}${stormActive ? ` Storm Cover: effective Counter-Intelligence reduced by 50%.${outcome === "success" || outcome === "overwhelm" ? " Investigation Intel +50%." : ""}` : ""} ${categoryName} Intel: ${intel.amount}/${intel.cap}.`, eventType: "espionage_resolved", destinationView: "intelligence", destinationTab: "ledger", entityType: "espionage_mission", entityId: String(mission._id), kingdomId: target._id, intelligenceCategory: mission.category, createdAt: now });
     await createNotification(ctx, { playerId: attacker._id, category: "missions", eventType: "espionage_resolved", title: "Investigation Complete", body: resultText, destinationView: "intelligence", destinationTab: "ledger", entityId: String(mission._id), kingdomId: target._id, intelligenceCategory: mission.category, dedupeKey: `espionage:${mission._id}:attacker`, createdAt: now });
     if (outcome === "failure" || outcome === "partial") {
       const clear = outcome === "failure";
@@ -587,6 +487,6 @@ export const resolveInvestigation = internalMutation({
       await ctx.db.insert("messages", { toPlayerId: target._id, kind: "system", subject, body, eventType: clear ? "espionage_detected" : "espionage_suspected", destinationView: "intelligence", destinationTab: "operations", entityType: "espionage_mission", entityId: String(mission._id), createdAt: now });
       await createNotification(ctx, { playerId: target._id, category: "missions", eventType: clear ? "espionage_detected" : "espionage_suspected", title: subject, body, destinationView: "intelligence", destinationTab: "operations", entityId: String(mission._id), dedupeKey: `espionage:${mission._id}:defender`, createdAt: now });
     }
-    return { resolved: true, outcome, reward, incidentalCategory: incidentalCategory ?? null, bonusDiscoveryId: bonusDiscoveryId ?? null };
+    return { resolved: true, outcome, reward };
   },
 });

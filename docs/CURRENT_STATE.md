@@ -267,15 +267,20 @@ At resolution:
 
 Success transfers 50%; overwhelm 100%.
 
-# Economy Intel
+# Rival Ledger Intel
 
-Authoritative `economyAmount` from 0--100.
+Each viewer tracks four independent persistent 0--100 Intel pools against
+each rival: `militaryAmount`, `economyAmount`, `researchAmount`, and
+`territoryAmount`.
 
--   0--24: qualitative
--   25--74: estimate
--   75--100: exact snapshot
+-   0--24: descriptive label
+-   25--74: estimated current score
+-   75--100: exact current score
 
-Economy Intel disclosure does not use freshness decay.
+Investigations reward only the selected category. These pools do not decay,
+and Intel can no longer be spent to boost investigation Spy Power. Economy
+Intel still pays for Sphere Heists; Military Intel still pays for active PvP
+siege investigations.
 
 # Ordinary Sphere Raids
 
@@ -347,11 +352,10 @@ handling. Highstorms can expose commitments.
 
 # Intelligence
 
-Watchtower and Territory Intelligence answer different questions. Rival
-Intel supports espionage/rival understanding. Economy Intel enables
-Sphere Heists and treasury disclosure.
-
-Terminology remains a friend-test polish target.
+Watchtower Intel covers Parshendi and neutral-world activity. Rival Ledger
+Intel covers PvP kingdoms in four categories. Territory Intel also gates
+rival plateau identity and exact holding details. Economy Intel enables
+Sphere Heists, and Military Intel enables active PvP siege investigations.
 
 # Season Ledger
 

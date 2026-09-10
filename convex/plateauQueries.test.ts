@@ -72,6 +72,50 @@ describe("scoped plateau queries", () => {
     expect(board.rivals[0].name).toBe("Rival holding");
   });
 
+  test("rival plateau details follow the persistent Territory Intel thresholds", async () => {
+    const t = convexTest(schema, modules);
+    const subject = "rival-territory-intel";
+    const viewerId = await addPlayer(t, subject, "Viewer", 0);
+    const rivalId = await addPlayer(t, undefined, "Rival");
+    const plateauId = await addPlateau(t, "Secret Rival", "owned", rivalId, "gemheart");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(plateauId, { baseNeutralDefense: 321, parshendiReclamationCount: 2 });
+      await ctx.db.insert("kingdomIntelResources", {
+        viewerPlayerId: viewerId,
+        targetPlayerId: rivalId,
+        amount: 0,
+        territoryAmount: 24,
+        updatedAt: 1,
+      });
+    });
+    const player = t.withIdentity({ subject });
+
+    let rival = (await player.query(api.plateaus.getSiegeBoard, {})).rivals[0];
+    expect(rival).toMatchObject({ name: "Rival holding", intelligenceLevel: 0 });
+    expect(rival).not.toHaveProperty("type");
+
+    await t.run(async (ctx) => {
+      const resource = await ctx.db.query("kingdomIntelResources")
+        .withIndex("by_viewerPlayerId_and_targetPlayerId", (q) => q.eq("viewerPlayerId", viewerId).eq("targetPlayerId", rivalId))
+        .unique();
+      await ctx.db.patch(resource!._id, { territoryAmount: 25 });
+    });
+    rival = (await player.query(api.plateaus.getSiegeBoard, {})).rivals[0];
+    expect(rival).toMatchObject({ name: "Secret Rival", intelligenceLevel: 1, type: "gemheart", highground: true, large: true });
+    expect(rival).not.toHaveProperty("baseNeutralDefense");
+    expect(rival).not.toHaveProperty("gemheartProgress");
+
+    await t.run(async (ctx) => {
+      const resource = await ctx.db.query("kingdomIntelResources")
+        .withIndex("by_viewerPlayerId_and_targetPlayerId", (q) => q.eq("viewerPlayerId", viewerId).eq("targetPlayerId", rivalId))
+        .unique();
+      await ctx.db.patch(resource!._id, { territoryAmount: 75 });
+    });
+    rival = (await player.query(api.plateaus.getSiegeBoard, {})).rivals[0];
+    expect(rival).toMatchObject({ intelligenceLevel: 2, baseNeutralDefense: 321, parshendiReclamationCount: 2 });
+    expect(rival).toHaveProperty("gemheartProgress");
+  });
+
   test("the same plateau progressively reveals its identity, traits, and resistance without changing its name", async () => {
     const t = convexTest(schema, modules);
     const subject = "watchtower-territory-viewer";
