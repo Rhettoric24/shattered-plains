@@ -297,6 +297,8 @@ h3 { font-size: 1rem; color: var(--accent); }
 .bonus-discovery { margin-top: 12px; border-left: 3px solid var(--accent-2); padding: 10px 12px; background: rgba(127,183,255,.08); }
 .bonus-discovery p { margin-top: 5px; line-height: 1.45; }
 .bonus-discovery small { display: block; margin-top: 6px; color: var(--muted); }
+.bonus-discovery-history { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.bonus-discovery-history .section-heading { margin-bottom: 8px; }
 .plateau-card strong, .plateau-card span, .plateau-card small { display: block; }
 .plateau-card strong { color: var(--accent); font-size: 1.15rem; }
 .plateau-card span { margin-top: 5px; color: var(--text); font-weight: 850; }

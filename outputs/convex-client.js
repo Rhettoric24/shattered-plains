@@ -111,6 +111,7 @@ let activePopoverAnchor = null;
 let inboxFilter = "all";
 const expandedInboxMessageIds = new Set();
 let activeSiegeResultMessage = null;
+let bonusDiscoveryLoadGeneration = 0;
 let holdingsExpanded = false;
 let latestLoadRequest = 0;
 let loadedPlateauCommitmentId = null;
@@ -239,6 +240,7 @@ const refs = {
   listDossiers: "intelligence:listDossiers",
   getEspionageStatus: "espionage:getStatus",
   getKingdomLedger: "espionage:getKingdomLedger",
+  listBonusDiscoveries: "espionage:listBonusDiscoveries",
   recruitOperatives: "espionage:recruitOperatives",
   disbandOperatives: "espionage:disbandOperatives",
   setEspionageDefense: "espionage:setDefense",
@@ -2881,10 +2883,35 @@ function renderKingdomIntelligence() {
   container.querySelectorAll("[data-kingdom-intel-player]").forEach((button) => button.addEventListener("click", () => openKingdomIntelDetail(button.dataset.kingdomIntelPlayer, button.dataset.kingdomIntelCategory)));
 }
 
-function openKingdomIntelDetail(playerId, category) {
+async function loadAllBonusDiscoveries(targetPlayerId, category) {
+  const discoveries = [];
+  let cursor = null;
+  let isDone = false;
+  while (!isDone) {
+    const result = await client.query(refs.listBonusDiscoveries, {
+      targetPlayerId,
+      category,
+      paginationOpts: { numItems: 100, cursor },
+    });
+    discoveries.push(...(result.page || []));
+    isDone = Boolean(result.isDone);
+    cursor = result.continueCursor;
+  }
+  return discoveries;
+}
+
+function bonusDiscoveryHistoryMarkup(discoveries) {
+  if (!discoveries.length) {
+    return '<div class="empty-intelligence"><strong>No Bonus Discoveries yet.</strong><span>Overwhelming investigations alternate between two special discoveries in each category.</span></div>';
+  }
+  return discoveries.map((fact, index) => '<article class="bonus-discovery"><strong>' + (index === 0 ? 'Most recent Bonus Discovery' : 'Bonus Discovery') + '</strong><p>' + escapeHtml(fact.text) + '</p><small>Observed ' + escapeHtml(new Date(fact.observedAt).toLocaleString()) + '</small></article>').join("");
+}
+
+async function openKingdomIntelDetail(playerId, category) {
   const row = (state.kingdomLedger?.rows || []).find((entry) => entry.playerId === playerId);
   const dialog = $("kingdom-intel-dialog");
   if (!row || !dialog) return;
+  const loadGeneration = ++bonusDiscoveryLoadGeneration;
   if (category === "total") {
     $("kingdom-intel-dialog-title").textContent = row.kingdomName + " — Total Intelligence";
     const disclosure = row.total.currentLevel >= 2 ? "Exact" : row.total.currentLevel >= 1 ? "Estimate" : "Incomplete";
@@ -2897,13 +2924,26 @@ function openKingdomIntelDetail(playerId, category) {
     const persistentResource = !row.own
       ? '<span>' + escapeHtml(cell.categoryName + " Intel") + '</span><strong>' + number(cell.intelAmount || 0) + '/' + number(cell.intelCap || 100) + '</strong>'
       : '';
-    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid">' + persistentResource + '<span>Disclosure</span><strong>' + disclosure + '</strong><span>Current information</span><strong>' + escapeHtml(cell.presentation.display) + '</strong><span>Source</span><strong>' + escapeHtml(cell.source) + '</strong></div>' + (row.own ? '' : '<button type="button" class="investigate-category" data-investigate-kingdom="' + escapeHtml(row.playerId) + '" data-investigate-category="' + escapeHtml(category) + '">Investigate this category</button>');
+    const history = row.own ? '' : '<section class="bonus-discovery-history" aria-live="polite"><div class="section-heading"><p class="eyebrow">Overwhelming success</p><h3>Bonus Discovery history</h3><p class="hint">Permanent, timestamped snapshots. Most recent first.</p></div><div data-bonus-discovery-list><div class="empty">Loading discoveries…</div></div></section>';
+    $("kingdom-intel-dialog-content").innerHTML = '<div class="intel-detail-grid">' + persistentResource + '<span>Disclosure</span><strong>' + disclosure + '</strong><span>Current information</span><strong>' + escapeHtml(cell.presentation.display) + '</strong><span>Source</span><strong>' + escapeHtml(cell.source) + '</strong></div>' + (row.own ? '' : '<button type="button" class="investigate-category" data-investigate-kingdom="' + escapeHtml(row.playerId) + '" data-investigate-category="' + escapeHtml(category) + '">Investigate this category</button>') + history;
     $("kingdom-intel-dialog-content").querySelector("[data-investigate-kingdom]")?.addEventListener("click", (event) => {
       dialog.close();
       showRoute({ view: "intelligence", tab: "operations", kingdom: event.currentTarget.dataset.investigateKingdom, category: event.currentTarget.dataset.investigateCategory });
     });
   }
   if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
+  if (category !== "total" && !row.own) {
+    try {
+      const discoveries = await loadAllBonusDiscoveries(row.playerId, category);
+      if (loadGeneration !== bonusDiscoveryLoadGeneration || !dialog.open) return;
+      const container = $("kingdom-intel-dialog-content").querySelector("[data-bonus-discovery-list]");
+      if (container) container.innerHTML = bonusDiscoveryHistoryMarkup(discoveries);
+    } catch (error) {
+      if (loadGeneration !== bonusDiscoveryLoadGeneration || !dialog.open) return;
+      const container = $("kingdom-intel-dialog-content").querySelector("[data-bonus-discovery-list]");
+      if (container) container.innerHTML = '<div class="empty-intelligence error-state"><strong>Discovery history unavailable.</strong><span>' + escapeHtml(friendlyError(error)) + '</span></div>';
+    }
+  }
 }
 
 function operativeDraft(group, tier, fallback) {
@@ -3014,7 +3054,7 @@ function renderEspionage() {
     const casualties = Object.values(mission.casualties || {}).reduce((sum, count) => sum + Number(count || 0), 0);
     const result = pending ? number(mission.finalSpyPower) + ' Spy Power committed' : mission.operation === "sphere_heist"
       ? (mission.outcome || "resolved").replace(/^./, (letter) => letter.toUpperCase()) + ' · ' + number(mission.spheresStolen || 0) + ' Spheres stolen · ' + number(casualties) + ' lost · Identity ' + (mission.identityExposed ? 'exposed' : 'hidden')
-      : (mission.outcome || 'resolved').replace(/^./, (letter) => letter.toUpperCase());
+      : (mission.outcome || 'resolved').replace(/^./, (letter) => letter.toUpperCase()) + (mission.bonusDiscoveryId ? ' · Bonus Discovery' : '');
     const missionName = mission.operation === "sphere_heist" ? "Sphere Heist" : mission.category[0].toUpperCase() + mission.category.slice(1) + " Investigation";
     const committed = Object.entries(mission.operatives || {}).filter(([, count]) => Number(count || 0) > 0).map(([tier, count]) => '<span>' + escapeHtml(rules.operatives?.[tier]?.name || tier) + '<b>' + number(count) + '</b></span>').join("");
     return '<article class="list-item espionage-mission-row"><strong>' + escapeHtml(mission.targetName) + ' — ' + escapeHtml(missionName) + '</strong><span>' + escapeHtml(result) + '</span>' + (committed ? '<div class="operative-state-line operation-personnel">' + committed + '</div>' : '') + '<small>' + time + '</small></article>';

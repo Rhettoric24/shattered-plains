@@ -258,12 +258,23 @@ Shardbearers. Do not solve only with absurd pricing.
 Each viewer/rival pair has four independent 0--100 pools: Military,
 Economy, Research, and Territory. Investigations reward only the selected
 category. The former generic investigation-boost pool, incidental category
-reports, bonus discoveries, and freshness decay are retired.
+reports, and freshness decay are retired.
 
 Every Ledger category uses the same disclosure thresholds: 0--24 shows a
 descriptive label, 25--74 shows an estimated score, and 75--100 shows the
 exact current score. Economy Intel may still be spent on Sphere Heists and
 Military Intel may still be spent on active PvP siege investigations.
+
+### DECIDED --- Overwhelm earns rotating Bonus Discoveries
+
+An overwhelming investigation creates a permanent, timestamped snapshot in
+the selected category, separately from its persistent Intel meter. Every
+viewer/rival/category pair alternates between two category-specific facts.
+Military reveals exact home or deployed unit compositions; Economy reveals
+exact Spheres or Gemhearts; Research reveals the current study/doctrine or
+completed depth by library; Territory reveals exact type counts without tags
+or one fully observed Ancient/Gemheart plateau. Negative observations remain
+valid results. The Ledger category popup shows the full history newest first.
 
 # Sieges
 

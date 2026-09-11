@@ -282,6 +282,20 @@ and Intel can no longer be spent to boost investigation Spy Power. Economy
 Intel still pays for Sphere Heists; Military Intel still pays for active PvP
 siege investigations.
 
+An overwhelming investigation also creates a permanent, timestamped Bonus
+Discovery in its selected category. Each viewer/rival/category pair alternates
+between two facts:
+
+-   Military: exact home-force composition / exact deployed-force compositions
+-   Economy: exact Sphere treasury / exact Gemheart holdings
+-   Research: current study or doctrine / completed levels by research library
+-   Territory: exact plateau-type counts without names or traits / one fully
+    observed Ancient or Gemheart plateau
+
+The Ledger category detail popup shows the complete discovery history newest
+first. A valid observation that no study, deployment, or valuable plateau exists
+still consumes its place in the rotation.
+
 # Ordinary Sphere Raids
 
 `rewardBase = seeded 1,200–2,400`

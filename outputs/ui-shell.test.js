@@ -313,6 +313,16 @@ describe("post-overhaul shell", () => {
     expect(client).not.toContain("Mission boost cap");
   });
 
+  test("loads the complete Bonus Discovery history only when a Ledger category opens", () => {
+    expect(html).toContain("Each category alternates between two special facts");
+    expect(client).toContain('listBonusDiscoveries: "espionage:listBonusDiscoveries"');
+    expect(client).toContain("async function loadAllBonusDiscoveries");
+    expect(client).toContain("while (!isDone)");
+    expect(client).toContain("Most recent Bonus Discovery");
+    expect(client).toContain("Permanent, timestamped snapshots. Most recent first.");
+    expect(css).toContain(".bonus-discovery-history");
+  });
+
   test("describes the unified Intel model on the Ghostblood building card", () => {
     expect(client).toContain('const intelEffect = "Four persistent 0–100 category Intel pools per rival"');
     expect(client).not.toContain("mission boost");

@@ -221,7 +221,7 @@ describe("espionage backend", () => {
     expect(unchangedScore).toMatchObject({ total: 100, categoryTotals: { military: 40, economy: 30, research: 20, territory: 10 } });
   });
 
-  test("every successful band rewards only the selected persistent category", async () => {
+  test("every successful band rewards only the selected persistent category and overwhelm grants a Bonus Discovery", async () => {
     const t = convexTest(schema, modules);
     const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "outcomes@example.com" }));
     const attackerId = await addPlayer(t, "Investigator", String(userId), { operatives: { informant: 0, spy: 2, ghostblood: 1 } });
@@ -245,14 +245,86 @@ describe("espionage backend", () => {
     const overwhelm = await asAttacker.mutation(api.espionage.launchInvestigation, { targetPlayerId: openTarget, category: "economy", operatives: { informant: 0, spy: 0, ghostblood: 1 } });
     const overwhelmResult = await t.mutation(internal.espionage.resolveInvestigation, { missionId: overwhelm.missionId });
     expect(overwhelmResult.outcome).toBe("overwhelm");
-    expect(overwhelmResult).not.toHaveProperty("bonusDiscoveryId");
+    expect(overwhelmResult).toMatchObject({ bonusFactKind: "sphere_store" });
+    expect(overwhelmResult).toHaveProperty("bonusDiscoveryId");
     ledger = await asAttacker.query(api.espionage.getKingdomLedger, {});
     row = ledger.rows.find((entry) => entry.playerId === openTarget)!;
     expect(row.cells.economy.currentLevel).toBe(0);
     expect(row.cells.economy.intelAmount).toBe(15);
     expect(row.cells.research.intelAmount).toBe(0);
     const bonusDiscoveries = await t.run(async (ctx) => await ctx.db.query("espionageBonusDiscoveries").take(10));
-    expect(bonusDiscoveries).toHaveLength(0);
+    expect(bonusDiscoveries).toHaveLength(1);
+    expect(bonusDiscoveries[0]).toMatchObject({ category: "economy", factKind: "sphere_store" });
+  });
+
+  test("overwhelm bonuses alternate within every category and history is newest first", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "bonus-rotation@example.com" }));
+    const attackerId = await addPlayer(t, "Bonus Investigator", String(userId), { operatives: { informant: 0, spy: 0, ghostblood: 1 } });
+    const targetId = await addPlayer(t, "Deep Target", undefined, { defending: emptyOps });
+    await t.run(async (ctx) => {
+      await createFreshSeason(ctx, 1, 1);
+      await ctx.db.patch(targetId, { units: { ...units, bridgeman: 4, spearman: 12, chull: 2 }, spheres: 54_321, gemhearts: 7, lastEconomyAt: Date.now() });
+      await ctx.db.insert("playerResearch", {
+        playerId: targetId,
+        completedLevels: { bridgeEngineering: 2, marketEconomics: 1, sprenStudies: 3 },
+        activeProject: "painrialMedicine",
+        activeLevel: 2,
+        status: "active",
+        projectedCompletionAt: Date.now() + 60_000,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      for (const [name, type] of [["Counting Field", "sphere"], ["Swift Span", "bridged"], ["Whispered Archive", "ancient"], ["Emerald Crown", "gemheart"]] as const) {
+        await ctx.db.insert("plateaus", {
+          name, type, status: "owned", ownerPlayerId: targetId, origin: "neutral", highground: type === "ancient" || type === "gemheart",
+          large: type === "ancient" || type === "gemheart", neutralDefenseInitial: 200, neutralDefenseRemaining: 0,
+          parshendiReclamationCount: name === "Emerald Crown" ? 2 : 0, heldSince: 1,
+          ...(type === "gemheart" ? { lastGemheartAt: Date.now() - 1_000 } : {}),
+          createdAt: 1, updatedAt: 1,
+        });
+      }
+      await ctx.db.insert("raids", {
+        attackerId: targetId, targetType: "open_acres", units: { ...units, spearman: 5, chull: 1 },
+        power: 5, speed: -1, departAt: Date.now(), arriveAt: Date.now() + 60_000, status: "pending",
+      });
+    });
+    expect(attackerId).toBeTruthy();
+    const asAttacker = t.withIdentity({ subject: String(userId) });
+    const expectedKinds = {
+      military: ["unit_composition", "deployed_compositions"],
+      economy: ["sphere_store", "gemheart_holdings"],
+      research: ["active_research", "research_depth"],
+      territory: ["territory_counts", "valuable_plateau"],
+    } as const;
+
+    for (const category of ["military", "economy", "research", "territory"] as const) {
+      for (const expectedKind of expectedKinds[category]) {
+        const mission = await asAttacker.mutation(api.espionage.launchInvestigation, {
+          targetPlayerId: targetId,
+          category,
+          operatives: { informant: 0, spy: 0, ghostblood: 1 },
+        });
+        const result = await t.mutation(internal.espionage.resolveInvestigation, { missionId: mission.missionId });
+        expect(result).toMatchObject({ outcome: "overwhelm", bonusFactKind: expectedKind });
+      }
+      const history = await asAttacker.query(api.espionage.listBonusDiscoveries, {
+        targetPlayerId: targetId,
+        category,
+        paginationOpts: { numItems: 100, cursor: null },
+      });
+      expect(history.isDone).toBe(true);
+      expect(history.page.map((entry) => entry.kind)).toEqual([...expectedKinds[category]].reverse());
+      expect(history.page.every((entry) => entry.observedAt === Date.now())).toBe(true);
+    }
+
+    const allDiscoveries = await t.run(async (ctx) => await ctx.db.query("espionageBonusDiscoveries").take(20));
+    expect(allDiscoveries).toHaveLength(8);
+    expect(allDiscoveries.find((entry) => entry.factKind === "unit_composition")?.text).toContain("12 Spearman");
+    expect(allDiscoveries.find((entry) => entry.factKind === "deployed_compositions")?.text).toContain("Raid 1: 5 Spearman, 1 Chull");
+    expect(allDiscoveries.find((entry) => entry.factKind === "research_depth")?.text).toContain("Military Studies 2; Economic Studies 1; Ancient Lore 3");
+    expect(allDiscoveries.find((entry) => entry.factKind === "territory_counts")?.text).toContain("Sphere 1; Bridged 1; Ancient 1; Gemheart 1");
+    expect(allDiscoveries.find((entry) => entry.factKind === "valuable_plateau")?.text).toContain("traits Highground, Large");
   });
 
   test("Failure is anonymous and all four persistent Intel pools remain independent", async () => {

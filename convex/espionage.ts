@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -11,7 +12,17 @@ import { plateauAttributeCountsForPlayer, plateauCountsForPlayer } from "./plate
 import { ownedOperativesIncludingAway, ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import { ensureActiveSeason } from "./seasonLedger";
 import { SEASON_CATEGORIES } from "./seasonScoringRules";
-import { roundResource } from "./rules";
+import {
+  ECONOMIC_DOCTRINES,
+  PLATEAU_RULES,
+  RESEARCH_RULES,
+  UNIT_RULES,
+  identityPlateauType,
+  normalizeUnits,
+  researchEffect,
+  roundResource,
+  type UnitCounts,
+} from "./rules";
 import {
   ESPIONAGE_CATEGORIES,
   ESPIONAGE_RULES,
@@ -98,6 +109,168 @@ async function applyIntelReward(ctx: MutationCtx, attacker: Doc<"players">, targ
   return { amount, cap, resource: category };
 }
 
+const BONUS_FACT_PAIRS = {
+  military: ["unit_composition", "deployed_compositions"],
+  economy: ["sphere_store", "gemheart_holdings"],
+  research: ["active_research", "research_depth"],
+  territory: ["territory_counts", "valuable_plateau"],
+} as const;
+
+const LEGACY_FIRST_BONUS_KINDS = new Set(["active_doctrine", "research_idle", "territory_roster"]);
+const LEGACY_SECOND_BONUS_KINDS = new Set(["forces_away", "valuable_territory"]);
+
+function nextBonusFactKind(category: EspionageCategory, previousKind?: string) {
+  const [first, second] = BONUS_FACT_PAIRS[category];
+  if (previousKind === first || LEGACY_FIRST_BONUS_KINDS.has(previousKind ?? "")) return second;
+  if (previousKind === second || LEGACY_SECOND_BONUS_KINDS.has(previousKind ?? "")) return first;
+  return first;
+}
+
+function unitComposition(units?: Partial<UnitCounts>) {
+  const normalized = normalizeUnits(units ?? {});
+  return Object.entries(normalized)
+    .filter(([, count]) => count > 0)
+    .map(([key, count]) => `${count.toLocaleString()} ${UNIT_RULES[key as keyof typeof UNIT_RULES].name}`)
+    .join(", ") || "no combat units";
+}
+
+function plateauTypeLabel(type: string) {
+  const normalized = identityPlateauType(type as Parameters<typeof identityPlateauType>[0]);
+  return normalized === "sphere" ? "Sphere Plateau"
+    : normalized === "bridged" ? "Bridged Plateau"
+      : normalized === "gemheart" ? "Gemheart Plateau"
+        : "Ancient Plateau";
+}
+
+function seededIndex(seed: string, size: number) {
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return size > 0 ? (hash >>> 0) % size : 0;
+}
+
+async function createBonusDiscovery(
+  ctx: MutationCtx,
+  mission: Doc<"espionageMissions">,
+  target: Doc<"players">,
+  now: number,
+) {
+  const previous = await ctx.db.query("espionageBonusDiscoveries")
+    .withIndex("by_viewerPlayerId_and_targetPlayerId_and_category_and_observedAt", (q) =>
+      q.eq("viewerPlayerId", mission.attackerId).eq("targetPlayerId", mission.targetPlayerId).eq("category", mission.category))
+    .order("desc")
+    .first();
+  const factKind = nextBonusFactKind(mission.category, previous?.factKind);
+  let text: string;
+
+  if (factKind === "unit_composition") {
+    text = `Exact home-force composition: ${unitComposition(target.units)}.`;
+  } else if (factKind === "deployed_compositions") {
+    const [raids, attackingSieges, defendingSieges, openRun] = await Promise.all([
+      ctx.db.query("raids").withIndex("by_attacker_and_status", (q) => q.eq("attackerId", target._id).eq("status", "pending")).take(100),
+      ctx.db.query("sieges").withIndex("by_attacker_and_status", (q) => q.eq("attackerId", target._id).eq("status", "pending")).take(100),
+      ctx.db.query("sieges").withIndex("by_defender_and_status", (q) => q.eq("defenderId", target._id).eq("status", "pending")).take(100),
+      ctx.db.query("plateauRuns").withIndex("by_status", (q) => q.eq("status", "open")).unique(),
+    ]);
+    const deployments = [
+      ...raids.map((raid, index) => `Raid ${index + 1}: ${unitComposition(raid.units)}`),
+      ...attackingSieges.map((siege, index) => `Attacking siege ${index + 1}: ${unitComposition(siege.attackerUnits)}`),
+      ...defendingSieges.map((siege, index) => `Defending siege ${index + 1}: ${unitComposition(siege.defenderUnits ?? {})}`),
+    ];
+    if (openRun) {
+      const commitment = await ctx.db.query("plateauCommitments")
+        .withIndex("by_run_player", (q) => q.eq("plateauRunId", openRun._id).eq("playerId", target._id))
+        .unique();
+      if (commitment) deployments.push(`Plateau Run: ${unitComposition(commitment.units)}`);
+    }
+    text = deployments.length > 0
+      ? `Exact deployed-force compositions: ${deployments.join("; ")}.`
+      : "Exact deployed-force compositions: no military forces were away from the warcamp.";
+  } else if (factKind === "sphere_store") {
+    const settledTarget = (await settlePlayerEconomy(ctx, target)).player;
+    text = `Exact Sphere treasury: ${Math.floor(settledTarget.spheres).toLocaleString()} Spheres.`;
+  } else if (factKind === "gemheart_holdings") {
+    const settledTarget = (await settlePlayerEconomy(ctx, target)).player;
+    text = `Exact Gemheart holdings: ${Math.floor(settledTarget.gemhearts).toLocaleString()} Gemhearts.`;
+  } else if (factKind === "active_research") {
+    const research = await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", target._id)).unique();
+    if (research?.activeProject) {
+      const rule = RESEARCH_RULES.projects[research.activeProject as keyof typeof RESEARCH_RULES.projects];
+      text = `Current research: ${rule?.name ?? research.activeProject} ${research.activeLevel ?? 1}; status ${research.status ?? "active"}${research.projectedCompletionAt ? `; projected completion ${new Date(research.projectedCompletionAt).toISOString()}` : ""}.`;
+    } else if (research?.activeDoctrine) {
+      const doctrine = ECONOMIC_DOCTRINES[research.activeDoctrine];
+      text = `Current doctrine study: ${doctrine.name}; status ${research.status ?? "active"}${research.projectedCompletionAt ? `; projected completion ${new Date(research.projectedCompletionAt).toISOString()}` : ""}.`;
+    } else if (research?.economicDoctrine) {
+      text = `No active study. Established Economic Doctrine: ${ECONOMIC_DOCTRINES[research.economicDoctrine].name}.`;
+    } else {
+      text = "No active research project or Economic Doctrine was observed.";
+    }
+  } else if (factKind === "research_depth") {
+    const research = await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", target._id)).unique();
+    const depth = { military: 0, economic: 0, ancient: 0 };
+    for (const [project, level] of Object.entries(research?.completedLevels ?? {})) {
+      const rule = RESEARCH_RULES.projects[project as keyof typeof RESEARCH_RULES.projects];
+      if (rule) depth[rule.library] += Math.max(0, Math.floor(Number(level)));
+    }
+    const total = depth.military + depth.economic + depth.ancient;
+    text = `Completed research depth: Military Studies ${depth.military}; Economic Studies ${depth.economic}; Ancient Lore ${depth.ancient}; ${total} completed levels total.`;
+  } else {
+    const plateaus = await ctx.db.query("plateaus").withIndex("by_owner", (q) => q.eq("ownerPlayerId", target._id)).take(200);
+    if (factKind === "territory_counts") {
+      const counts = { sphere: 0, bridged: 0, ancient: 0, gemheart: 0 };
+      for (const plateau of plateaus) {
+        const type = identityPlateauType(plateau.type);
+        if (type === "sphere" || type === "bridged" || type === "ancient" || type === "gemheart") counts[type] += 1;
+      }
+      text = `Exact plateau counts: Sphere ${counts.sphere}; Bridged ${counts.bridged}; Ancient ${counts.ancient}; Gemheart ${counts.gemheart}; ${plateaus.length} total. Plateau names and traits remain undisclosed.`;
+    } else {
+      const valuable = plateaus.filter((plateau) => {
+        const type = identityPlateauType(plateau.type);
+        return type === "ancient" || type === "gemheart";
+      }).sort((left, right) => left.name.localeCompare(right.name));
+      if (valuable.length === 0) {
+        text = "No Ancient or Gemheart plateau was observed among the target's holdings.";
+      } else {
+        const plateau = valuable[seededIndex(`${mission._id}:valuable-plateau`, valuable.length)];
+        const traits = [plateau.highground ? "Highground" : "", plateau.large ? "Large" : ""].filter(Boolean).join(", ") || "none";
+        const details = [
+          `name ${plateau.name}`,
+          `type ${plateauTypeLabel(plateau.type)}`,
+          `traits ${traits}`,
+          `origin ${plateau.origin ?? "unknown"}`,
+          `held since ${plateau.heldSince ? new Date(plateau.heldSince).toISOString() : "unknown"}`,
+          `Parshendi reclamations ${Math.max(0, plateau.parshendiReclamationCount ?? 0)}`,
+          `siege status ${plateau.activeSiegeId ? "under siege" : "secure"}`,
+        ];
+        if (identityPlateauType(plateau.type) === "gemheart") {
+          const research = await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", target._id)).unique();
+          const completed = { ...(research?.completedLevels ?? {}), ...(research?.economicDoctrine === "gemheartBaron" ? { __doctrineGemheartBaron: 1 } : {}) };
+          const researchedHours = Number(researchEffect(completed, "gemCutting"));
+          const baseHours = researchedHours > 0 ? researchedHours : PLATEAU_RULES.gemheartIntervalMs / 3_600_000;
+          const intervalMs = (baseHours - (research?.economicDoctrine === "gemheartBaron" ? 1 : 0)) * 3_600_000;
+          const lastYieldAt = plateau.lastGemheartAt ?? plateau.heldSince ?? plateau.updatedAt;
+          details.push(`last Gemheart cycle ${new Date(lastYieldAt).toISOString()}`);
+          details.push(`next expected Gemheart ${new Date(lastYieldAt + intervalMs).toISOString()}`);
+        }
+        text = `Fully observed valuable plateau: ${details.join("; ")}.`;
+      }
+    }
+  }
+
+  const discoveryId = await ctx.db.insert("espionageBonusDiscoveries", {
+    viewerPlayerId: mission.attackerId,
+    targetPlayerId: mission.targetPlayerId,
+    category: mission.category,
+    missionId: mission._id,
+    factKind,
+    text,
+    observedAt: now,
+  });
+  return { discoveryId, factKind, text };
+}
+
 export const getStatus = query({
   args: {},
   handler: async (ctx) => {
@@ -153,7 +326,7 @@ export const getStatus = query({
         resolvedAt: mission.resolvedAt ?? null, status: mission.status, outcome: mission.outcome ?? null,
         economyIntelSpent: mission.economyIntelSpent ?? 0, economyIntelRemaining: mission.economyIntelRemaining ?? null,
         spheresStolen: mission.spheresStolen ?? 0, casualties: normalizeOperatives(mission.casualties),
-        identityExposed: mission.identityExposed ?? null,
+        identityExposed: mission.identityExposed ?? null, bonusDiscoveryId: mission.bonusDiscoveryId ?? null,
       })),
       rules: safeRules(),
     };
@@ -221,6 +394,32 @@ export const getKingdomLedger = query({
       return { playerId: target._id, kingdomName: target.name, own, cells, total };
     }).sort((left, right) => left.own ? -1 : right.own ? 1 : left.kingdomName.localeCompare(right.kingdomName));
     return { season: season ? { id: season._id, name: season.name } : null, generatedAt: now, rows };
+  },
+});
+
+export const listBonusDiscoveries = query({
+  args: {
+    targetPlayerId: v.id("players"),
+    category: categoryValidator,
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    const viewer = await requireCurrentPlayer(ctx);
+    if (networkLevel(viewer) < 1) throw new Error("Construct a Ghostblood Network to review Bonus Discoveries.");
+    const discoveries = await ctx.db.query("espionageBonusDiscoveries")
+      .withIndex("by_viewerPlayerId_and_targetPlayerId_and_category_and_observedAt", (q) =>
+        q.eq("viewerPlayerId", viewer._id).eq("targetPlayerId", args.targetPlayerId).eq("category", args.category))
+      .order("desc")
+      .paginate(args.paginationOpts);
+    return {
+      ...discoveries,
+      page: discoveries.page.map((entry) => ({
+        id: entry._id,
+        kind: entry.factKind,
+        text: entry.text,
+        observedAt: entry.observedAt,
+      })),
+    };
   },
 });
 
@@ -472,12 +671,22 @@ export const resolveInvestigation = internalMutation({
     const outcome = resolveEspionageOutcome(mission.finalSpyPower, stormCounterIntelligence(spyPower(target.defendingOperatives), stormActive));
     const reward = stormInvestigationIntel(ESPIONAGE_RULES.intelRewards[outcome], outcome === "success" || outcome === "overwhelm", stormActive);
     const intel = await applyIntelReward(ctx, attacker, target._id, mission.category, reward, now);
+    const bonusDiscovery = outcome === "overwhelm"
+      ? await createBonusDiscovery(ctx, mission, target, now)
+      : null;
     await ctx.db.patch(attacker._id, { operatives: addOperatives(attacker.operatives, mission.operatives), lastActiveAt: now });
-    await ctx.db.patch(mission._id, { status: "resolved", outcome, resolvedAt: now });
+    await ctx.db.patch(mission._id, {
+      status: "resolved",
+      outcome,
+      resolvedAt: now,
+      ...(bonusDiscovery ? { bonusDiscoveryId: bonusDiscovery.discoveryId } : {}),
+    });
     const categoryName = SEASON_CATEGORIES[mission.category].name;
     const resultText = outcome === "failure"
       ? `The ${categoryName} investigation failed to produce reliable information. Your operatives returned safely.`
-      : `The ${categoryName} investigation gained ${reward} ${categoryName} Intel against ${target.name}.`;
+      : outcome === "overwhelm"
+        ? `The ${categoryName} investigation overwhelmed ${target.name}'s defenses, gained ${reward} ${categoryName} Intel, and added a Bonus Discovery to the Ledger.`
+        : `The ${categoryName} investigation gained ${reward} ${categoryName} Intel against ${target.name}.`;
     await ctx.db.insert("messages", { toPlayerId: attacker._id, kind: "system", subject: `${categoryName} Investigation: ${outcome[0].toUpperCase()}${outcome.slice(1)}`, body: `${resultText}${stormActive ? ` Storm Cover: effective Counter-Intelligence reduced by 50%.${outcome === "success" || outcome === "overwhelm" ? " Investigation Intel +50%." : ""}` : ""} ${categoryName} Intel: ${intel.amount}/${intel.cap}.`, eventType: "espionage_resolved", destinationView: "intelligence", destinationTab: "ledger", entityType: "espionage_mission", entityId: String(mission._id), kingdomId: target._id, intelligenceCategory: mission.category, createdAt: now });
     await createNotification(ctx, { playerId: attacker._id, category: "missions", eventType: "espionage_resolved", title: "Investigation Complete", body: resultText, destinationView: "intelligence", destinationTab: "ledger", entityId: String(mission._id), kingdomId: target._id, intelligenceCategory: mission.category, dedupeKey: `espionage:${mission._id}:attacker`, createdAt: now });
     if (outcome === "failure" || outcome === "partial") {
@@ -487,6 +696,11 @@ export const resolveInvestigation = internalMutation({
       await ctx.db.insert("messages", { toPlayerId: target._id, kind: "system", subject, body, eventType: clear ? "espionage_detected" : "espionage_suspected", destinationView: "intelligence", destinationTab: "operations", entityType: "espionage_mission", entityId: String(mission._id), createdAt: now });
       await createNotification(ctx, { playerId: target._id, category: "missions", eventType: clear ? "espionage_detected" : "espionage_suspected", title: subject, body, destinationView: "intelligence", destinationTab: "operations", entityId: String(mission._id), dedupeKey: `espionage:${mission._id}:defender`, createdAt: now });
     }
-    return { resolved: true, outcome, reward };
+    return {
+      resolved: true,
+      outcome,
+      reward,
+      ...(bonusDiscovery ? { bonusDiscoveryId: bonusDiscovery.discoveryId, bonusFactKind: bonusDiscovery.factKind } : {}),
+    };
   },
 });
