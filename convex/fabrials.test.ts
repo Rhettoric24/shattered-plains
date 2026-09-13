@@ -59,6 +59,24 @@ describe("Fabrial rules", () => {
 });
 
 describe("Fabrial discovery and inventory", () => {
+  test("discovers Painrials at Field Surgery I plus Spren Studies I, once", async () => {
+    const t = convexTest(schema, modules);
+    const { playerId, player } = await addPlayer(t, { painrialMedicine: 1 });
+    expect((await t.mutation(internal.fabrials.backfillDiscoveries, {})).prototypesGranted).toBe(0);
+    await t.run(async (ctx) => {
+      const research = await ctx.db.query("playerResearch")
+        .withIndex("by_playerId", (q) => q.eq("playerId", playerId)).unique();
+      await ctx.db.patch(research!._id, {
+        completedLevels: { ...research!.completedLevels, sprenStudies: 1 },
+      });
+    });
+    expect((await t.mutation(internal.fabrials.backfillDiscoveries, {})).discoveries.painrial).toBe(1);
+    expect((await t.mutation(internal.fabrials.backfillDiscoveries, {})).prototypesGranted).toBe(0);
+    expect((await player.query(api.fabrials.getStatus, {})).inventory).toMatchObject([
+      { kind: "painrial", owned: 1, committed: 0, available: 1 },
+    ]);
+  });
+
   test("keeps hidden conditions server-side and grants prototypes exactly once", async () => {
     const t = convexTest(schema, modules);
     const { player } = await addPlayer(t, { painrialMedicine: 2, sprenStudies: 3, soulcastArmor: 2, siegeEngineering: 2 });

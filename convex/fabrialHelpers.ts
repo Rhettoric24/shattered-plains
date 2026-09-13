@@ -6,7 +6,7 @@ import { FABRIAL_RULES, reusableFabrialLost, type FabrialKey, type ReusableOutco
 type ReadCtx = QueryCtx | MutationCtx;
 
 const DISCOVERY_REQUIREMENTS: Record<FabrialKey, (levels: Record<string, number>) => boolean> = {
-  painrial: (levels) => (levels.painrialMedicine ?? 0) >= 2 && (levels.sprenStudies ?? 0) >= 2,
+  painrial: (levels) => (levels.painrialMedicine ?? 0) >= 1 && (levels.sprenStudies ?? 0) >= 1,
   soulcaster: (levels) => (levels.soulcasting ?? 0) >= 2 && (levels.gemCutting ?? 0) >= 2 && (levels.sprenStudies ?? 0) >= 2,
   halfShard: (levels) => (levels.soulcastArmor ?? 0) >= 2 && (levels.siegeEngineering ?? 0) >= 2 && (levels.sprenStudies ?? 0) >= 3,
 };
