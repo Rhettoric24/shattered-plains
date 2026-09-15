@@ -119,6 +119,7 @@ export default defineSchema({
     reclamationSeasonId: v.optional(v.id("seasons")),
     heldSince: v.optional(v.number()),
     lastGemheartAt: v.optional(v.number()),
+    nextGemheartAt: v.optional(v.number()),
     activeSiegeId: v.optional(v.id("sieges")),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -272,6 +273,16 @@ export default defineSchema({
     .index("by_to_player", ["toPlayerId"])
     .index("by_to_player_created", ["toPlayerId", "createdAt"]),
 
+  resourceTransfers: defineTable({
+    fromPlayerId: v.id("players"),
+    toPlayerId: v.id("players"),
+    spheres: v.number(),
+    gemhearts: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_fromPlayerId_and_createdAt", ["fromPlayerId", "createdAt"])
+    .index("by_toPlayerId_and_createdAt", ["toPlayerId", "createdAt"]),
+
   notifications: defineTable({
     playerId: v.id("players"),
     category: v.union(
@@ -316,6 +327,9 @@ export default defineSchema({
   playerSettings: defineTable({
     playerId: v.id("players"),
     confirmConsequentialMissions: v.boolean(),
+    autoDefenseEnabled: v.optional(v.boolean()),
+    autoDefensePrimary: v.optional(unitCounts),
+    autoDefenseSecondary: v.optional(unitCounts),
     updatedAt: v.number(),
   }).index("by_playerId", ["playerId"]),
 

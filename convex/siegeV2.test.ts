@@ -27,6 +27,93 @@ async function setup() {
 }
 
 describe("PvP Siege V2", () => {
+  test("allows both committed sides to dispatch reinforcements during Encirclement while battle remains locked", async () => {
+    const { t, attackerUser, defenderUser, attackerId, defenderId, siegeId } = await setup();
+    await t.run((ctx) => ctx.db.patch(siegeId, { encircleEndsAt: Date.now() + 60_000 }));
+
+    await t.withIdentity({ subject: String(attackerUser) }).mutation(api.plateaus.reinforcePlayerSiege, {
+      siegeId, units: { ...emptyUnits, bridgeman: 2 },
+    });
+    await t.withIdentity({ subject: String(defenderUser) }).mutation(api.plateaus.reinforcePlayerSiege, {
+      siegeId, units: { ...emptyUnits, bridgeman: 3 },
+    });
+
+    const state = await t.run(async (ctx) => ({
+      attacker: await ctx.db.get(attackerId),
+      defender: await ctx.db.get(defenderId),
+      reinforcements: await ctx.db.query("siegeReinforcements").withIndex("by_siegeId", (q) => q.eq("siegeId", siegeId)).collect(),
+    }));
+    expect(state.attacker?.units.bridgeman).toBe(18);
+    expect(state.defender?.units.bridgeman).toBe(17);
+    expect(state.reinforcements.map((entry) => entry.side).sort()).toEqual(["attacker", "defender"]);
+    await expect(t.withIdentity({ subject: String(attackerUser) }).mutation(api.plateaus.beginSiegeBattle, { siegeId }))
+      .rejects.toThrow("Battle cannot begin during Encirclement");
+  });
+
+  test("still requires an initial defensive commitment before defender reinforcements", async () => {
+    const { t, defenderUser, siegeId } = await setup();
+    await t.run((ctx) => ctx.db.patch(siegeId, {
+      defenderUnits: undefined,
+      defenderPower: undefined,
+      defenderSpeed: undefined,
+      defenderCommittedAt: undefined,
+      encircleEndsAt: Date.now() + 60_000,
+    }));
+    await expect(t.withIdentity({ subject: String(defenderUser) }).mutation(api.plateaus.reinforcePlayerSiege, {
+      siegeId, units: { ...emptyUnits, bridgeman: 1 },
+    })).rejects.toThrow("Commit the initial defense before reinforcing");
+  });
+
+  test("automatic defense uses the complete primary order, then the complete fallback order", async () => {
+    const { t, attackerUser, defenderId } = await setup();
+    const primaryPlateauId = await t.run(async (ctx) => {
+      await ctx.db.insert("playerSettings", {
+        playerId: defenderId,
+        confirmConsequentialMissions: true,
+        autoDefenseEnabled: true,
+        autoDefensePrimary: { ...emptyUnits, bridgeman: 12 },
+        autoDefenseSecondary: { ...emptyUnits, bridgeman: 4 },
+        updatedAt: Date.now(),
+      });
+      return await ctx.db.insert("plateaus", {
+        name: "Standing Order One", type: "sphere", status: "owned", ownerPlayerId: defenderId,
+        highground: false, neutralDefenseInitial: 0, neutralDefenseRemaining: 0,
+        heldSince: Date.now(), createdAt: Date.now(), updatedAt: Date.now(),
+      });
+    });
+    const attacker = t.withIdentity({ subject: String(attackerUser) });
+    const primaryLaunch = await attacker.mutation(api.plateaus.launchPlayerSiege, {
+      plateauId: primaryPlateauId, units: { ...emptyUnits, bridgeman: 1 },
+    });
+    expect(primaryLaunch.automaticDefensePreset).toBe("primary");
+    expect(await t.run((ctx) => ctx.db.get(primaryLaunch.siegeId))).toMatchObject({
+      defenderUnits: { ...emptyUnits, bridgeman: 12 },
+      defenderPower: 6,
+    });
+
+    const fallbackPlateauId = await t.run(async (ctx) => {
+      const settings = await ctx.db.query("playerSettings").withIndex("by_playerId", (q) => q.eq("playerId", defenderId)).unique();
+      await ctx.db.patch(settings!._id, {
+        autoDefensePrimary: { ...emptyUnits, bridgeman: 9 },
+        autoDefenseSecondary: { ...emptyUnits, bridgeman: 4 },
+      });
+      return await ctx.db.insert("plateaus", {
+        name: "Standing Order Two", type: "sphere", status: "owned", ownerPlayerId: defenderId,
+        highground: false, neutralDefenseInitial: 0, neutralDefenseRemaining: 0,
+        heldSince: Date.now(), createdAt: Date.now(), updatedAt: Date.now(),
+      });
+    });
+    const fallbackLaunch = await attacker.mutation(api.plateaus.launchPlayerSiege, {
+      plateauId: fallbackPlateauId, units: { ...emptyUnits, bridgeman: 1 },
+    });
+    expect(fallbackLaunch.automaticDefensePreset).toBe("secondary");
+    expect(await t.run((ctx) => ctx.db.get(fallbackLaunch.siegeId))).toMatchObject({
+      defenderUnits: { ...emptyUnits, bridgeman: 4 },
+      defenderPower: 2,
+    });
+    expect((await t.run((ctx) => ctx.db.get(defenderId)))?.units.bridgeman).toBe(4);
+  });
+
   test("commits and returns a defender Half-Shard when the plateau is held", async () => {
     const { t, defenderUser, defenderId, siegeId } = await setup();
     const inventoryId = await t.run(async (ctx) => {

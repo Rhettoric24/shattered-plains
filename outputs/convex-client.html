@@ -193,6 +193,24 @@
             <section id="retaliation-warning-panel" class="panel full-panel hidden"><p class="eyebrow">Parshendi activity</p><h2>World retaliation warning</h2><div id="retaliation-warning" class="mission-summary"></div></section>
             <section id="urgent-sieges-panel" class="panel full-panel hidden"><p class="eyebrow">Highest priority</p><h2>⚔ Active defensive sieges</h2><div id="urgent-sieges" class="list"></div></section>
             <section class="panel full-panel">
+              <p class="eyebrow">Standing orders</p>
+              <h2>Automatic siege defense</h2>
+              <form id="auto-defense-form" class="contained-form auto-defense-form">
+                <label class="preference-toggle"><input id="auto-defense-enabled" type="checkbox"> Opt in for future PvP sieges</label>
+                <p class="hint">When a rival siege begins, quartermasters try the complete Primary army first, then the complete Fallback army. If neither exact force is home, no army is committed. Standing orders never spend Spheres, Gemhearts, or Fabrials.</p>
+                <details id="auto-defense-details">
+                  <summary>Configure Primary and Fallback armies</summary>
+                  <fieldset id="auto-defense-orders">
+                    <legend>Primary army</legend>
+                    <div id="auto-defense-primary" class="unit-input-grid"></div>
+                    <legend>Fallback army</legend>
+                    <div id="auto-defense-secondary" class="unit-input-grid"></div>
+                  </fieldset>
+                </details>
+                <div class="inline-actions"><button type="submit">Save standing orders</button><span id="auto-defense-status" class="hint" aria-live="polite"></span></div>
+              </form>
+            </section>
+            <section class="panel full-panel">
               <p class="eyebrow">Expeditions</p>
               <div class="mode-switcher expedition-switcher"><button type="button" class="mode-button active" data-expedition-mode="neutral">Explore Neutral</button><button type="button" class="mode-button" data-expedition-mode="rival">Siege Rival</button></div>
               <form id="neutral-siege-form" class="attack-planner expedition-panel active" data-expedition-panel="neutral" data-attack-planner="neutral">
@@ -208,7 +226,7 @@
                 <button id="launch-neutral-siege" data-mission-launch type="button">Initiate expedition</button>
               </form>
               <form id="player-siege-form" class="attack-planner expedition-panel" data-expedition-panel="rival" data-attack-planner="rival">
-                <div class="mission-summary form-wide"><strong>Challenge a rival holding</strong><span>Initial deployment begins a one-hour Encirclement. Afterward, either side may begin battle; unresolved sieges are forced to battle at the 24-hour deadline.</span><details><summary>Resolution rules</summary><small>The attacker must exceed the defender. Ties favor the defender. A deadline battle grants the defender +10% Power.</small></details></div>
+                <div class="mission-summary form-wide"><strong>Challenge a rival holding</strong><span>Initial deployment begins a one-hour Encirclement. Both sides may dispatch reinforcements immediately; battle remains locked until Encirclement ends. Unresolved sieges are forced to battle at the 24-hour deadline.</span><details><summary>Resolution rules</summary><small>The attacker must exceed the defender. Ties favor the defender. A deadline battle grants the defender +10% Power.</small></details></div>
                 <div class="target-selector form-wide"><label for="player-plateau-target">Target Plateau</label><select id="player-plateau-target"></select><div id="player-plateau-selection" class="target-selection-details"></div></div>
                 <div class="form-wide">
                   <label>Select Units</label>
@@ -369,6 +387,21 @@
                 <label>Message</label>
                 <textarea id="message-text" rows="4" maxlength="1000" placeholder="Write a short message"></textarea>
                 <button>Send message</button>
+              </form>
+            </section>
+            <section class="panel full-panel">
+              <p class="eyebrow">Quartermaster transfer</p>
+              <h2>Send resources</h2>
+              <form id="resource-transfer-form" class="message-form contained-form">
+                <p class="hint form-wide">Send a one-way gift from resources currently available in your warcamp. Transfers are immediate and recorded in both players’ Spanreed histories.</p>
+                <p id="resource-transfer-available" class="mission-summary form-wide"></p>
+                <label>Recipient</label>
+                <select id="resource-transfer-target"></select>
+                <label>Spheres</label>
+                <input id="resource-transfer-spheres" type="number" min="0" step="1" inputmode="numeric" value="0">
+                <label>Gemhearts</label>
+                <input id="resource-transfer-gemhearts" type="number" min="0" step="1" inputmode="numeric" value="0">
+                <div class="inline-actions form-wide"><button type="submit">Send resources</button><span id="resource-transfer-status" class="hint" aria-live="polite"></span></div>
               </form>
             </section>
           </section>

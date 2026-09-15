@@ -1,7 +1,8 @@
 # Shattered Plains --- Current State
 
-**Snapshot:** August 2026, after Highstorms V0 and Fabrials V0 became
-live on the current test environment.
+**Snapshot:** September 2026, during the active friend test. Features explicitly
+described as Yak-only below are pre-release and are not yet on the production
+friend-test deployment.
 
 This document records what is believed to be implemented now.
 Aspirations belong in `IDEA_VAULT.md` or `ROADMAP.md`.
@@ -347,15 +348,16 @@ known.
 
 Plateau Runs are Chasmfiend boss encounters. Their Power begins at
 `max(600, 250 + 125 × active players)`, rises linearly to `11/3` of that
-base over the first 14 real days of a season, then caps. Each run receives
-seeded ±5% variance. At four active players this is roughly 713–788 Power
-at season start and 2,613–2,888 at full strength.
+base over 42 successful Chasmfiend kills in a season, then caps. Failed or
+empty hunts do not advance the scale. Each run receives seeded ±5% variance.
+At four active players this is roughly 713–788 Power at zero victories and
+2,613–2,888 at full strength.
 
 Power labels: - under 900 Young - 900–1,399 Mature - 1,400–1,999 Ancient
 - 2,000–2,499 Colossal - 2,500+ Legendary
 
 The Sphere pool begins at `6,000 + 3,000 × active players`, rises linearly
-to 1.5× over the same 14-day ramp, and receives seeded ±5% variance. Four
+to 1.5× over the same 42-victory ramp, and receives seeded ±5% variance. Four
 active players therefore produce about 17,100–18,900 Spheres initially and
 25,650–28,350 at full strength.
 
@@ -364,6 +366,36 @@ later +0
 
 Gemheart reward goes to highest final Speed with deterministic tie
 handling. Highstorms can expose commitments.
+
+Gemheart Plateaus on Yak grant one Gemheart after a stable, hidden random
+10--12 real-hour base cycle. Gem Cutting and Gemheart Baron retain their prior
+hour reductions against that randomized base. Cycles already underway keep
+their previous fixed deadline; random scheduling begins after their next
+payout. Ownership changes begin a fresh random cycle. Watchtower/Territory
+Intel continues to control whether a rival can see the exact timer.
+
+# PvP Sieges
+
+PvP Siege V2 is the active flow: a one-hour Encirclement, followed by a period
+where either side may deliberately begin battle, with forced resolution at the
+24-hour deadline and a +10% defender Power bonus at that deadline. Ties favor
+the defender.
+
+On Yak, both sides may dispatch reinforcements as soon as the siege begins;
+battle remains locked until Encirclement ends. A defender must first have an
+initial commitment. Defenders can opt into future standing orders consisting
+of a complete Primary army and optional complete Fallback army. At siege
+creation the server commits the Primary only if every requested unit is home,
+otherwise tries the Fallback, otherwise commits nothing. Standing orders never
+spend Spheres, Gemhearts, or Fabrials and do not alter existing sieges.
+
+# Spanreed Resource Gifts
+
+On Yak, the Spanreed Hub supports immediate one-way gifts of whole Spheres and
+Gemhearts to another non-admin warcamp. The server settles both economies,
+validates the sender's current balance, applies both balance changes and an
+audit record atomically, and creates permanent receipts for both players plus
+a recipient notification. This is not a marketplace or negotiated trade.
 
 # Intelligence
 

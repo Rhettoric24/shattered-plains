@@ -206,9 +206,9 @@ do not increment the counter; repeated settlement cannot increment twice.
 Existing seasons start the new counter at zero without a backfill.
 Already-open hunts retain their snapshotted difficulty and rewards.
 
-Implementation is local pending release. Existing exact neutral prose is
-filtered on inbox/notification reads; previously delivered push alerts
-cannot be recalled. Reports remain historical observations, not live scans.
+Existing exact neutral prose is filtered on inbox/notification reads;
+previously delivered push alerts cannot be recalled. Reports remain historical
+observations, not live scans.
 
 ### DECIDED --- Repeated aggression changes the world
 
@@ -278,10 +278,38 @@ valid results. The Ledger category popup shows the full history newest first.
 
 # Sieges
 
-### OPEN --- PvP Siege V2
+### DECIDED --- PvP Siege V2 confrontation structure
 
-Desired direction: asynchronous escalating confrontation with
-attacker/defender reinforcement and deliberate assault timing.
+PvP sieges use a one-hour Encirclement, deliberate battle initiation after
+Encirclement, a 24-hour hard deadline, defender-favored ties, and +10% defender
+Power on forced deadline resolution. This structure is implemented.
+
+### TESTING --- Reinforcements may depart from siege start
+
+Either side may dispatch reinforcements during Encirclement, but the defender
+must make an initial commitment first. Encirclement continues to prevent battle
+from beginning. Reinforcement arrival and early-battle return rules are
+otherwise unchanged.
+
+### TESTING --- Opt-in exact-template automatic defense
+
+Standing orders apply only to future PvP sieges. The server tries a complete
+Primary army, then a complete optional Fallback army; partial fulfillment is
+never substituted. If neither is fully home, no force is committed. Automatic
+defense does not spend resources or attach Fabrials.
+
+### TESTING --- Gemheart Plateau randomized cadence
+
+New cycles use a stable hidden random 10--12 hour base. Existing Gem Cutting
+and Gemheart Baron reductions are preserved, existing cycles keep their current
+deadline, and a changed owner begins a new cycle. Existing rival timer Intel
+rules remain unchanged.
+
+### TESTING --- Spanreed one-way resource gifts
+
+Players may send whole Spheres and Gemhearts directly to another warcamp. Gifts
+are immediate, atomic, audited, and receive permanent Spanreed receipts. This
+does not establish a marketplace, barter, recurring transfers, or diplomacy.
 
 ### DECIDED --- Unlimited siege stalling is undesirable
 

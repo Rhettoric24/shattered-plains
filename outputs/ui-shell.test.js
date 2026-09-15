@@ -87,6 +87,12 @@ describe("post-overhaul shell", () => {
     expect(client).not.toContain("' · Economy ' + number(target.economyIntel");
   });
 
+  test("queries route-scoped Plains and Territory details immediately before subscriptions take over", () => {
+    expect(client).toContain("const plateauBoard = await client.query(refs.getSiegeBoard, {})");
+    expect(client).toContain("const intelligence = await client.query(refs.listDossiers, {})");
+    expect(client).toContain("live subscriptions will retry");
+  });
+
   test("presents each newly resolved PvP siege as a one-time battle report", () => {
     expect(html).toContain('id="siege-result-dialog"');
     expect(html).toContain('id="siege-result-narrative"');
@@ -262,10 +268,12 @@ describe("post-overhaul shell", () => {
   });
 
   test("teaches consequential PvP siege rules where players act", () => {
-    expect(html).toContain("unresolved sieges are forced to battle at the 24-hour deadline");
+    expect(html).toContain("Unresolved sieges are forced to battle at the 24-hour deadline");
+    expect(html).toContain("Both sides may dispatch reinforcements immediately");
     expect(html).toContain("Ties favor the defender");
     expect(html).toContain("A deadline battle grants the defender +10% Power");
-    expect(client).toContain("Army Speed does not shorten this opening phase; it does affect later reinforcements");
+    expect(client).toContain("Reinforcements may depart immediately; Army Speed affects their arrival");
+    expect(client).toContain("const reinforcement = mayReinforce");
     expect(client).toContain("Commit your initial defense before Encirclement ends");
     expect(client).toContain("Initial defense closed");
     expect(client).toContain('outlookCell("Time to arrival"');
@@ -275,6 +283,15 @@ describe("post-overhaul shell", () => {
     expect(client).toContain("row.side === \"defender\" ? \"Defender\" : \"Attacker\"");
     expect(client).not.toContain("Player sieges are fixed at one real hour");
     expect(client).not.toContain("JSON.stringify(report.report)");
+  });
+
+  test("surfaces opt-in defense orders and audited one-way Spanreed gifts", () => {
+    expect(html).toContain('id="auto-defense-form"');
+    expect(html).toContain("complete Primary army first, then the complete Fallback army");
+    expect(client).toContain('const autoDefensePrimary = readAutoDefensePreset("primary")');
+    expect(html).toContain('id="resource-transfer-form"');
+    expect(html).toContain("Transfers are immediate and recorded in both players’ Spanreed histories");
+    expect(client).toContain("refs.sendResources");
   });
 
   test("guides fresh recruits toward a first neutral expedition", () => {

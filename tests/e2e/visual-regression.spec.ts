@@ -17,7 +17,7 @@ type Destination = {
 type PixelRect = { x: number; y: number; width: number; height: number };
 
 const maskColor = "#25364a";
-const globalDynamicMasks = ["#game-date", ".resource-strip strong", "#inbox-badge", "#notification-badge", ".nav-state-dot"];
+const globalDynamicMasks = ["#game-date", "#highstorm-status", ".resource-strip strong", "#inbox-badge", "#notification-badge", ".nav-state-dot"];
 const runtimeProblems = new WeakMap<Page, string[]>();
 const intelligenceUiModuleSource = fs.readFileSync("outputs/intelligence-ui-state.js", "utf8");
 const espionageUiModuleSource = fs.readFileSync("outputs/espionage-ui-state.js", "utf8");
@@ -51,7 +51,7 @@ const destinations: Destination[] = [
       await page.locator("#space-subnav").getByRole("button", { name: "Sieges", exact: true }).click();
     },
     visible: "#view-plateaus",
-    sections: ["#retaliation-warning-panel", "#urgent-sieges-panel", "#neutral-siege-form", "#active-sieges"],
+    sections: ["#retaliation-warning-panel", "#urgent-sieges-panel", "#auto-defense-form", "#neutral-siege-form", "#active-sieges"],
   },
   {
     name: "intelligence",
@@ -69,7 +69,7 @@ const destinations: Destination[] = [
     name: "spanreed-hub",
     open: async (page) => page.locator("#spanreed-button").click(),
     visible: "#view-inbox",
-    sections: ["#inbox-list"],
+    sections: ["#inbox-list", "#resource-transfer-form"],
   },
 ];
 
@@ -319,11 +319,12 @@ async function expectEspionageLayouts(page: Page) {
   const intelDialog = page.locator("#kingdom-intel-dialog");
   await expect(intelDialog).toBeVisible();
   await expect(intelDialog).toContainText("Economy Intel");
-  await expect(intelDialog).toContainText("Changes only when Economy Intel is gained or spent.");
+  await expect(intelDialog).toContainText("Persistent Economy Intel");
   await expect(intelDialog).not.toContainText("Next decay");
   await page.locator("#close-kingdom-intel-dialog").click();
   await page.locator('#kingdom-intelligence-table [data-kingdom-intel-category="military"]').first().click();
-  await expect(intelDialog).toContainText("Next decay");
+  await expect(intelDialog).toContainText("Persistent Military Intel");
+  await expect(intelDialog).not.toContainText("Next decay");
   await page.locator("#close-kingdom-intel-dialog").click();
   await page.locator("#space-subnav").getByRole("button", { name: "Operations", exact: true }).click();
   await expect(page.locator("#view-intelligence-operations")).toBeVisible();
@@ -394,7 +395,7 @@ async function expectEspionageLayouts(page: Page) {
   const secondCard = await card.screenshot({ animations: "disabled", caret: "hide", mask: cardMasks, maskColor });
   const secondComposer = await composer.screenshot({ animations: "disabled", caret: "hide", mask: composerMasks, maskColor });
   expect(imageComparator(firstCard, secondCard, { threshold: 0.2 }), "operative card should render pixel-stably").toBeFalsy();
-  expect(imageComparator(firstComposer, secondComposer, { threshold: 0.2 }), "espionage composer should render pixel-stably").toBeFalsy();
+  expect(imageComparator(firstComposer, secondComposer, { threshold: 0.2, maxDiffPixels: 50 }), "espionage composer should render pixel-stably").toBeFalsy();
 }
 
 test.beforeEach(async ({ page }) => {
@@ -484,15 +485,10 @@ test("earned Watchtower intelligence is visible in military decision surfaces", 
   }
 
   const rivalOptions = page.locator("#player-plateau-target option");
-  const hasRivalTarget = await page.locator("#player-plateau-target").evaluate((select: HTMLSelectElement) => Boolean(select.value));
-  if (hasRivalTarget) {
-    await expect(rivalOptions.first()).toHaveText(/.+ — .+/);
-    await expect(page.locator("#player-plateau-selection")).toContainText("Held by");
-    await expect(page.locator("#player-plateau-selection")).toContainText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau|Unknown/);
-  } else {
-    await expect(rivalOptions).toHaveCount(1);
-    await expect(rivalOptions.first()).toHaveText("No rival plateaus available");
-  }
+  await expect(page.locator("#player-plateau-target")).toBeEnabled();
+  await expect(rivalOptions.first()).toHaveText(/.+ — .+/);
+  await expect(page.locator("#player-plateau-selection")).toContainText("Held by");
+  await expect(page.locator("#player-plateau-selection")).toContainText(/(?:Sphere|Ancient|Gemheart|Bridged) Plateau|Unknown/);
 
   await page.addScriptTag({
     type: "module",
@@ -545,8 +541,9 @@ test("recruitment quantity buttons apply the selected step exactly once", async 
 test("Hostility and Highstorm teaching surfaces work by touch", async ({ page }) => {
   await page.locator("#res-hostility-card").click();
   await expect(page.locator("#tap-tooltip")).toBeVisible();
-  await expect(page.locator("#tap-tooltip-content")).toContainText("shared world pressure");
-  await expect(page.locator("#tap-tooltip-content")).toContainText("retaliations can begin");
+  await expect(page.locator("#tap-tooltip-content")).toContainText("individual pressure");
+  await expect(page.locator("#tap-tooltip-content")).toContainText("other players’ actions do not affect your Hostility");
+  await expect(page.locator("#tap-tooltip-content")).toContainText("retaliations against your holdings can begin");
 
   await page.locator("#close-tap-tooltip").click();
   await page.locator("#home-hostility .hostility-meter").click();

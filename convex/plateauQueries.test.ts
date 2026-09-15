@@ -1,9 +1,10 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
+import { rolledGemheartIntervalMs } from "./plateauHelpers";
 
 const modules = import.meta.glob("./**/*.ts");
 const units = { bridgeman: 0, spearman: 0, chull: 0, scout: 0, heavy: 0, shardbearer: 0 };
@@ -36,7 +37,55 @@ describe("scoped plateau queries", () => {
     expect(summary.mine).toHaveLength(1);
     expect(summary.mine[0]).toMatchObject({ name: "Owned Gemheart", type: "gemheart", typeName: "Gemheart Plateau", large: true });
     expect(summary.mine[0].gemheartProgress).toMatchObject({ lastGemheartAt: 1000 });
-    expect(summary.mine[0].gemheartProgress!.nextGemheartAt).toBeGreaterThan(1000);
+    expect(summary.mine[0].gemheartProgress!.nextGemheartAt).toBe(1000 + 12 * 60 * 60 * 1000);
+  });
+
+  test("new Gemheart cycles are stable random 10–12 hour bases while legacy cycles keep their old deadline", async () => {
+    const cycleAt = 123_456;
+    const first = rolledGemheartIntervalMs("plateau-seed", cycleAt);
+    expect(first).toBe(rolledGemheartIntervalMs("plateau-seed", cycleAt));
+    expect(first).toBeGreaterThanOrEqual(10 * 60 * 60 * 1000);
+    expect(first).toBeLessThanOrEqual(12 * 60 * 60 * 1000);
+
+    const gemCutting = rolledGemheartIntervalMs("plateau-seed", cycleAt, { gemCutting: 3 });
+    expect(gemCutting).toBeGreaterThanOrEqual(8 * 60 * 60 * 1000);
+    expect(gemCutting).toBeLessThanOrEqual(10 * 60 * 60 * 1000);
+    const baron = rolledGemheartIntervalMs("plateau-seed", cycleAt, { gemCutting: 3, __doctrineGemheartBaron: 1 });
+    expect(baron).toBeGreaterThanOrEqual(7 * 60 * 60 * 1000);
+    expect(baron).toBeLessThanOrEqual(9 * 60 * 60 * 1000);
+  });
+
+  test("the first legacy payout starts and stores the next random cycle", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const owner = await t.run(async (ctx) => {
+      const playerId = await ctx.db.insert("players", {
+        authUserId: "gemheart-cycle-owner", name: "Owner", normalizedName: "owner", acres: 20,
+        spheres: 1_000, gemhearts: 1, units,
+        buildings: { market: 0, watchtower: 0, ardentMonastery: 0, barracks: 0, soulcastBunker: 0 },
+        lastEconomyAt: now, lastActiveAt: now, createdAt: now,
+      });
+      await ctx.db.insert("plateaus", {
+        name: "Legacy Gemheart", type: "gemheart", status: "owned", ownerPlayerId: playerId,
+        highground: false, neutralDefenseInitial: 0, neutralDefenseRemaining: 0,
+        heldSince: now - 12 * 60 * 60 * 1000 - 1,
+        lastGemheartAt: now - 12 * 60 * 60 * 1000 - 1,
+        createdAt: now, updatedAt: now,
+      });
+      return playerId;
+    });
+
+    const result = await t.mutation(internal.economy.settleGemheartPlateaus, {});
+    expect(result).toMatchObject({ updatedPlayers: 1, totalGemhearts: 1 });
+    const state = await t.run(async (ctx) => ({
+      player: await ctx.db.get(owner),
+      plateau: await ctx.db.query("plateaus").withIndex("by_owner", (q) => q.eq("ownerPlayerId", owner)).unique(),
+    }));
+    expect(state.player?.gemhearts).toBe(2);
+    expect(state.plateau?.nextGemheartAt).toBeDefined();
+    const nextInterval = state.plateau!.nextGemheartAt! - state.plateau!.lastGemheartAt!;
+    expect(nextInterval).toBeGreaterThanOrEqual(10 * 60 * 60 * 1000);
+    expect(nextInterval).toBeLessThanOrEqual(12 * 60 * 60 * 1000);
   });
 
   test("viewer summary includes only incoming and outgoing sieges", async () => {

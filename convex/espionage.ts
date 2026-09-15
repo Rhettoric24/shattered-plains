@@ -8,18 +8,16 @@ import { createNotification } from "./notificationHelpers";
 import { activeHighstorm } from "./highstorms";
 import { stormCounterIntelligence, stormInvestigationIntel } from "./highstormRules";
 import { requireCompetitivePlayer, requireCurrentPlayer } from "./ownership";
-import { plateauAttributeCountsForPlayer, plateauCountsForPlayer } from "./plateauHelpers";
+import { nextGemheartAtForPlateau, plateauAttributeCountsForPlayer, plateauCountsForPlayer } from "./plateauHelpers";
 import { ownedOperativesIncludingAway, ownedUnitsIncludingAway, provisionsStatus } from "./provisionHelpers";
 import { ensureActiveSeason } from "./seasonLedger";
 import { SEASON_CATEGORIES } from "./seasonScoringRules";
 import {
   ECONOMIC_DOCTRINES,
-  PLATEAU_RULES,
   RESEARCH_RULES,
   UNIT_RULES,
   identityPlateauType,
   normalizeUnits,
-  researchEffect,
   roundResource,
   type UnitCounts,
 } from "./rules";
@@ -247,12 +245,9 @@ async function createBonusDiscovery(
         if (identityPlateauType(plateau.type) === "gemheart") {
           const research = await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", target._id)).unique();
           const completed = { ...(research?.completedLevels ?? {}), ...(research?.economicDoctrine === "gemheartBaron" ? { __doctrineGemheartBaron: 1 } : {}) };
-          const researchedHours = Number(researchEffect(completed, "gemCutting"));
-          const baseHours = researchedHours > 0 ? researchedHours : PLATEAU_RULES.gemheartIntervalMs / 3_600_000;
-          const intervalMs = (baseHours - (research?.economicDoctrine === "gemheartBaron" ? 1 : 0)) * 3_600_000;
           const lastYieldAt = plateau.lastGemheartAt ?? plateau.heldSince ?? plateau.updatedAt;
           details.push(`last Gemheart cycle ${new Date(lastYieldAt).toISOString()}`);
-          details.push(`next expected Gemheart ${new Date(lastYieldAt + intervalMs).toISOString()}`);
+          details.push(`next expected Gemheart ${new Date(nextGemheartAtForPlateau(plateau, completed)).toISOString()}`);
         }
         text = `Fully observed valuable plateau: ${details.join("; ")}.`;
       }

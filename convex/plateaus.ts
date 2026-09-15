@@ -38,11 +38,13 @@ import {
 import {
   createNeutralPlateaus,
   createStarterPlateaus,
+  nextGemheartAtForPlateau,
   neutralPlateaus,
   ownedPlateaus,
   plateauCountsForPlayer,
   plateauTypeName,
   plateauTypes,
+  startGemheartCycle,
 } from "./plateauHelpers";
 import {
   addUnits,
@@ -57,7 +59,6 @@ import {
   normalizeUnits,
   PLATEAU_RULES,
   resistanceLabel,
-  researchEffect,
   STARTING_RULES,
   TIME_RULES,
   totalUnits,
@@ -82,6 +83,46 @@ function cleanUnits(units: UnitCounts) {
 
 function applyLossRate(units: UnitCounts, lossRate: number, seed: string, completed?: Record<string, number>, conclaveCombat = false) {
   return applySurvivalLosses(normalizeUnits(units), lossRate, seed, completed, conclaveCombat);
+}
+
+function unitsAreAvailable(available: UnitCounts, requested: UnitCounts) {
+  const normalizedAvailable = normalizeUnits(available);
+  const normalizedRequested = normalizeUnits(requested);
+  return Object.keys(normalizedRequested).every((key) =>
+    normalizedRequested[key as keyof UnitCounts] <= normalizedAvailable[key as keyof UnitCounts]);
+}
+
+async function chooseAutomaticDefense(
+  ctx: MutationCtx,
+  defender: Doc<"players">,
+) {
+  const settings = await ctx.db.query("playerSettings")
+    .withIndex("by_playerId", (q) => q.eq("playerId", defender._id))
+    .unique();
+  if (!settings?.autoDefenseEnabled) return null;
+
+  for (const [preset, rawUnits] of [
+    ["primary", settings.autoDefensePrimary],
+    ["secondary", settings.autoDefenseSecondary],
+  ] as const) {
+    const units = normalizeUnits(rawUnits ?? emptyUnits());
+    if (totalUnits(units) < 1 || !unitsAreAvailable(defender.units, units)) continue;
+    try {
+      validateMissionUnits(defender.buildings, units);
+    } catch {
+      // A stale standing order must never prevent a rival from launching.
+      continue;
+    }
+    const completed = await completedResearch(ctx, defender._id);
+    return {
+      preset,
+      units,
+      remainingUnits: subtractAvailableUnits(defender.units, units),
+      power: effectivePower(units, completed),
+      speed: effectiveSpeed(units, completed),
+    };
+  }
+  return null;
 }
 
 const SIEGE_V2 = {
@@ -187,20 +228,22 @@ function siegeTravelMs() {
   return TIME_RULES.raidTravelGameDays * TIME_RULES.realMsPerGameDay;
 }
 
-function gemheartProgressForPlateau(plateau: any, now: number, intervalMs: number) {
+function gemheartProgressForPlateau(plateau: any, now: number, completed?: Record<string, number>) {
   const lastGemheartAt = plateau.lastGemheartAt ?? plateau.heldSince ?? plateau.updatedAt;
+  const nextGemheartAt = nextGemheartAtForPlateau(plateau, completed);
+  const intervalMs = Math.max(1, nextGemheartAt - lastGemheartAt);
   return {
     lastGemheartAt,
-    nextGemheartAt: lastGemheartAt + intervalMs,
+    nextGemheartAt,
     progressPercent: Math.max(0, Math.min(100, Math.floor(((now - lastGemheartAt) / intervalMs) * 100))),
   };
 }
 
-function decoratePlateauForOwner(plateau: any, now: number, gemheartIntervalMs: number) {
+function decoratePlateauForOwner(plateau: any, now: number, completed?: Record<string, number>) {
   const type = identityPlateauType(plateau.type);
   const gemheartProgress =
     type === "gemheart"
-      ? gemheartProgressForPlateau(plateau, now, gemheartIntervalMs)
+      ? gemheartProgressForPlateau(plateau, now, completed)
       : null;
 
   return {
@@ -219,9 +262,6 @@ export const getMyPlateauState = query({
     const now = Date.now();
     const mine = await ctx.db.query("plateaus").withIndex("by_owner", (q) => q.eq("ownerPlayerId", viewer._id)).take(100);
     const research = await completedResearch(ctx, viewer._id);
-    const gemHours = Number(researchEffect(research, "gemCutting"));
-    const baseHours = gemHours > 0 ? gemHours : PLATEAU_RULES.gemheartIntervalMs / 3600000;
-    const gemheartInterval = (baseHours - (research.__doctrineGemheartBaron ? 1 : 0)) * 60 * 60 * 1000;
     const [attacking, defending] = await Promise.all([
       ctx.db.query("sieges").withIndex("by_attacker_and_status", (q) => q.eq("attackerId", viewer._id).eq("status", "pending")).take(100),
       ctx.db.query("sieges").withIndex("by_defender_and_status", (q) => q.eq("defenderId", viewer._id).eq("status", "pending")).take(100),
@@ -250,7 +290,7 @@ export const getMyPlateauState = query({
         counts[identityPlateauType(plateau.type)] += 1;
         return counts;
       }, { sphere: 0, bridged: 0, gemheart: 0, ancient: 0 }),
-      mine: mine.map((plateau) => decoratePlateauForOwner(plateau, now, gemheartInterval)),
+      mine: mine.map((plateau) => decoratePlateauForOwner(plateau, now, research)),
       sieges: sieges.map((siege) => {
         const isAttacker = siege.attackerId === viewer._id;
         const isDefender = siege.defenderId === viewer._id;
@@ -377,12 +417,9 @@ export const getSiegeBoard = query({
       .withIndex("by_playerId", (q) => q.eq("playerId", id as Id<"players">))
       .unique()))).filter((row) => row !== null);
     const researchByPlayer = new Map(researchRows.map((row) => [String(row.playerId), { ...row.completedLevels, ...(row.economicDoctrine === "gemheartBaron" ? { __doctrineGemheartBaron: 1 } : {}) }]));
-    const gemheartIntervalForPlayer = (playerId: Id<"players"> | undefined) => {
-      const completed = playerId ? researchByPlayer.get(String(playerId)) : undefined;
-      const gemHours = Number(researchEffect(completed, "gemCutting"));
-      const baseHours = gemHours > 0 ? gemHours : PLATEAU_RULES.gemheartIntervalMs / 3600000;
-      return (baseHours - (completed?.__doctrineGemheartBaron ? 1 : 0)) * 60 * 60 * 1000;
-    };
+    const researchForPlayer = (playerId: Id<"players"> | undefined) => playerId
+      ? researchByPlayer.get(String(playerId))
+      : undefined;
     const territoryReports = await ctx.db
       .query("intelligenceReports")
       .withIndex("by_viewerPlayerId_and_targetType", (q) =>
@@ -458,7 +495,7 @@ export const getSiegeBoard = query({
         counts[identityPlateauType(plateau.type)] += 1;
         return counts;
       }, { sphere: 0, bridged: 0, gemheart: 0, ancient: 0 }),
-      mine: mine.map((plateau) => decoratePlateauForOwner(plateau, now, gemheartIntervalForPlayer(viewer._id))),
+      mine: mine.map((plateau) => decoratePlateauForOwner(plateau, now, researchForPlayer(viewer._id))),
       neutral: neutral.filter((plateau) => !plateau.activeSiegeId).map((plateau) => {
         const report = reportsByPlateau.get(String(plateau._id));
         const disclosure = territoryResistanceDisclosure({
@@ -512,7 +549,7 @@ export const getSiegeBoard = query({
               baseNeutralDefense: plateau.baseNeutralDefense ?? plateau.neutralDefenseInitial,
             } : {}),
             ...(intelligenceLevel >= 2 && identityPlateauType(plateau.type) === "gemheart"
-              ? { gemheartProgress: gemheartProgressForPlateau(plateau, now, gemheartIntervalForPlayer(plateau.ownerPlayerId)) }
+              ? { gemheartProgress: gemheartProgressForPlateau(plateau, now, researchForPlayer(plateau.ownerPlayerId)) }
               : {}),
             ...(intelligenceLevel >= 1
               ? {
@@ -728,6 +765,7 @@ export const launchPlayerSiege = mutation({
     await reserveFabrial(ctx, attacker._id, args.fabrial, now);
     const scoring = await recordOpponentAttack(ctx, attacker._id, defender._id, now);
     const completed = await completedResearch(ctx, attacker._id);
+    const automaticDefense = await chooseAutomaticDefense(ctx, defender);
     const encircleEndsAt = now + SIEGE_V2.encircleMs;
     const resolveAt = now + SIEGE_V2.maximumMs;
     const remainingUnits = subtractAvailableUnits(attacker.units, units);
@@ -740,9 +778,10 @@ export const launchPlayerSiege = mutation({
       attackerUnits: units,
       attackerPower,
       attackerSpeed: effectiveSpeed(units, completed, Boolean(args.conclaveId)),
-      defenderUnits: emptyUnits(),
-      defenderPower: 0,
-      defenderSpeed: 0,
+      defenderUnits: automaticDefense?.units ?? emptyUnits(),
+      defenderPower: automaticDefense?.power ?? 0,
+      defenderSpeed: automaticDefense?.speed ?? 0,
+      ...(automaticDefense ? { defenderCommittedAt: now } : {}),
       fortifyPercent: 0,
       emergencyDefensePercent: 0,
       emergencyDefenseSpheresSpent: 0,
@@ -762,6 +801,9 @@ export const launchPlayerSiege = mutation({
       units: remainingUnits,
       lastActiveAt: now,
     });
+    if (automaticDefense) {
+      await ctx.db.patch(defender._id, { units: automaticDefense.remainingUnits });
+    }
     await ctx.db.patch(plateau._id, {
       activeSiegeId: siegeId,
       updatedAt: now,
@@ -773,13 +815,13 @@ export const launchPlayerSiege = mutation({
       toPlayerId: defender._id,
       kind: "system",
       subject: "Plateau Siege",
-      body: `${attacker.name} has started a siege against ${plateau.name}.${assessmentText}`,
+      body: `${attacker.name} has started a siege against ${plateau.name}.${assessmentText}${automaticDefense ? ` Your ${automaticDefense.preset} standing order automatically committed ${totalUnits(automaticDefense.units)} defenders.` : ""}`,
       eventType: "siege_incoming", destinationView: "plains", destinationTab: "sieges", entityType: "siege", entityId: String(siegeId),
       createdAt: now,
     });
     await createNotification(ctx, {
       playerId: defender._id, category: "combat", eventType: "incoming_siege",
-      title: "Plateau Under Siege", body: `${attacker.name} has started a siege against ${plateau.name}.`,
+      title: "Plateau Under Siege", body: `${attacker.name} has started a siege against ${plateau.name}.${automaticDefense ? ` ${totalUnits(automaticDefense.units)} defenders were committed automatically.` : ""}`,
       destinationView: "plains", destinationTab: "sieges", entityId: String(siegeId), dedupeKey: `siege:${siegeId}:incoming`, createdAt: now,
     });
   await insertGameEvent(ctx, {
@@ -792,7 +834,7 @@ export const launchPlayerSiege = mutation({
     });
     await ctx.scheduler.runAfter(0, internal.highstorms.processActiveStorm, {});
 
-    return { siegeId, encircleEndsAt, resolveAt };
+    return { siegeId, encircleEndsAt, resolveAt, automaticDefensePreset: automaticDefense?.preset ?? null };
   },
 });
 
@@ -860,7 +902,6 @@ export const reinforcePlayerSiege = mutation({
     const side = siege.attackerId === player._id ? "attacker" : siege.defenderId === player._id ? "defender" : null;
     if (!side) throw new Error("Only siege participants can reinforce.");
     const now = Date.now();
-    if (!siege.encircleEndsAt || now < siege.encircleEndsAt) throw new Error("Reinforcements begin after Encirclement.");
     if (now >= siege.resolveAt || siege.battleStartedAt) throw new Error("The battle has already begun.");
     if (side === "defender" && !siege.defenderCommittedAt) throw new Error("Commit the initial defense before reinforcing.");
     const units = cleanUnits(args.units);
@@ -1232,6 +1273,7 @@ export const resolveSiege = internalMutation({
           neutralDefenseRemaining: nextDefense,
           heldSince: undefined,
           lastGemheartAt: undefined,
+          nextGemheartAt: undefined,
           activeSiegeId: undefined,
           updatedAt: now,
         });
@@ -1334,6 +1376,9 @@ export const resolveSiege = internalMutation({
           neutralDefenseRemaining: 0,
           heldSince: now,
           lastGemheartAt: now,
+          nextGemheartAt: identityPlateauType(plateau.type) === "gemheart"
+            ? startGemheartCycle(plateau._id, now, attackerCompleted)
+            : undefined,
           activeSiegeId: undefined,
           updatedAt: now,
         });
@@ -1462,6 +1507,9 @@ export const resolveSiege = internalMutation({
             ownerPlayerId: attacker._id,
             heldSince: now,
             lastGemheartAt: now,
+            nextGemheartAt: identityPlateauType(plateau.type) === "gemheart"
+              ? startGemheartCycle(plateau._id, now, attackerCompleted)
+              : undefined,
             activeSiegeId: undefined,
             updatedAt: now,
           });

@@ -225,6 +225,7 @@ const refs = {
   forceResolvePlateauRun: "plateauRuns:forceResolvePlateauRun",
   listInbox: "messages:listInbox",
   sendMessage: "messages:sendMessage",
+  sendResources: "messages:sendResources",
   markInboxRead: "messages:markInboxRead",
   markMessageRead: "messages:markMessageRead",
   listNotifications: "notifications:list",
@@ -377,8 +378,33 @@ async function loadChronicleEventsForRoute(route) {
 }
 
 async function refreshRouteDetails(route) {
-  if (!state || !routeNeedsChronicle(route) || Date.now() - routeDetails.eventsLoadedAt < 1000) return;
+  if (!state) return;
   try {
+    if (routeNeedsPlateauBoard(route)) {
+      const plateauBoard = await client.query(refs.getSiegeBoard, {});
+      if (!state || !routeNeedsPlateauBoard(currentRoute) || !rawStateData) return;
+      rawStateData.plateauBoard = plateauBoard;
+      rawStateData.plateaus = composePlateauState(rawStateData.plateauSummary, plateauBoard);
+      state = buildState(rawStateData);
+      renderSelects();
+      renderPlateaus();
+      renderAutoDefenseSettings();
+      renderNavStates();
+      ensureReactiveSubscriptions(rawStateData);
+      return;
+    }
+    if (routeNeedsTerritoryIntelligence(route)) {
+      const intelligence = await client.query(refs.listDossiers, {});
+      if (!state || !routeNeedsTerritoryIntelligence(currentRoute) || !rawStateData) return;
+      rawStateData.intelligence = intelligence;
+      state = buildState(rawStateData);
+      renderIntelligence();
+      renderHostility();
+      renderNavStates();
+      ensureReactiveSubscriptions(rawStateData);
+      return;
+    }
+    if (!routeNeedsChronicle(route) || Date.now() - routeDetails.eventsLoadedAt < 1000) return;
     const events = await loadChronicleEventsForRoute(route);
     if (!state || !routeNeedsChronicle(currentRoute)) return;
     if (rawStateData) rawStateData.events = events;
@@ -386,7 +412,7 @@ async function refreshRouteDetails(route) {
     renderLog();
     ensureReactiveSubscriptions(rawStateData);
   } catch (error) {
-    console.warn("Chronicle history could not be loaded.", error);
+    console.warn("Route details could not be loaded; live subscriptions will retry.", error);
   }
 }
 
@@ -547,7 +573,7 @@ async function load(options = {}) {
         return { loadError: true, season: null, total: 0, categoryTotals: {}, events: [], achievements: [], rules: null, opponentChains: [] };
       }),
       client.query(refs.getWorldPressure, {}).catch(() => ({ hostility: 0, state: { key: "quiet", label: "Quiet", min: 0, max: 16 }, nextState: null, progressPercent: 0, nextDecayAt: null, nextRetaliationAt: null, retaliationEligible: false, warning: null })),
-      sessionQueries.get("settings", () => client.query(refs.getPlayerSettings, {}).catch(() => ({ confirmConsequentialMissions: true, researchTeased: false }))),
+      sessionQueries.get("settings", () => client.query(refs.getPlayerSettings, {}).catch(() => ({ confirmConsequentialMissions: true, autoDefenseEnabled: false, autoDefensePrimary: emptyUnits(), autoDefenseSecondary: emptyUnits(), researchTeased: false }))),
     ]);
 
     if (requestId !== latestLoadRequest) return;
@@ -725,7 +751,7 @@ function buildState(data) {
     notificationUnreadCount: data.notifications?.unreadCount || 0,
     notificationPreferences: data.notifications?.preferences || { combat: true, missions: true, research: true, plateauRuns: true, messages: true },
     notificationDevices: data.notifications?.devices || [],
-    playerSettings: data.playerSettings || { confirmConsequentialMissions: true, researchTeased: false },
+    playerSettings: data.playerSettings || { confirmConsequentialMissions: true, autoDefenseEnabled: false, autoDefensePrimary: emptyUnits(), autoDefenseSecondary: emptyUnits(), researchTeased: false },
     researchTeased: Boolean(data.playerSettings?.researchTeased),
     vapidPublicKey: data.pushConfiguration?.vapidPublicKey || data.notifications?.vapidPublicKey || null,
     log: data.events.map((event) => ({ text: event.text, at: event.createdAt, kind: event.kind || "world", gameDate: event.gameDate || null })),
@@ -750,6 +776,7 @@ function render() {
   $("res-gemhearts").textContent = number(me.gemhearts || 0);
   $("res-units").textContent = number(me.totalAvailableUnits) + " / " + number(me.totalUnits);
   if ($("mission-confirmations")) $("mission-confirmations").checked = state.playerSettings?.confirmConsequentialMissions !== false;
+  if ($("resource-transfer-available")) $("resource-transfer-available").innerHTML = '<strong>Available now</strong><span>' + number(Math.floor(me.spheres)) + ' Spheres · ' + number(me.gemhearts || 0) + ' Gemhearts</span>';
   renderHostility();
   renderTopProvisions();
   renderBuildings();
@@ -770,6 +797,7 @@ function render() {
   renderRaidPreviews();
   renderRaids();
   renderPlateaus();
+  renderAutoDefenseSettings();
   renderPlateau();
   renderInbox();
   renderSiegeResultPopup();
@@ -1576,11 +1604,14 @@ function renderTopProvisions() {
 
 function renderSelects() {
   const targets = state.players.filter((player) => player.id !== state.me.id);
-  if ($("message-target")) {
-    $("message-target").innerHTML = targets.map((player) => {
+  ["message-target", "resource-transfer-target"].forEach((targetId) => {
+    const select = $(targetId);
+    if (!select) return;
+    select.innerHTML = targets.length ? targets.map((player) => {
       return '<option value="' + player.id + '">' + escapeHtml(player.name) + '</option>';
-    }).join("");
-  }
+    }).join("") : '<option value="">No rival warcamps available</option>';
+    select.disabled = targets.length < 1;
+  });
   if ($("neutral-plateau-target")) {
     const neutralOptions = state.plateaus.neutral.map((plateau) => {
       return '<option value="' + plateau.id + '">' + escapeHtml(plateau.name) + '</option>';
@@ -1760,7 +1791,7 @@ function previewMarkup(units, type, planner) {
   const deepRange = isDeepPlains ? deepPlainsTravelRange(stats.speed) : null;
   const travel = isPlayerSiege ? fixedSiegeTravelMinutes() : isDeepPlains ? deepRange.average : travelMinutes(stats.speed, true);
   const target = type === "spheres" ? sphereTargetPreview() : type === "deepPlains" ? deepPlainsTargetPreview() : type === "plateau" ? plateauTargetPreview(stats) : type === "neutralSiege" ? neutralSiegePreview(stats) : type === "playerSiege" ? playerSiegePreview(stats) : "Choose a target";
-  const timingTitle = isPlayerSiege ? "Initial deployment and Encirclement take one real hour. Army Speed does not shorten this opening phase; it does affect later reinforcements." : isDeepPlains ? speedBreakdown(units, stats, travel, deepRange.baseAverage) + "\nRandomized base range: " + formatDuration(deepRange.baseMin) + "–" + formatDuration(deepRange.baseMax) + "\nAdjusted range: " + formatDuration(deepRange.min) + "–" + formatDuration(deepRange.max) : speedBreakdown(units, stats, travel);
+  const timingTitle = isPlayerSiege ? "Encirclement takes one real hour and battle cannot begin during it. Reinforcements may depart immediately; Army Speed affects their arrival." : isDeepPlains ? speedBreakdown(units, stats, travel, deepRange.baseAverage) + "\nRandomized base range: " + formatDuration(deepRange.baseMin) + "–" + formatDuration(deepRange.baseMax) + "\nAdjusted range: " + formatDuration(deepRange.min) + "–" + formatDuration(deepRange.max) : speedBreakdown(units, stats, travel);
   const rewardLabel = type === "plateau" ? "Reward capacity" : "Max Plunder";
   const conclaveAttached = Boolean(({ spheres: $("sphere-conclave"), deepPlains: $("deep-plains-conclave"), neutralSiege: $("neutral-conclave-select"), playerSiege: $("player-conclave-select"), plateau: $("plateau-conclave") })[type]?.value);
   const intelOutlook = type === "playerSiege" ? playerSiegeIntelOutlook(conclaveAttached) : null;
@@ -1991,6 +2022,36 @@ function renderPlateaus() {
   });
 }
 
+function autoDefenseUnitInputs(presetName, values) {
+  return Object.entries(state.config.unlockedUnits).map(([key, unit]) => {
+    const ready = Number(state.me.availableUnits[key] || 0);
+    const owned = ready + Number(state.me.unitsAway?.[key] || 0);
+    const existing = Math.max(0, Math.floor(Number(values?.[key]) || 0));
+    return '<div class="unit-input mission-unit-input"><div class="mission-unit-heading"><strong>' + escapeHtml(unit.name) + '</strong><small>' + number(ready) + ' home now · ' + number(owned) + ' owned</small></div>' + quantityControlMarkup('data-auto-defense-preset="' + presetName + '" data-unit="' + key + '" aria-label="' + escapeHtml(presetName + ' ' + unit.name) + '"', existing, owned, { half: true, max: true }) + '</div>';
+  }).join("");
+}
+
+function renderAutoDefenseSettings() {
+  const form = $("auto-defense-form");
+  if (!form || form.contains(document.activeElement)) return;
+  const settings = state.playerSettings || {};
+  $("auto-defense-enabled").checked = Boolean(settings.autoDefenseEnabled);
+  $("auto-defense-details").open = Boolean(settings.autoDefenseEnabled);
+  $("auto-defense-orders").disabled = !settings.autoDefenseEnabled;
+  $("auto-defense-primary").innerHTML = autoDefenseUnitInputs("primary", settings.autoDefensePrimary);
+  $("auto-defense-secondary").innerHTML = autoDefenseUnitInputs("secondary", settings.autoDefenseSecondary);
+  bindQuantityControls($("auto-defense-primary"));
+  bindQuantityControls($("auto-defense-secondary"));
+}
+
+function readAutoDefensePreset(presetName) {
+  const units = emptyUnits();
+  document.querySelectorAll('[data-auto-defense-preset="' + presetName + '"]').forEach((input) => {
+    units[input.dataset.unit] = Math.max(0, Math.floor(Number(input.value) || 0));
+  });
+  return units;
+}
+
 function renderPlateauBonusSummary() {
   const container = $("plateau-bonus-summary");
   if (!container) return;
@@ -2091,13 +2152,13 @@ function siegeV2Panel(siege) {
     : 'Active Siege — <span data-local-countdown-at="' + Number(siege.resolveAt) + '">' + formatCountdownAt(siege.resolveAt) + '</span> until forced battle';
   const phaseGuidance = encircling
     ? siege.role === "defender"
-      ? "Commit your initial defense before Encirclement ends. This commitment cannot be changed."
-      : "The defender may make one permanent defensive commitment during this window."
+      ? "Commit your initial defense before Encirclement ends. Once committed, you may dispatch reinforcements immediately."
+      : "The defender may make one permanent defensive commitment during this window. You may dispatch reinforcements now."
     : "Either side may begin battle now. At the deadline, battle begins automatically with +10% defender Power.";
   const battleLabel = siege.role === "defender" ? "Sally Forth" : "Launch Assault";
   const battle = !encircling ? '<div class="siege-action"><button type="button" data-begin-siege-battle="' + siege.id + '">' + battleLabel + '</button><small>Begin battle now using forces that have arrived. Traveling forces return home.</small></div>' : '';
   const mayReinforce = siege.role !== "defender" || Boolean(siege.defenderCommittedAt);
-  const reinforcement = !encircling && mayReinforce ? '<details><summary>Send reinforcements</summary><div class="unit-input-grid siege-defense-grid">' + siegeActionUnitInputs(siege.id) + '</div><div class="attack-outlook" data-siege-reinforcement-outlook="' + siege.id + '"></div><small>Only forces that arrive before battle begins will participate. Traveling forces return if battle begins early.</small><button type="button" data-reinforce-siege="' + siege.id + '" disabled>Dispatch reinforcements</button></details>' : '';
+  const reinforcement = mayReinforce ? '<details><summary>Send reinforcements</summary><div class="unit-input-grid siege-defense-grid">' + siegeActionUnitInputs(siege.id) + '</div><div class="attack-outlook" data-siege-reinforcement-outlook="' + siege.id + '"></div><small>Reinforcements may depart during Encirclement. Only forces that arrive before battle begins will participate; traveling forces return if battle begins early.</small><button type="button" data-reinforce-siege="' + siege.id + '" disabled>Dispatch reinforcements</button></details>' : '';
   const pending = (siege.investigations || []).find((entry) => entry.status === "pending");
   const report = [...(siege.investigations || [])].reverse().find((entry) => entry.status === "resolved");
   const investigation = pending
@@ -2776,7 +2837,7 @@ function plateauTooltip(plateau) {
   if (plateau.origin === "home") effects.push("Home Plateau: created as part of a starting package; it can still be conquered.");
   if (plateau.type === "sphere") effects.push("Sphere Plateau: +10% passive Sphere income, stacking to +30%.");
   if (plateau.type === "bridged" || plateau.type === "training") effects.push("Bridged Plateau: -10% normal Raid and Plateau Run travel time, stacking to -30%.");
-  if (plateau.type === "gemheart") effects.push("Grants 1 Gemheart every 12 real hours if held.");
+  if (plateau.type === "gemheart") effects.push("Grants 1 Gemheart after each hidden random 10–12 real-hour base cycle if held. Research may shorten the cycle.");
   if (plateau.type === "ancient" || plateau.type === "ancient_ruins") effects.push(Number(state.me.buildings.ardentMonastery || 0) > 0 ? "Ancient Plateau: counts toward visible Research territory requirements and supports scholarship." : "Ancient markings: ??? The surveyors lack an institution capable of interpreting them.");
   if (plateau.highground) effects.push("Highground: +20% defense when this plateau is attacked.");
   if (plateau.large) effects.push("Large: +10% Soulcast Bunker Provisions capacity, stacking to +30%.");
@@ -2797,7 +2858,7 @@ function plateauAttributes(plateau) {
 function plateauBonusLabel(plateau) {
   if (plateau.type === "sphere") return "+10% passive Sphere income";
   if (plateau.type === "bridged" || plateau.type === "training") return "-10% all military mission travel (stacks to -30%)";
-  if (plateau.type === "gemheart") return "1 Gemheart every 12 real hours";
+  if (plateau.type === "gemheart") return "1 Gemheart per hidden 10–12 hour base cycle";
   if (plateau.type === "ancient" || plateau.type === "ancient_ruins") return Number(state.me.buildings.ardentMonastery || 0) > 0 ? "Research requirements and scholarship" : "???";
   return "No active bonus";
 }
@@ -3798,6 +3859,26 @@ $("message-form").addEventListener("submit", (event) => {
     $("toggle-compose").setAttribute("aria-expanded", "false");
   });
 });
+$("resource-transfer-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const toPlayerId = $("resource-transfer-target").value;
+  const spheres = Number($("resource-transfer-spheres").value) || 0;
+  const gemhearts = Number($("resource-transfer-gemhearts").value) || 0;
+  const recipient = state.playerMap[toPlayerId];
+  if (!recipient) return alert("Choose a recipient.");
+  if (!Number.isInteger(spheres) || !Number.isInteger(gemhearts) || spheres < 0 || gemhearts < 0 || (!spheres && !gemhearts)) return alert("Choose a whole, positive amount to send.");
+  const summary = [spheres ? number(spheres) + " Spheres" : "", gemhearts ? number(gemhearts) + " Gemhearts" : ""].filter(Boolean).join(" and ");
+  if (!await confirmConsequentialMission({ title: "Send resources?", html: '<strong>' + escapeHtml(recipient.name) + '</strong><span>' + escapeHtml(summary) + '</span><span>This one-way transfer is immediate and cannot be recalled.</span>' })) return;
+  $("resource-transfer-status").textContent = "Sending…";
+  const result = await action(() => client.mutation(refs.sendResources, { toPlayerId, spheres, gemhearts }));
+  if (!result) {
+    $("resource-transfer-status").textContent = "Transfer not sent.";
+    return;
+  }
+  $("resource-transfer-spheres").value = "0";
+  $("resource-transfer-gemhearts").value = "0";
+  $("resource-transfer-status").textContent = "Sent " + summary + " to " + recipient.name + ".";
+});
 $("mark-inbox-read").addEventListener("click", () => action(() => client.mutation(refs.markInboxRead, {})));
 $("toggle-compose").addEventListener("click", () => {
   const open = $("compose-panel").classList.toggle("hidden") === false;
@@ -3847,6 +3928,28 @@ $("mission-confirmations")?.addEventListener("change", () => {
     sessionQueries.set("settings", { ...(state.playerSettings || {}), ...updated });
     return updated;
   }, { refresh: false });
+});
+$("auto-defense-enabled")?.addEventListener("change", () => {
+  const enabled = $("auto-defense-enabled").checked;
+  $("auto-defense-orders").disabled = !enabled;
+  if (enabled) $("auto-defense-details").open = true;
+  $("auto-defense-status").textContent = $("auto-defense-enabled").checked ? "Save to activate these standing orders." : "Save to disable automatic defense.";
+});
+$("auto-defense-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const autoDefenseEnabled = $("auto-defense-enabled").checked;
+  const autoDefensePrimary = readAutoDefensePreset("primary");
+  const autoDefenseSecondary = readAutoDefensePreset("secondary");
+  if (autoDefenseEnabled && sumUnits(autoDefensePrimary) < 1) return alert("Choose at least one unit for the Primary automatic defense army.");
+  $("auto-defense-status").textContent = "Saving…";
+  const updated = await action(() => client.mutation(refs.updatePlayerSettings, { autoDefenseEnabled, autoDefensePrimary, autoDefenseSecondary }), { refresh: false });
+  if (!updated) {
+    $("auto-defense-status").textContent = "Standing orders were not saved.";
+    return;
+  }
+  state.playerSettings = { ...(state.playerSettings || {}), ...updated };
+  sessionQueries.set("settings", state.playerSettings);
+  $("auto-defense-status").textContent = autoDefenseEnabled ? "Standing orders active for future PvP sieges." : "Automatic defense disabled.";
 });
 $("notification-panel").addEventListener("click", (event) => event.stopPropagation());
 $("notification-backdrop").addEventListener("click", () => setNotificationPanelOpen(false));

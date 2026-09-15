@@ -30,10 +30,34 @@ describe("player settings and Research disclosure", () => {
     const player = t.withIdentity({ subject });
     expect(await player.query(api.settings.get, {})).toMatchObject({
       confirmConsequentialMissions: true,
+      autoDefenseEnabled: false,
+      autoDefensePrimary: units,
+      autoDefenseSecondary: units,
       researchTeased: false,
     });
     await player.mutation(api.settings.update, { confirmConsequentialMissions: false });
     expect(await player.query(api.settings.get, {})).toMatchObject({ confirmConsequentialMissions: false });
+  });
+
+  test("persists opt-in primary and fallback siege defense orders", async () => {
+    const t = convexTest(schema, modules);
+    const subject = "standing-orders-user";
+    await addPlayer(t, subject);
+    const player = t.withIdentity({ subject });
+    const primary = { ...units, bridgeman: 8, spearman: 3 };
+    const fallback = { ...units, bridgeman: 4 };
+
+    await player.mutation(api.settings.update, {
+      autoDefenseEnabled: true,
+      autoDefensePrimary: primary,
+      autoDefenseSecondary: fallback,
+    });
+
+    expect(await player.query(api.settings.get, {})).toMatchObject({
+      autoDefenseEnabled: true,
+      autoDefensePrimary: primary,
+      autoDefenseSecondary: fallback,
+    });
   });
 
   test("reveals the Research clue from Ancient territory without changing mechanics", async () => {

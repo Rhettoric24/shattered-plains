@@ -44,6 +44,52 @@ function seededInt(seed: string, min: number, max: number) {
   return min + (hash % (max - min + 1));
 }
 
+export function fixedGemheartIntervalMs(completed?: Record<string, number>) {
+  const researchedHours = Number(researchEffect(completed, "gemCutting"));
+  const baseHours = researchedHours > 0
+    ? researchedHours
+    : PLATEAU_RULES.gemheartIntervalMs / 3_600_000;
+  return (baseHours - (doctrineFromResearch(completed) === "gemheartBaron" ? 1 : 0)) * 3_600_000;
+}
+
+export function rolledGemheartIntervalMs(
+  plateauId: Id<"plateaus"> | string,
+  cycleStartedAt: number,
+  completed?: Record<string, number>,
+) {
+  const randomReductionMinutes = seededInt(
+    `${plateauId}:${cycleStartedAt}:gemheart-cycle`,
+    0,
+    120,
+  );
+  return fixedGemheartIntervalMs(completed) - randomReductionMinutes * 60_000;
+}
+
+export function nextGemheartAtForPlateau(
+  plateau: {
+    _id: Id<"plateaus">;
+    lastGemheartAt?: number;
+    nextGemheartAt?: number;
+    heldSince?: number;
+    updatedAt: number;
+  },
+  completed?: Record<string, number>,
+) {
+  if (plateau.nextGemheartAt !== undefined) return plateau.nextGemheartAt;
+  const last = plateau.lastGemheartAt ?? plateau.heldSince ?? plateau.updatedAt;
+  // Existing cycles keep their former fixed deadline. New random scheduling
+  // begins only after that deadline pays, avoiding a mid-test timer jump.
+  return last + fixedGemheartIntervalMs(completed);
+}
+
+export function startGemheartCycle(
+  plateauId: Id<"plateaus"> | string,
+  cycleStartedAt: number,
+  completed?: Record<string, number>,
+) {
+  return cycleStartedAt + rolledGemheartIntervalMs(plateauId, cycleStartedAt, completed);
+}
+
 function neutralType(seed: string, allowGemheart: boolean) {
   const roll = seededInt(seed, 1, 100);
   if (allowGemheart && roll > 88) return "gemheart";
@@ -307,19 +353,23 @@ export async function grantGemheartPlateauIncome(
   const plateaus = await ownedPlateaus(ctx, player._id);
   const research = await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", player._id)).unique();
   const completed = { ...(research?.completedLevels ?? {}), ...(research?.economicDoctrine === "gemheartBaron" ? { __doctrineGemheartBaron: 1 } : {}) };
-  const gemHours = Number(researchEffect(completed, "gemCutting"));
-  const baseHours = gemHours > 0 ? gemHours : PLATEAU_RULES.gemheartIntervalMs / 3600000;
-  const intervalMs = (baseHours - (doctrineFromResearch(completed) === "gemheartBaron" ? 1 : 0)) * 60 * 60 * 1000;
   let gemhearts = 0;
 
   for (const plateau of plateaus) {
     if (plateau.type !== "gemheart") continue;
-    const last = plateau.lastGemheartAt ?? plateau.heldSince ?? plateau.updatedAt;
-    const earned = Math.floor((now - last) / intervalMs);
+    let nextAt = nextGemheartAtForPlateau(plateau, completed);
+    let lastYieldAt = plateau.lastGemheartAt ?? plateau.heldSince ?? plateau.updatedAt;
+    let earned = 0;
+    while (nextAt <= now) {
+      earned += 1;
+      lastYieldAt = nextAt;
+      nextAt = startGemheartCycle(plateau._id, lastYieldAt, completed);
+    }
     if (earned < 1) continue;
     gemhearts += earned;
     await ctx.db.patch(plateau._id, {
-      lastGemheartAt: last + earned * intervalMs,
+      lastGemheartAt: lastYieldAt,
+      nextGemheartAt: nextAt,
       updatedAt: now,
     });
   }
@@ -329,7 +379,7 @@ export async function grantGemheartPlateauIncome(
       toPlayerId: player._id,
       kind: "system",
       subject: "Gemheart Plateau Yield",
-      body: `Your Gemheart Plateau holdings yielded ${gemhearts} Gemheart${gemhearts === 1 ? "" : "s"}. The 12-hour timer has restarted for the paying plateau${gemhearts === 1 ? "" : "s"}.`,
+      body: `Your Gemheart Plateau holdings yielded ${gemhearts} Gemheart${gemhearts === 1 ? "" : "s"}. A new hidden 10–12 hour base cycle has begun for the paying plateau${gemhearts === 1 ? "" : "s"}.`,
       eventType: "gemheart_yield",
       destinationView: "home",
       entityType: "owned_plateaus",

@@ -101,20 +101,20 @@ moments - exciting moments - self-created goals without formal endgame
 
 Record behavior separately from explanations.
 
-# AFTER / AROUND FRIEND TEST --- PvP Siege V2
+# NOW --- Yak pre-release friend-test additions
 
-Goal: asynchronous attack becomes asynchronous confrontation.
+-   Validate immediate reinforcement dispatch during PvP Encirclement while
+    preserving the one-hour battle lock.
+-   Validate opt-in Primary/Fallback automatic defense standing orders,
+    especially unavailable-army fallback and sleep/offline behavior.
+-   Validate stable random 10--12 hour Gemheart Plateau base cycles and whether
+    more frequent yields remain legible through existing timer Intel.
+-   Validate simple audited Spanreed gifts of Spheres/Gemhearts without
+    expanding into a marketplace.
 
-Candidate flow: 1. attacker encircles 2. defender can reinforce 3.
-attacker can reinforce 4. attacker deliberately begins assault 5. hard
-deadline prevents indefinite stalling
-
-Before implementation settle: - minimum setup time - maximum duration -
-reinforcement rules - timing reset behavior - notifications - deadline
-resolution - Fabrial interaction
-
-Do not expand into siege engines, surrender, prisoners, diplomacy, or
-equipment capture yet.
+PvP Siege V2's Encirclement, deliberate assault, reinforcement arrival, and
+hard-deadline structure is implemented. Do not expand into siege engines,
+surrender, prisoners, diplomacy, or equipment capture yet.
 
 # ECONOMY TUNING --- AFTER FRESH-RUN EVIDENCE
 
@@ -144,7 +144,7 @@ addresses Sphere abundance.
 -   component chains
 -   bombs/explosives
 -   Radiants or alternate Ancient Lore future
--   diplomacy/trade expansion
+-   broader diplomacy, negotiated trade, or a marketplace
 -   plateau ownership affecting Provision capacity
 -   reusable Fabrial capture
 -   broader equipment

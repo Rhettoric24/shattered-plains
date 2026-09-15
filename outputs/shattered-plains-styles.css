@@ -187,6 +187,13 @@ h3 { font-size: 1rem; color: var(--accent); }
 .unit-card { min-height: 220px; align-content: space-between; }
 .unit-card strong { font-size: 1.15rem; }
 .contained-form { max-width: 760px; }
+.auto-defense-form { display: grid; gap: 14px; }
+.auto-defense-form details > summary { cursor: pointer; color: var(--accent); font-weight: 900; }
+.auto-defense-form details[open] > summary { margin-bottom: 10px; }
+.auto-defense-form fieldset { display: grid; gap: 10px; margin: 0; border: 1px solid rgba(127, 183, 255, .24); border-radius: 8px; padding: 12px; }
+.auto-defense-form fieldset:disabled { opacity: .55; }
+.auto-defense-form legend { padding: 0 7px; color: var(--accent); font-weight: 900; }
+.auto-defense-form legend:not(:first-child) { margin-top: 8px; }
 .form-wide { grid-column: 1 / -1; display: grid; gap: 10px; }
 .unit-input-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .unit-input { display: grid; grid-template-columns: 1fr 90px; align-items: center; gap: 10px; border: 1px solid rgba(216, 229, 245, 0.16); border-radius: 6px; background: #09182a; padding: 10px; }
