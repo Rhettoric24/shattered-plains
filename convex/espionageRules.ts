@@ -26,9 +26,9 @@ export const ESPIONAGE_RULES = {
   sphereHeist: {
     economyIntelCap: 100,
     economyIntelCost: 50,
-    treasuryPercent: 0.05,
-    minimumHaul: 1000,
-    maximumHaul: 10000,
+    treasuryPercent: 0.1,
+    minimumHaul: 0,
+    maximumHaul: 5000,
     payoutMultipliers: { failure: 0, partial: 0, success: 0.5, overwhelm: 1 },
     casualtyRates: { failure: 0.2, partial: 0.1, success: 0, overwhelm: 0 },
     identityExposed: { failure: true, partial: false, success: true, overwhelm: false },

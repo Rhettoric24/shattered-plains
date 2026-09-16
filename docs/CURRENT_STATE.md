@@ -264,7 +264,7 @@ partial failure - `100–149%`: success - `≥150%`: overwhelm
 
 At resolution:
 
-`available = min(currentTreasury, clamp(currentTreasury × 5%, 1,000, 10,000))`
+`available = min(currentTreasury, currentTreasury × 10%, 5,000)`
 
 Success transfers 50%; overwhelm 100%.
 

@@ -34,9 +34,9 @@ const ESPIONAGE_UI_DEFAULTS = {
   sphereHeist: {
     economyIntelCap: 100,
     economyIntelCost: 50,
-    treasuryPercent: 0.05,
-    minimumHaul: 1000,
-    maximumHaul: 10000,
+    treasuryPercent: 0.1,
+    minimumHaul: 0,
+    maximumHaul: 5000,
   },
 };
 
@@ -3044,7 +3044,7 @@ function updateEspionagePreview() {
       outlookCell("Selected", number(selected) + " operatives", Object.entries(counts).map(([tier, count]) => number(count) + " " + (rules.operatives?.[tier]?.name || tier)).join("\n")) +
       outlookCell("Spy Power", number(base), "Compared with hidden target Counter-Intelligence at resolution") +
       outlookCell("Economy Intel", number(availability.availableIntel) + " → " + number(availability.remainingIntel), number(availability.requiredIntel) + " is consumed at launch") +
-      outlookCell("Potential haul", number(heistRules.minimumHaul) + "–" + number(heistRules.maximumHaul), "5% of the target's current treasury, bounded at resolution") +
+      outlookCell("Potential haul", "Up to " + number(heistRules.maximumHaul), "10% of the target's current treasury, capped at resolution") +
       outlookCell("Target treasury", "Hidden", "Sphere Heist does not reveal an unauthorized exact balance") +
       '</div>';
     return;
