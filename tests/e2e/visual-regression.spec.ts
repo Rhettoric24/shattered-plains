@@ -338,7 +338,7 @@ async function expectEspionageLayouts(page: Page) {
   const heistRequirement = composer.locator("#sphere-heist-requirement");
   await expect(heistRequirement).toBeVisible();
   await expect(heistRequirement).toContainText(/(?:Requires|Ready:) 50 Economy Intel/);
-  await expect(composer.locator("#launch-espionage-mission")).toHaveText("Launch 2-hour Sphere Heist");
+  await expect(composer.locator("#launch-espionage-mission")).toHaveText("Launch 1-hour Sphere Heist");
   await expect(composer.locator("#espionage-mission-preview")).toContainText("Target treasuryHidden");
   await expect(composer.locator("#espionage-mission-preview")).not.toContainText(/Target treasury\s*\d/);
   const expectReadableOutlookCards = async () => {

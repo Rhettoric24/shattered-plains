@@ -20,7 +20,7 @@ export const ESPIONAGE_RULES = {
     spy: { name: "Spy", networkLevel: 2, spyPower: 3, provisionsCost: 2, sphereCost: 750, trainingTimeMs: 0 },
     ghostblood: { name: "Ghostblood", networkLevel: 3, spyPower: 6, provisionsCost: 1, sphereCost: 3000, trainingTimeMs: 0 },
   },
-  missionDurationMs: 2 * 60 * 60 * 1000,
+  missionDurationMs: 60 * 60 * 1000,
   thresholdsPercent: { partial: 75, success: 100, overwhelm: 150 },
   intelRewards: { failure: 0, partial: 5, success: 10, overwhelm: 15 },
   sphereHeist: {

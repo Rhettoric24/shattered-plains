@@ -13,6 +13,7 @@ const AUTH_STORAGE_NAMESPACE = new URL(CONVEX_URL).hostname;
 const AUTH_TOKEN_KEY = `sp-convex-auth-token:${AUTH_STORAGE_NAMESPACE}`;
 const AUTH_REFRESH_KEY = `sp-convex-auth-refresh-token:${AUTH_STORAGE_NAMESPACE}`;
 const ESPIONAGE_UI_DEFAULTS = {
+  missionDurationMs: 60 * 60 * 1000,
   building: {
     name: "Ghostblood Network",
     levelCosts: [3000, 7500, 15000],
@@ -734,6 +735,7 @@ function buildState(data) {
       networkLevel: 0, available: {}, defending: {}, onMission: {}, counterIntelligence: 0, targets: [], missions: [],
       ...(data.espionage || {}),
       rules: {
+        missionDurationMs: ESPIONAGE_UI_DEFAULTS.missionDurationMs,
         ...(data.espionage?.rules || {}),
         operatives: { ...ESPIONAGE_UI_DEFAULTS.operatives, ...(data.espionage?.rules?.operatives || {}) },
         network: { ...ESPIONAGE_UI_DEFAULTS.network, ...(data.espionage?.rules?.network || {}) },
@@ -3123,7 +3125,8 @@ function renderEspionage() {
   const controls = $("espionage-controls");
   syncEspionageControlLock(controls, networkLocked);
   if (!networkLocked) updateEspionagePreview();
-  if ($("launch-espionage-mission")) $("launch-espionage-mission").textContent = isHeist ? "Launch 2-hour Sphere Heist" : "Launch 2-hour investigation";
+  const durationHours = Math.max(1, Math.round(Number(rules.missionDurationMs) / (60 * 60 * 1000)));
+  if ($("launch-espionage-mission")) $("launch-espionage-mission").textContent = isHeist ? `Launch ${durationHours}-hour Sphere Heist` : `Launch ${durationHours}-hour investigation`;
 }
 
 function renderIntelligence() {

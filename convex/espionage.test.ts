@@ -79,6 +79,7 @@ describe("espionage rules", () => {
   });
 
   test("Sphere Heist reuses outcome bands, bounds haul, and removes low tiers first", () => {
+    expect(ESPIONAGE_RULES.missionDurationMs).toBe(60 * 60 * 1000);
     expect(categoryIntelDisclosureLevel(24)).toBe(0);
     expect(categoryIntelDisclosureLevel(25)).toBe(1);
     expect(categoryIntelDisclosureLevel(74)).toBe(1);
@@ -137,6 +138,8 @@ describe("espionage backend", () => {
       await ctx.db.patch(resource!._id, { economyAmount: 60, updatedAt: longAgo });
     });
     const investigation = await asViewer.mutation(api.espionage.launchInvestigation, { targetPlayerId: targetId, category: "economy", operatives: { informant: 0, spy: 0, ghostblood: 1 } });
+    const investigationMission = await t.run(async (ctx) => await ctx.db.get(investigation.missionId));
+    expect(investigationMission!.resolveAt - investigationMission!.departAt).toBe(ESPIONAGE_RULES.missionDurationMs);
     await t.mutation(internal.espionage.resolveInvestigation, { missionId: investigation.missionId });
     ledger = await asViewer.query(api.espionage.getKingdomLedger, {});
     cells = ledger.rows.find((row) => row.playerId === targetId)!.cells;
@@ -389,6 +392,8 @@ describe("espionage backend", () => {
     expect(ledger.rows.find((row) => row.playerId === targetId)?.cells.economy).toMatchObject({ currentLevel: 2, intelAmount: 100, presentation: { mode: "exact", display: "40" } });
     const first = await asAttacker.mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 1, spy: 0, ghostblood: 0 } });
     expect(first).toMatchObject({ economyIntelSpent: 50, economyIntelRemaining: 50 });
+    const firstMission = await t.run(async (ctx) => await ctx.db.get(first.missionId));
+    expect(firstMission!.resolveAt - firstMission!.departAt).toBe(ESPIONAGE_RULES.missionDurationMs);
     let status = await asAttacker.query(api.espionage.getStatus, {});
     expect(status.targets.find((target) => target.playerId === targetId)?.economyIntel).toBe(50);
     expect(status.targets.find((target) => target.playerId === targetId)).not.toHaveProperty("spheres");

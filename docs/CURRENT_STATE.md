@@ -255,7 +255,7 @@ Requires Ghostblood Network I+, valid rival, available operative, and 50
 Economy Intel.
 
 -   consumes exactly 50 Economy Intel
--   2 real hours
+-   1 real hour
 -   no cooldown
 -   Intel not refunded
 
@@ -278,7 +278,7 @@ each rival: `militaryAmount`, `economyAmount`, `researchAmount`, and
 -   25--74: estimated current score
 -   75--100: exact current score
 
-Investigations reward only the selected category. These pools do not decay,
+Investigations take one real hour and reward only the selected category. These pools do not decay,
 and Intel can no longer be spent to boost investigation Spy Power. Economy
 Intel still pays for Sphere Heists; Military Intel still pays for active PvP
 siege investigations.
