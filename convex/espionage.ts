@@ -611,9 +611,10 @@ async function resolveSphereHeist(ctx: MutationCtx, mission: Doc<"espionageMissi
   });
 
   const outcomeName = outcome === "failure" ? "Catastrophic Failure" : outcome === "partial" ? "Failure" : outcome === "success" ? "Success" : "Overwhelming Success";
+  const displayedSpheresStolen = Math.round(spheresStolen).toLocaleString();
   const casualtyDetail = OPERATIVE_TIERS.filter((tier) => casualties[tier] > 0)
     .map((tier) => `${casualties[tier]} ${ESPIONAGE_RULES.operatives[tier].name}${casualties[tier] === 1 ? "" : "s"}`).join(", ") || "none";
-  const attackerBody = `${outcomeName} against ${target.name}.${stormActive ? " Storm Cover: effective Counter-Intelligence reduced by 50%; existing failure casualty rate doubled." : ""} Spheres stolen: ${spheresStolen.toLocaleString()}. Operatives lost: ${lost} (${casualtyDetail}). Identity ${identityExposed ? "exposed" : "remained hidden"}. Economy Intel remaining: ${mission.economyIntelRemaining ?? 0}/${ESPIONAGE_RULES.sphereHeist.economyIntelCap}.`;
+  const attackerBody = `${outcomeName} against ${target.name}.${stormActive ? " Storm Cover: effective Counter-Intelligence reduced by 50%; existing failure casualty rate doubled." : ""} Spheres stolen: ${displayedSpheresStolen}. Operatives lost: ${lost} (${casualtyDetail}). Identity ${identityExposed ? "exposed" : "remained hidden"}. Economy Intel remaining: ${mission.economyIntelRemaining ?? 0}/${ESPIONAGE_RULES.sphereHeist.economyIntelCap}.`;
   await ctx.db.insert("messages", {
     toPlayerId: attacker._id, kind: "system", subject: `Sphere Heist: ${outcomeName}`, body: attackerBody,
     eventType: "sphere_heist_resolved", destinationView: "intelligence", destinationTab: "operations",
@@ -632,8 +633,8 @@ async function resolveSphereHeist(ctx: MutationCtx, mission: Doc<"espionageMissi
     : outcome === "partial"
       ? "Your counter-intelligence disrupted an attempted treasury heist. No Spheres were stolen, and the sponsor remains unknown."
       : outcome === "success"
-        ? `${attacker.name} agents stole ${spheresStolen.toLocaleString()} Spheres from your treasury.`
-        : `${spheresStolen.toLocaleString()} Spheres were stolen from your treasury. The culprit remains unknown.`;
+        ? `${attacker.name} agents stole ${displayedSpheresStolen} Spheres from your treasury.`
+        : `${displayedSpheresStolen} Spheres were stolen from your treasury. The culprit remains unknown.`;
   await ctx.db.insert("messages", {
     toPlayerId: target._id, kind: "system", subject: victimTitle, body: victimBody,
     eventType: "sphere_heist_targeted", destinationView: "intelligence", destinationTab: "operations",

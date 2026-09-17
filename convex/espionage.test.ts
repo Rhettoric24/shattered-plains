@@ -512,4 +512,31 @@ describe("espionage backend", () => {
     const afterDuplicate = await t.run(async (ctx) => ({ attacker: await ctx.db.get(attackerId), target: await ctx.db.get(targetId) }));
     expect(afterDuplicate).toEqual(afterFirst);
   });
+
+  test("Heist reports round fractional transfers to whole Spheres without changing balances", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run(async (ctx) => await ctx.db.insert("users", { email: "heist-display-rounding@example.com" }));
+    const attackerId = await addPlayer(t, "Rounding Attacker", String(userId), { operatives: { informant: 0, spy: 0, ghostblood: 1 }, spheres: 2_000 });
+    const targetId = await addPlayer(t, "Rounding Victim", undefined, { defending: { informant: 0, spy: 0, ghostblood: 1 }, spheres: 358.52 });
+    await t.run(async (ctx) => {
+      await createFreshSeason(ctx, 1, 1);
+      await ctx.db.patch(attackerId, { lastEconomyAt: Date.now() + 1_000_000_000 });
+      await ctx.db.patch(targetId, { lastEconomyAt: Date.now() + 1_000_000_000 });
+      await ctx.db.insert("kingdomIntelResources", { viewerPlayerId: attackerId, targetPlayerId: targetId, amount: 0, economyAmount: 50, updatedAt: 1 });
+    });
+    const launched = await t.withIdentity({ subject: String(userId) }).mutation(api.espionage.launchSphereHeist, { targetPlayerId: targetId, operatives: { informant: 0, spy: 0, ghostblood: 1 } });
+    const result = await t.mutation(internal.espionage.resolveInvestigation, { missionId: launched.missionId });
+    expect(result).toMatchObject({ outcome: "success", spheresStolen: 17.926 });
+    const state = await t.run(async (ctx) => ({
+      attacker: await ctx.db.get(attackerId),
+      target: await ctx.db.get(targetId),
+      attackerMessages: await ctx.db.query("messages").withIndex("by_to_player", (q) => q.eq("toPlayerId", attackerId)).take(10),
+      victimMessages: await ctx.db.query("messages").withIndex("by_to_player", (q) => q.eq("toPlayerId", targetId)).take(10),
+    }));
+    expect(state.attacker?.spheres).toBe(2_017.926);
+    expect(state.target?.spheres).toBe(340.594);
+    expect(state.attackerMessages.map((message) => message.body).join(" ")).toContain("Spheres stolen: 18.");
+    expect(state.victimMessages.map((message) => message.body).join(" ")).toContain("stole 18 Spheres");
+    expect(state.victimMessages.map((message) => message.body).join(" ")).not.toContain("17.926");
+  });
 });

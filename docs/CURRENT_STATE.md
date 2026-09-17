@@ -267,6 +267,7 @@ At resolution:
 `available = min(currentTreasury, currentTreasury × 10%, 5,000)`
 
 Success transfers 50%; overwhelm 100%.
+Transfers retain their exact fractional value internally; player-facing Heist reports round the amount to the nearest whole Sphere.
 
 # Rival Ledger Intel
 

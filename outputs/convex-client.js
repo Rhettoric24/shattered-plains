@@ -3116,7 +3116,7 @@ function renderEspionage() {
     const time = pending ? 'Resolves in <span data-local-countdown-at="' + Number(mission.resolveAt) + '">' + formatDuration(Math.max(0, Math.ceil((mission.resolveAt - Date.now()) / 60000))) + '</span>' : 'Resolved ' + escapeHtml(intelligenceReportAge(mission.resolvedAt));
     const casualties = Object.values(mission.casualties || {}).reduce((sum, count) => sum + Number(count || 0), 0);
     const result = pending ? number(mission.finalSpyPower) + ' Spy Power committed' : mission.operation === "sphere_heist"
-      ? (mission.outcome || "resolved").replace(/^./, (letter) => letter.toUpperCase()) + ' · ' + number(mission.spheresStolen || 0) + ' Spheres stolen · ' + number(casualties) + ' lost · Identity ' + (mission.identityExposed ? 'exposed' : 'hidden')
+      ? (mission.outcome || "resolved").replace(/^./, (letter) => letter.toUpperCase()) + ' · ' + number(Math.round(Number(mission.spheresStolen || 0))) + ' Spheres stolen · ' + number(casualties) + ' lost · Identity ' + (mission.identityExposed ? 'exposed' : 'hidden')
       : (mission.outcome || 'resolved').replace(/^./, (letter) => letter.toUpperCase()) + (mission.bonusDiscoveryId ? ' · Bonus Discovery' : '');
     const missionName = mission.operation === "sphere_heist" ? "Sphere Heist" : mission.category[0].toUpperCase() + mission.category.slice(1) + " Investigation";
     const committed = Object.entries(mission.operatives || {}).filter(([, count]) => Number(count || 0) > 0).map(([tier, count]) => '<span>' + escapeHtml(rules.operatives?.[tier]?.name || tier) + '<b>' + number(count) + '</b></span>').join("");
