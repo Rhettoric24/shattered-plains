@@ -1,0 +1,145 @@
+:root {
+  font: 16px system-ui;
+  color: #e4edf7;
+  background: #101923;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 1440px;
+  margin: auto;
+  padding: 20px;
+}
+h1 {
+  font-size: 1.7rem;
+}
+h2 {
+  font-size: 1.15rem;
+}
+p {
+  line-height: 1.5;
+}
+.muted,
+small {
+  color: #aec1d4;
+}
+section {
+  background: #192736;
+  border: 1px solid #385067;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 1fr);
+  gap: 16px;
+}
+label {
+  display: block;
+  margin: 9px 0;
+}
+input,
+select,
+button {
+  font: inherit;
+  max-width: 100%;
+  padding: 9px;
+  border: 1px solid #698198;
+  border-radius: 5px;
+  background: #0f1b28;
+  color: inherit;
+}
+input,
+select {
+  width: 100%;
+}
+button {
+  cursor: pointer;
+  background: #294f70;
+  margin: 4px 4px 4px 0;
+  min-height: 42px;
+}
+button:hover {
+  background: #3b6688;
+}
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.row > * {
+  flex: 1;
+  min-width: 100px;
+}
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.tile {
+  min-height: 98px;
+  padding: 8px;
+  border: 1px solid #66819b;
+  border-radius: 6px;
+  background: #0f1d2b;
+  overflow-wrap: anywhere;
+}
+.tile.wide {
+  grid-column: 1 / 4;
+  min-height: 65px;
+}
+.tile.route {
+  outline: 2px solid #ffdf7f;
+}
+.army {
+  display: block;
+  border-left: 4px solid;
+  padding: 5px;
+  margin-top: 6px;
+  font-size: 0.85rem;
+}
+.units {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+}
+.error {
+  color: #ffaaaa;
+}
+details {
+  margin: 12px 0;
+}
+#log {
+  max-height: 600px;
+  overflow: auto;
+}
+li {
+  margin: 8px 0;
+}
+a {
+  color: #9bd2ff;
+}
+@media (max-width: 760px) {
+  main {
+    padding: 10px;
+  }
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .tile {
+    font-size: 0.85rem;
+  }
+  .units {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

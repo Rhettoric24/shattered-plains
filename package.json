@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "lab": "node scripts/conflict-lab.mjs",
+    "build:lab": "node scripts/build-lab.mjs",
+    "test:lab:static": "playwright test --config playwright.lab-static.config.ts",
+    "test:lab:browser": "playwright test --config playwright.lab.config.ts",
     "build": "node scripts/build-site.mjs",
     "start": "npm run build && node outputs/convex-static-server.js",
     "dev": "npx convex dev",

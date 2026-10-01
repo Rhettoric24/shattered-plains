@@ -36,6 +36,9 @@ jobs:
           # Friend-test production frontend. Development and pre-release work remains on Yak.
           CONVEX_URL: https://groovy-buzzard-108.convex.cloud
 
+      - name: Build isolated Resolution Lab
+        run: npm run build:lab
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
