@@ -14,7 +14,9 @@ Hosted saves remain local to each browser/device and origin. They do not sync wi
 
 ## Playing
 
-Load a preset, click any army, edit its troops or split some off. Splitting subtracts the entered troop counts from the selected parent. Choose a destination, inspect/change the proposed comma-separated route, then **Approve route**. Nothing moves until **Resolve Next Cycle**. Routes persist across cycles; choose Continue or Pause after defeat. Reaching a destination becomes Hold. The engine never chooses a new path.
+Load a preset and click/tap an army. This opens the existing Army Workshop in a dialog scoped to that army, including its Research and debug controls. **Move · draw route** returns to the board: tap connected positions in sequence, then **Confirm route**. Tapping the previous node backtracks one step; Clear empties the draft; Cancel leaves the committed route alone. Invalid jumps are rejected. Drag is deliberately not implemented. Advanced typed routes remain in the Workshop; both interfaces use the same approval function. No automatic pathfinding is used by this interface.
+
+The selected army and its current position are highlighted. Approved paths have gold outlines, retreat history has purple dashed borders, and unconfirmed proposals have orange backgrounds/outlines. Numbered labels show path order even where histories overlap. Green node-button borders mark valid next taps. Nothing moves until **Resolve Next Cycle**. Routes persist; choose Continue or Pause after defeat. Reaching a destination becomes Hold. Splitting subtracts the entered troop counts from the selected parent.
 
 Research applies to the selected kingdom. Army edits/creation and queued arrivals are fake troop creation tools, not economic actions. Changing an army's position resets its history. Use the merge control to nominate which incoming formation keeps its route/history. Save/load uses only this browser's localStorage. The journal includes readable results and expandable exact events. Tests use the same pure resolver as the UI.
 
@@ -31,7 +33,19 @@ Each cycle:
 5. Record objective displacement, then resolve retreats against surviving non-retreating occupants. Retreat claims happen in simultaneous fallback rounds. Opposing claims to the same empty node all skip it. Same-kingdom claims can share. Accepted destinations block later fallback rounds; no retreat battles or recursive eviction. Exhausted history falls back to the kingdom's safe area. Histories truncate and revisits erase loops.
 6. Repeat movement/combat/retreat for eligible unfought Speed groups' second step. A group that fought in step one can still be attacked again.
 7. Auto-merge same kingdom/position. Preserve explicit nominated source; otherwise a unique stationary resident; otherwise identical histories/orders; otherwise Hold with the current node as a fresh retreat root. No database/ID initiative chooses strategic routes. Temporary groups stay distinct until this point so merging cannot carry slow or already-fought troops into a second move.
-8. An enemy end-of-cycle Post occupant starts a hold. Maintaining control through the next complete cycle marks conquest. Any displacement breaks it, including step-one loss followed by step-two recapture. An unsuccessful attack does not. Legal owner stays separate; no real ownership transfer. A conquered scenario must be reset before more cycles.
+8. Resolve eligible Raid orders against uninterrupted flank footholds, using surviving troops after combat/merges. Then an enemy end-of-cycle Post occupant starts a hold. Maintaining Post control through the next complete cycle marks conquest. Any displacement breaks it, including step-one loss followed by step-two recapture. An unsuccessful attack does not. Legal owner stays separate; no real ownership transfer. A conquered scenario must be reset before more cycles.
+
+### Raid V0: center = conquest, flanks = Raid
+
+West Raid occupies **A1**, East Raid **C1**; graph connections are unchanged. Position metadata (`objective: "raid"`), not those labels, drives Raid rules. The Command Post remains the only conquest objective. New presets: **Center vs flanks**, **Chull raid**, and **Raid under attack**.
+
+An outside kingdom must end a resolution controlling a Raid objective. It may then choose **Raid** for the subsequent resolution. Arrival never pays automatically, including Speed's second step. Hold and Move never pay. An active Raid order repeats each resolution while uninterrupted control remains; it does not require Plunder specialization. The original defender cannot raid itself.
+
+Value per flank per cycle is **min(surviving merged formation's nonnegative Plunder, Raid cap)**. The default editable cap is **100**, and Research affects Plunder through the existing calculation. Values accumulate per kingdom in local Lab state; they are not Spheres and do not interact with any treasury, legal ownership or season score.
+
+`raidFootholds[position]` stores kingdom, establishment cycle, and occupying formation IDs. Each movement/combat/retreat boundary checks that at least one previously occupying formation remains alive, in place and unrouted. Friendly overlap extends the occupant set. Splits propagate membership; final merges rebind identity without restarting the foothold. Replacing all occupiers breaks continuity even if the kingdom color stays the same, including an old occupier dying while a new friendly entrant wins the battle. Losing and retaking in a later substep also resets readiness. Failed enemy attacks do **not** reset it.
+
+The journal records foothold establishment, Raid readiness, broken footholds, unsuccessful Raid orders, and payouts including kingdom, original-defender target, position, formation, Plunder, value and cycle. Newly established footholds display the response window; established ones show RAID-READY. Ordinary Lab saves remain local; older saves gain flank metadata without changing army orders or balances.
 
 Continue after defeat restores the approved path from the accepted retreat node. If fallback reaches staging outside that approved path (possible after a fresh-root merge), the order pauses with an explanation rather than inventing a route.
 
@@ -45,7 +59,7 @@ Specialization is independent of Power. For N troops, ratings are:
 - Survive: positive Survive / (2 × N)
 - Plunder: positive Plunder / (15 × N)
 
-The unique largest rating must be at least 1 and strictly greater than 60% of the sum. Otherwise None. All constants are editable Lab settings. Only Speed currently grants an ability; Entrenchment and Raid remain deferred.
+The unique largest rating must be at least 1 and strictly greater than 60% of the sum. Otherwise None. All constants are editable Lab settings. Speed grants tactical movement; Entrenchment remains deferred. Raid V0 is available to any eligible outside formation, with its payout derived from actual Plunder rather than a specialization gate.
 
 Field Surgery (`painrialMedicine`) affects Survive. Tailored Armor (`soulcastArmor`) affects Power and Speed. Pack Harnesses (`packHarnessDesign`) affects Plunder and Speed. Bridge Engineering's flat bonus is excluded only from tactical Speed; the displayed travel comparison includes it. Conclave modifiers are off. Production Research is unchanged.
 
@@ -56,10 +70,11 @@ Zero hostile Power causes no casualties. Zero own Power against positive hostili
 ## Files and tests
 
 - `conflict-board/types.ts`: graph/state/order/result types.
-- `planning.ts`: explicit route suggestions, split accounting, loop-erased histories.
+- `planning.ts`: route approval/drafting, split accounting, loop-erased histories.
 - `stats.ts`: actual stat adapter and specialization.
 - `resolver.ts`: pure phased engine and structured journal.
 - `resolver.test.ts`: movement, combat, casualty conservation, retreat, merging, research, objective and determinism regression tests.
+- `raids.ts`, `raids.test.ts`: continuous flank control, Lab-only payouts and Raid/route regression tests.
 - `lab/`: browser workshop, presets and experimental defaults.
 - `scripts/conflict-lab.mjs`: isolated loopback server/in-memory bundle.
 - `playwright.lab.config.ts`, `tests/lab/`: separate browser harness; no live-game auth/setup.
@@ -70,6 +85,6 @@ Pure deterministic replay is not database idempotency: replaying identical input
 
 ## Deliberately deferred
 
-Live sieges, economy, deadlines/overtime, withdrawal missions, Intel, storms, equipment, Conclaves, notifications, scoring and all production migration/integration. Formations are command groups, not permanent equipment or exposure identities; later accounting cohorts can sit beneath them without changing graph/order concepts.
+Live sieges, real treasury theft, final Raid balance, deadlines/overtime, withdrawal missions, Intel, storms, equipment, Conclaves, notifications, production scoring and all production migration/integration. Formations are command groups, not permanent equipment or exposure identities; later accounting cohorts can sit beneath them without changing graph/order concepts.
 
 Verified unrelated accounting issue: `ownedUnitsIncludingAway` in `convex/provisionHelpers.ts` includes deployed siege troops but omits traveling `siegeReinforcements`. Recruitment uses this for provisions and Gemheart Baron Chull limits. Left unchanged; resolve separately before live integration.

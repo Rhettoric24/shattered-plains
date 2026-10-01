@@ -4,6 +4,7 @@ export type Position = {
   id: string;
   name: string;
   kind: "field" | "staging" | "reserve" | "objective";
+  objective?: "raid";
   x: number;
   y: number;
 };
@@ -21,7 +22,7 @@ export type Kingdom = {
   research: Record<string, number>;
 };
 export type Order = {
-  kind: "hold" | "move";
+  kind: "hold" | "move" | "raid";
   route: string[];
   onDefeat: "continue" | "pause";
   paused?: boolean;
@@ -56,8 +57,14 @@ export type ConflictState = {
   formations: Formation[];
   arrivals: Arrival[];
   objective: Objective;
+  raidFootholds?: Record<
+    string,
+    { kingdom: string; establishedCycle: number; occupants: string[] }
+  >;
+  raidValues?: Record<string, number>;
 };
 export type ResolverConfig = {
+  raidCap?: number;
   specialization: {
     speedScale: number;
     surviveScale: number;
@@ -90,6 +97,29 @@ export type BattleForce = {
   survivors: UnitCounts;
 };
 export type Event =
+  | {
+      type: "raidFoothold" | "raidReady" | "raidBroken";
+      position: string;
+      kingdom: string;
+      cycle: number;
+    }
+  | {
+      type: "raidFailed";
+      position: string;
+      formation: string;
+      reason: string;
+      cycle: number;
+    }
+  | {
+      type: "raid";
+      position: string;
+      kingdom: string;
+      target: string;
+      formation: string;
+      plunder: number;
+      value: number;
+      cycle: number;
+    }
   | { type: "move"; step: number; formation: string; from: string; to: string }
   | {
       type: "battle";

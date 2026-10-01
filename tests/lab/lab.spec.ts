@@ -16,10 +16,11 @@ test("local planning, splitting, resolving and replaying", async ({
   await page.locator("#unit-bridgeman").fill("20");
   await page.getByRole("button", { name: "Split these counts off" }).click();
   await expect(page.locator("#formation option")).toHaveCount(3);
-  await page.locator("#destination").selectOption("post");
-  await page.getByRole("button", { name: "Show proposed route" }).click();
+  await page.getByRole("button", { name: "Move · draw route" }).click();
+  for (const node of ["B3", "B2", "B1", "post"])
+    await page.locator(`[data-route-node="${node}"]`).click();
+  await page.getByRole("button", { name: "Confirm route" }).click();
   await expect(page.locator("#route")).toHaveValue("B3, B2, B1, post");
-  await page.getByRole("button", { name: "Approve route" }).click();
   await page.getByRole("button", { name: "Resolve Next Cycle" }).click();
   await expect(page.locator("#status")).toContainText("Cycle 1");
   await expect(page.locator("#log")).toContainText("merge");

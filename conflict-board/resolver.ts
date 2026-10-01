@@ -9,6 +9,7 @@ import {
 } from "../convex/rules";
 import { appendHistory, connected, holdOrder } from "./planning";
 import { formationStats } from "./stats";
+import { observeRaidControl, finishRaids } from "./raids";
 import type {
   BattleForce,
   ConflictState,
@@ -59,6 +60,11 @@ function random(seed: string) {
 }
 function validate(input: CycleInput) {
   const { state, config, cycle } = input;
+  if (
+    config.raidCap !== undefined &&
+    (!Number.isFinite(config.raidCap) || config.raidCap < 0)
+  )
+    throw new Error("Raid cap must be a nonnegative number.");
   if (!Number.isSafeInteger(cycle) || cycle !== state.cycle + 1)
     throw new Error(
       "Cycle must be exactly the next cycle. Duplicate/stale requests are rejected.",
@@ -400,9 +406,11 @@ function movementStep(
     if (!retreating.has(g.id) && totalUnits(g.units))
       g.history = appendHistory(g.history, g.position);
   // Observe displacement before retreat landings or later substeps can retake it.
+  observeRaidControl(state, groups, input.cycle, events);
   updateControl(state, groups, step, events);
   resolveRetreats(state, groups, step, events);
   updateControl(state, groups, step, events);
+  observeRaidControl(state, groups, input.cycle, events);
   return groups.filter((g) => totalUnits(g.units));
 }
 function mergeGroups(
@@ -485,6 +493,7 @@ export function resolveCycle(input: CycleInput): CycleResult {
   validate(input);
   const state = structuredClone(input.state),
     events: Event[] = [];
+  observeRaidControl(state, state.formations, input.cycle, events);
   state.kingdoms = sorted(state.kingdoms);
   state.board.positions = sorted(state.board.positions);
   state.board.connections = state.board.connections
@@ -561,6 +570,27 @@ export function resolveCycle(input: CycleInput): CycleResult {
   groups = movementStep(input, state, groups, 1, events);
   groups = movementStep(input, state, groups, 2, events);
   state.formations = mergeGroups(input, state, groups, events);
+  finishRaids(state, input.config, input.cycle, events);
+  for (const f of input.state.formations.filter(
+    (f) => f.order.kind === "raid",
+  )) {
+    if (
+      !state.formations.some(
+        (g) =>
+          g.position === f.position &&
+          g.kingdom === f.kingdom &&
+          g.order.kind === "raid",
+      )
+    )
+      events.push({
+        type: "raidFailed",
+        position: f.position,
+        formation: f.id,
+        reason:
+          "Raid order no longer active at this position after retreat, destruction or merge.",
+        cycle: input.cycle,
+      });
+  }
   const controller = state.objective.controller;
   if (controller && controller !== state.originalOwner) {
     if (

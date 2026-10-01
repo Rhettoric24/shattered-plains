@@ -4,8 +4,9 @@ import { formationStats } from "../conflict-board/stats";
 import {
   connected,
   holdOrder,
-  proposedRoute,
   splitFormation,
+  approveRoute,
+  extendRoute,
 } from "../conflict-board/planning";
 import type { CycleResult, Formation } from "../conflict-board/types";
 import { defaults, presetNames, scenario } from "./scenarios";
@@ -16,6 +17,8 @@ let state = scenario(),
   history: CycleResult[] = [];
 let serial = 0,
   preferences: Record<string, string> = {};
+let inspectorOpen = false,
+  proposed: string[] | null = null;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const value = (id: string) => $<HTMLInputElement>(id).value;
@@ -38,6 +41,8 @@ const action = (id: string, fn: () => void) =>
       $("error").textContent = "";
     } catch (e) {
       $("error").textContent = (e as Error).message;
+      const panelError = document.getElementById("armyError");
+      if (panelError) panelError.textContent = (e as Error).message;
     }
   });
 const unitInputs = () =>
@@ -55,13 +60,13 @@ function render() {
   $("app").innerHTML =
     `<header><h1>Conflict Board Resolution Lab</h1><p class="muted">Local experiments · fake armies · no Convex traffic · experimental rules, not live sieges</p></header>
  <section><div class="row"><label>Scenario<select id="preset">${presetNames.map((n) => option(n, n)).join("")}</select></label><label>Casualty seed<input id="seed" value="playtest"></label></div><button id="reset">Load preset</button><button id="save">Save in this browser</button><button id="load">Load saved</button><button id="resolve">Resolve Next Cycle</button><p id="status">Cycle ${state.cycle} · legal owner: ${escape(state.originalOwner)} · Command Post: ${escape(state.objective.controller ?? "empty")}${state.objective.hold ? ` · hold began cycle ${state.objective.hold.beganCycle}` : ""}${state.objective.conqueredBy ? ` · CONQUEST: ${escape(state.objective.conqueredBy)}` : ""}</p><p id="error" class="error" role="alert"></p></section>
- <div class="layout"><div><section><h2>Battlefield</h2><p class="muted">Orthogonal links; only B1 connects to the Post. Safe Approach connects to A3, B3 and C3. Click a formation to inspect it. Gold outlines show its approved route.</p><div class="board">${[
+ <div class="layout"><div><section id="battlefield"><h2>Battlefield · Center = Conquest / Flanks = Raid</h2><p class="muted">Tap an army to command it. Move: tap connected positions, then Confirm. Only B1 connects to the Command Post.</p><p class="legend">● Current · <span class="forward-key">→ Approved</span> · <span class="history-key">↶ Retreat</span> · <span class="draft-key">◇ Proposed</span></p><div id="routeBuilder" hidden><strong id="routeTitle"></strong><p id="proposedPath"></p><p id="routeError" class="error" role="alert"></p><button id="clearRoute">Clear</button><button id="cancelRoute">Cancel</button><button id="confirmRoute">Confirm route</button></div><div class="board">${[
    ...state.board.positions,
  ]
    .sort((a, b) => a.y - b.y || a.x - b.x)
    .map(
      (p) =>
-       `<div class="tile ${p.kind !== "field" ? "wide" : ""} ${f?.order.route.includes(p.id) ? "route" : ""}" data-position="${p.id}"><strong>${p.name}</strong>${state.formations
+       `<div class="tile ${p.kind !== "field" ? "wide" : ""} ${p.objective === "raid" ? "raid-node" : ""}" data-position="${p.id}"><button class="node-target" data-route-node="${p.id}" aria-label="Route through ${p.name}">${p.id === "post" ? "Command Post · CONQUEST" : p.name}</button><div class="pathMarks"></div>${p.objective === "raid" ? raidStatus(p.id) : ""}${state.formations
          .filter((g) => g.position === p.id)
          .map(
            (g) =>
@@ -82,7 +87,7 @@ function render() {
          .join("")
      : "Issue an order, then resolve a cycle."
  }</div></section></div>
- <div><section><h2>Army workshop</h2><label>Formation<select id="formation">${state.formations.map((g) => option(g.id, g.name, selected)).join("")}</select></label><label>Name<input id="name" value="${escape(f?.name ?? "New army")}"></label><div class="row"><label>Kingdom<select id="kingdom">${state.kingdoms.map((k) => option(k.id, k.name, f?.kingdom)).join("")}</select></label><label>Position<select id="position">${state.board.positions.map((p) => option(p.id, p.name, f?.position)).join("")}</select></label></div><div class="units">${unitKeys()
+ <div><div id="armyPanel"><section><button id="closeArmy" ${inspectorOpen ? "" : "hidden"}>Close army panel</button><h2 id="armyTitle">Army workshop · ${escape(f?.name ?? "New army")}</h2><p>Standing order: <strong>${escape(f?.order.kind ?? "hold")}</strong></p><button id="moveArmy">Move · draw route</button><button id="raidArmy" ${canOrderRaid(f) ? "" : "disabled"}>Raid</button><p id="raidHint">${raidHint(f)}</p><label>Formation<select id="formation">${state.formations.map((g) => option(g.id, g.name, selected)).join("")}</select></label><label>Name<input id="name" value="${escape(f?.name ?? "New army")}"></label><div class="row"><label>Kingdom<select id="kingdom">${state.kingdoms.map((k) => option(k.id, k.name, f?.kingdom)).join("")}</select></label><label>Position<select id="position">${state.board.positions.map((p) => option(p.id, p.name, f?.position)).join("")}</select></label></div><div class="units">${unitKeys()
    .map(
      (k) =>
        `<label>${k}<input id="unit-${k}" type="number" min="0" step="1" value="${f?.units[k] ?? 0}"></label>`,
@@ -91,7 +96,7 @@ function render() {
      "",
    )}</div><button id="edit">Apply army edit</button><button id="create">Create army</button><button id="split">Split these counts off</button><button id="remove">Remove army</button><button id="arrive">Queue these troops next cycle</button><p class="muted">Editing position resets its route/history. Splitting subtracts these counts from the selected army. Queued reinforcements are new fake troops.</p><p>${state.arrivals.length} arrival(s) pending.</p><div id="stats"></div>
  <details><summary>Add another kingdom</summary><label>Kingdom name<input id="newKingdom" value="Gold"></label><button id="addKingdom">Add kingdom</button></details>
- <h2>Standing intention</h2><label>Destination<select id="destination">${state.board.positions.map((p) => option(p.id, p.name, "post")).join("")}</select></label><button id="propose">Show proposed route</button><label>Approved route (next positions, comma separated)<input id="route" value="${escape(f?.order.route.join(", ") ?? "")}"></label><label>After defeat<select id="defeat">${option("continue", "Continue", f?.order.onDefeat)}${option("pause", "Pause", f?.order.onDefeat)}</select></label><button id="approve">Approve route</button><button id="hold">Hold / cancel route</button><p class="muted">Route: ${escape(f?.position)} → ${escape(f?.order.route.join(" → ") || "Hold")}. Retreat history: ${escape(f?.history.join(" → "))}</p>
+ <h2>Standing intention</h2><label>After defeat<select id="defeat">${option("continue", "Continue", f?.order.onDefeat)}${option("pause", "Pause", f?.order.onDefeat)}</select></label><button id="hold">Hold / cancel route</button><p id="armyRoutes" class="muted">Approved: ${escape(f?.position)} → ${escape(f?.order.route.join(" → ") || "Hold")}. Retreat history: ${escape(f?.history.join(" → "))}</p><details><summary>Advanced typed route</summary><label>Approved route (next positions, comma separated)<input id="route" value="${escape(f?.order.route.join(", ") ?? "")}"></label><button id="approve">Approve route</button></details>
  <details><summary>Intentional merge route</summary><p>Nominate the selected formation to retain its history and standing order if it merges at this position.</p><label>Merge position<select id="mergePosition">${state.board.positions.map((p) => option(p.id, p.name, "B2")).join("")}</select></label><button id="nominate">Retain selected source</button><pre>${escape(JSON.stringify(preferences, null, 2))}</pre></details></section>
  <section><h2>Kingdom Research</h2><p>Applies to the kingdom selected above. Real Research formulas; no Conclave effects.</p>${[
    ["bridgeEngineering", "Bridge Engineering"],
@@ -103,7 +108,7 @@ function render() {
      ([id, name]) =>
        `<label>${name}<select id="research-${id}">${[0, 1, 2, 3].map((rank) => option(String(rank), String(rank), String(state.kingdoms.find((k) => k.id === f?.kingdom)?.research[id] ?? 0))).join("")}</select></label>`,
    )
-   .join("")}<button id="research">Apply Research</button></section>
+   .join("")}<button id="research">Apply Research</button></section></div>
  <section><h2>Experimental constants</h2><p>Ratings use positive stat ÷ (scale × troop count). One rating must reach the minimum and exceed the dominance share. Power is independent. Only Speed has a board ability in this Lab.</p>${Object.entries(
    config.specialization,
  )
@@ -118,15 +123,18 @@ function render() {
    )
    .join(
      "",
-   )}<button id="config">Apply constants</button><p class="muted">Bridge Engineering is excluded from tactical Speed only. The comparison travel Speed retains it. Existing casualty rounding, troop selection and final loss cap are reused.</p></section></div></div>`;
+   )}<label>Raid cap per objective per cycle<input id="raidCap" type="number" min="0" value="${config.raidCap ?? 100}"></label><button id="config">Apply constants</button><p class="muted">Bridge Engineering is excluded from tactical Speed only. The comparison travel Speed retains it. Existing casualty rounding, troop selection and final loss cap are reused.</p></section></div></div><dialog id="armyDialog" aria-labelledby="armyTitle"></dialog>`;
   document.querySelectorAll<HTMLButtonElement>("[data-formation]").forEach(
     (b) =>
       (b.onclick = () => {
+        if (proposed !== null) return;
         selected = b.dataset.formation!;
+        inspectorOpen = true;
         render();
       }),
   );
   $("formation").onchange = () => {
+    proposed = null;
     selected = value("formation");
     render();
   };
@@ -145,6 +153,8 @@ function render() {
   };
   for (const key of unitKeys()) $(`unit-${key}`).oninput = statsPreview;
   action("reset", () => {
+    inspectorOpen = false;
+    proposed = null;
     state = scenario(value("preset"));
     selected = state.formations.at(-1)?.id ?? "";
     history = [];
@@ -162,12 +172,20 @@ function render() {
     if (!data) throw Error("No saved Lab state.");
     state = data.state;
     config = data.config;
+    config.raidCap ??= 100;
+    // Older local saves retain all armies/orders. Only add flank metadata.
+    for (const p of state.board.positions)
+      if (p.id === "A1" || p.id === "C1") p.objective = "raid";
+    inspectorOpen = false;
+    proposed = null;
     history = data.history;
     preferences = data.preferences;
     selected = state.formations[0]?.id ?? "";
     render();
   });
   action("resolve", () => {
+    if (proposed !== null)
+      throw Error("Confirm or Cancel the proposed route before resolving.");
     const seed = value("seed");
     const result = resolveCycle({
       state,
@@ -243,16 +261,6 @@ function render() {
     });
     render();
   });
-  action("propose", () => {
-    if (!formation()) throw Error("Select an army.");
-    const route = proposedRoute(
-      state.board,
-      formation()!.position,
-      value("destination"),
-    );
-    if (!route) throw Error("No connected route.");
-    $<HTMLInputElement>("route").value = route.slice(1).join(", ");
-  });
   action("approve", () => {
     const g = formation();
     if (!g) throw Error("Select an army.");
@@ -260,17 +268,12 @@ function render() {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    let prev = g.position;
-    for (const p of route) {
-      if (!connected(state.board, prev, p))
-        throw Error(`No connection from ${prev} to ${p}.`);
-      prev = p;
-    }
-    g.order = {
-      kind: route.length ? "move" : "hold",
+    approveRoute(
+      state.board,
+      g,
       route,
-      onDefeat: value("defeat") as "continue" | "pause",
-    };
+      value("defeat") as "continue" | "pause",
+    );
     render();
   });
   action("hold", () => {
@@ -296,6 +299,7 @@ function render() {
   });
   action("config", () => {
     const next = structuredClone(config);
+    next.raidCap = Number(value("raidCap"));
     for (const k of Object.keys(
       next.specialization,
     ) as (keyof typeof next.specialization)[])
@@ -315,6 +319,163 @@ function render() {
   $<HTMLInputElement>("seed").value = previousSeed;
   $<HTMLSelectElement>("preset").value = previousPreset;
   statsPreview();
+  $("armyTitle").after($("stats"));
+  $("moveArmy").after($("hold"));
+  const panelError = document.createElement("p");
+  panelError.id = "armyError";
+  panelError.className = "error";
+  panelError.setAttribute("role", "alert");
+  $("armyTitle").before(panelError);
+  action("closeArmy", () => {
+    inspectorOpen = false;
+    render();
+  });
+  action("moveArmy", () => {
+    if (!formation()) throw Error("Select an army.");
+    proposed = [];
+    inspectorOpen = false;
+    render();
+    $("battlefield").scrollIntoView({ block: "start" });
+  });
+  action("raidArmy", () => {
+    const g = formation();
+    if (!canOrderRaid(g)) throw Error("Establish a flank foothold first.");
+    g!.order = { kind: "raid", route: [], onDefeat: g!.order.onDefeat };
+    render();
+  });
+  action("clearRoute", () => {
+    proposed = [];
+    paintBoard();
+  });
+  action("cancelRoute", () => {
+    proposed = null;
+    paintBoard();
+  });
+  action("confirmRoute", () => {
+    const g = formation();
+    if (!g || proposed === null) return;
+    approveRoute(
+      state.board,
+      g,
+      proposed,
+      value("defeat") as "continue" | "pause",
+    );
+    proposed = null;
+    render();
+  });
+  $("defeat").onchange = () => {
+    if (formation())
+      formation()!.order.onDefeat = value("defeat") as "continue" | "pause";
+  };
+  document.querySelectorAll<HTMLElement>("[data-position]").forEach(
+    (tile) =>
+      (tile.onclick = () => {
+        if (proposed === null || !formation()) return;
+        try {
+          proposed = extendRoute(
+            state.board,
+            formation()!.position,
+            proposed,
+            tile.dataset.position!,
+          );
+          $("routeError").textContent = "";
+          paintBoard();
+        } catch (e) {
+          $("routeError").textContent = (e as Error).message;
+        }
+      }),
+  );
+  const dialog = $<HTMLDialogElement>("armyDialog");
+  dialog.oncancel = (e) => {
+    e.preventDefault();
+    inspectorOpen = false;
+    render();
+  };
+  if (inspectorOpen) {
+    dialog.append($("armyPanel"));
+    dialog.showModal();
+  }
+  paintBoard();
+}
+
+function canOrderRaid(f: Formation | undefined) {
+  const foothold = f && state.raidFootholds?.[f.position];
+  return (
+    !!f &&
+    f.kingdom !== state.originalOwner &&
+    !!foothold &&
+    foothold.kingdom === f.kingdom &&
+    foothold.establishedCycle <= state.cycle &&
+    foothold.occupants.includes(f.id)
+  );
+}
+function raidHint(f: Formation | undefined) {
+  if (!f) return "Select an army.";
+  if (f.kingdom === state.originalOwner)
+    return "The original defender protects these logistics; it cannot raid itself.";
+  if (!state.board.positions.find((p) => p.id === f.position)?.objective)
+    return "Reach West or East Raid and establish a foothold first.";
+  return canOrderRaid(f)
+    ? "Raid next resolution if you retain control. Failed attacks do not delay it."
+    : "End a resolution controlling this flank first. No payout on arrival.";
+}
+function raidStatus(id: string) {
+  const h = state.raidFootholds?.[id];
+  if (!h) return '<p class="raid-status">No established foothold</p>';
+  const name =
+    state.kingdoms.find((k) => k.id === h.kingdom)?.name ?? h.kingdom;
+  return `<p class="raid-status">${escape(name)} · ${h.kingdom === state.originalOwner ? "Defending" : h.establishedCycle === state.cycle ? "Foothold · Raid available next resolution" : "RAID-READY"}<br>Lab Raid total: ${state.raidValues?.[h.kingdom] ?? 0}</p>`;
+}
+function paintBoard() {
+  const f = formation();
+  $("routeBuilder").hidden = proposed === null;
+  if (proposed !== null && f) {
+    $("routeTitle").textContent = `Drawing route · ${f.name}`;
+    $("proposedPath").textContent = [f.position, ...proposed].join(" → ");
+  }
+  document.querySelectorAll<HTMLElement>("[data-position]").forEach((tile) => {
+    const id = tile.dataset.position!,
+      marks: string[] = [];
+    const current = f?.position === id,
+      forward = f?.order.route.includes(id) ?? false,
+      retreat = f?.history.includes(id) ?? false,
+      draft = proposed?.includes(id) ?? false;
+    tile.classList.toggle("current", current);
+    tile.classList.toggle("route", forward);
+    tile.classList.toggle("fallback", retreat);
+    tile.classList.toggle("proposed", draft);
+    let valid = false;
+    if (proposed !== null && f) {
+      try {
+        extendRoute(state.board, f.position, proposed, id);
+        valid = true;
+      } catch {}
+    }
+    tile.classList.toggle("next", valid && proposed !== null);
+    if (current) marks.push("● Current");
+    if (forward)
+      marks.push(
+        `→ Approved ${f!.order.route
+          .map((p, i) => (p === id ? i + 1 : null))
+          .filter(Boolean)
+          .join(",")}`,
+      );
+    if (retreat) marks.push(`↶ History ${f!.history.indexOf(id) + 1}`);
+    if (draft)
+      marks.push(
+        `◇ Proposed ${proposed!
+          .map((p, i) => (p === id ? i + 1 : null))
+          .filter(Boolean)
+          .join(",")}`,
+      );
+    tile.querySelector(".pathMarks")!.textContent = marks.join(" · ");
+  });
+  document
+    .querySelectorAll<HTMLButtonElement>("[data-formation]")
+    .forEach((b) => {
+      b.classList.toggle("selected", b.dataset.formation === selected);
+      b.setAttribute("aria-pressed", String(b.dataset.formation === selected));
+    });
 }
 function statsPreview() {
   const stats = formationStats(
@@ -327,6 +488,16 @@ function statsPreview() {
 }
 function describe(e: CycleResult["events"][number]) {
   switch (e.type) {
+    case "raidFoothold":
+      return `${escape(e.kingdom)} established a foothold at ${escape(e.position)}. Raid available next resolution if control is retained.`;
+    case "raidReady":
+      return `${escape(e.kingdom)} retained uninterrupted control of ${escape(e.position)} and is Raid-ready.`;
+    case "raidBroken":
+      return `${escape(e.kingdom)} lost its foothold at ${escape(e.position)}. Readiness reset, even if it retakes the flank.`;
+    case "raidFailed":
+      return `${escape(e.formation)} could not Raid ${escape(e.position)}: ${escape(e.reason)}`;
+    case "raid":
+      return `${escape(e.kingdom)} raided ${escape(e.target)} at ${escape(e.position)}. Plunder: ${e.plunder}. Lab Raid value: ${e.value}.`;
     case "battle":
       return `${escape(e.position)}: ${e.forces.map((f) => `${escape(f.kingdom)} P ${f.power} faces ${f.hostilePower}; loses ${totalUnits(f.casualties)} (${(f.finalRate * 100).toFixed(1)}%)`).join(" · ")}. ${e.annihilated ? "Nominal winner annihilated; no controller." : e.winner ? `${escape(e.winner)} wins.` : "Highest Power tied; everyone retreats."}`;
     case "move":

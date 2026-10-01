@@ -96,6 +96,82 @@ button:hover {
 .tile.route {
   outline: 2px solid #ffdf7f;
 }
+.tile.fallback {
+  border: 2px dashed #bba0ef;
+}
+.tile.current {
+  box-shadow: inset 0 0 0 3px #7be3aa;
+}
+.tile.proposed {
+  background: #4d3518;
+  outline: 3px solid #ffad4e;
+}
+.tile.next .node-target {
+  border-color: #7be3aa;
+}
+.army.selected {
+  outline: 3px solid #fff;
+}
+.node-target {
+  width: 100%;
+  background: transparent;
+  font-weight: bold;
+}
+.pathMarks {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #ffe3b5;
+}
+.raid-node {
+  border-top: 4px solid #ffad4e;
+}
+.raid-status {
+  font-size: 0.8rem;
+}
+.forward-key {
+  color: #ffdf7f;
+}
+.history-key {
+  color: #bba0ef;
+}
+.draft-key {
+  color: #ffad4e;
+}
+#routeBuilder {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #20344a;
+  padding: 10px;
+  border: 2px solid #ffad4e;
+}
+#routeBuilder p {
+  margin: 5px 0;
+}
+dialog {
+  color: inherit;
+  background: #101923;
+  border: 1px solid #7a96af;
+  border-radius: 10px;
+  width: min(580px, 96vw);
+  max-height: 90dvh;
+  padding: 12px;
+}
+dialog::backdrop {
+  background: #0009;
+}
+dialog #closeArmy {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+[hidden] {
+  display: none !important;
+}
 .army {
   display: block;
   border-left: 4px solid;

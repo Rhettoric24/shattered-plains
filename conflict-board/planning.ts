@@ -79,5 +79,51 @@ export function splitFormation(
     units,
   };
   next.formations.push(child);
+  for (const foothold of Object.values(next.raidFootholds ?? {})) {
+    if (foothold.occupants.includes(parent.id))
+      foothold.occupants.push(child.id);
+  }
+  return next;
+}
+
+/** Both board drawing and advanced typed input commit the same validated order. */
+export function approveRoute(
+  board: Board,
+  formation: Formation,
+  route: string[],
+  onDefeat: Order["onDefeat"],
+) {
+  let previous = formation.position;
+  for (let i = 0; i < route.length; i++) {
+    const p = route[i];
+    if (!connected(board, previous, p))
+      throw Error(`No connection from ${previous} to ${p}.`);
+    if (
+      i < route.length - 1 &&
+      ["staging", "reserve"].includes(
+        board.positions.find((node) => node.id === p)!.kind,
+      )
+    )
+      throw Error("Safe areas cannot be route shortcuts.");
+    previous = p;
+  }
+  formation.order = {
+    kind: route.length ? "move" : "hold",
+    route: [...route],
+    onDefeat,
+  };
+}
+
+export function extendRoute(
+  board: Board,
+  start: string,
+  route: string[],
+  target: string,
+): string[] {
+  const full = [start, ...route];
+  if (target === full.at(-1)) return [...route];
+  if (full.length > 1 && target === full.at(-2)) return route.slice(0, -1);
+  const next = [...route, target];
+  approveRoute(board, { position: start } as Formation, next, "pause");
   return next;
 }

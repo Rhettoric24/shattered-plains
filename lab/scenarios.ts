@@ -2,6 +2,7 @@ import { emptyUnits } from "../convex/rules";
 import { holdOrder } from "../conflict-board/planning";
 import type { ConflictState, ResolverConfig } from "../conflict-board/types";
 export const defaults: ResolverConfig = {
+  raidCap: 100,
   specialization: {
     speedScale: 0.75,
     surviveScale: 2,
@@ -24,6 +25,9 @@ export const presetNames = [
   "Research comparison",
   "Chulls and escorts",
   "Sleep order",
+  "Center vs flanks",
+  "Chull raid",
+  "Raid under attack",
 ];
 export function scenario(name = presetNames[0]): ConflictState {
   const positions: ConflictState["board"]["positions"] = [];
@@ -40,6 +44,15 @@ export function scenario(name = presetNames[0]): ConflictState {
     { id: "approach", name: "Safe Approach", kind: "staging", x: 1, y: 4 },
     { id: "reserve", name: "Defender Reserve", kind: "reserve", x: 1, y: -1 },
   );
+  for (const [id, name] of [
+    ["A1", "West Raid"],
+    ["C1", "East Raid"],
+  ]) {
+    Object.assign(
+      positions.find((p) => p.id === id)!,
+      { objective: "raid", name: `${name} (${id})` },
+    );
+  }
   connections.push(
     ["reserve", "post"],
     ["post", "B1"],
@@ -168,5 +181,33 @@ export function scenario(name = presetNames[0]): ConflictState {
   }
   if (name === "Chulls and escorts")
     add("Caravan", "blue", "approach", 50, 0, [], undefined, 50);
+  if (name === "Center vs flanks") {
+    state.formations[0].units.spearman = 400;
+    add("Center force", "blue", "B3", 250);
+    add("West runners", "blue", "A3", 0, 120);
+    add("East caravan", "blue", "C3", 60, 0, [], undefined, 20);
+  }
+  if (name === "Chull raid") {
+    add("Chull company", "blue", "A2", 30, 0, ["A1"], undefined, 30);
+    add("Escort", "blue", "B2", 150);
+    add("Flank defense", "red", "B1", 80);
+  }
+  if (name === "Raid under attack") {
+    state.cycle = 1;
+    add("Established raiders", "blue", "A1", 160, 0, [], ["A2", "A1"], 10);
+    state.formations.at(-1)!.order = {
+      kind: "raid",
+      route: [],
+      onDefeat: "pause",
+    };
+    state.raidFootholds = {
+      A1: {
+        kingdom: "blue",
+        establishedCycle: 1,
+        occupants: ["Established raiders"],
+      },
+    };
+    add("Counterattack", "red", "B1", 50, 0, ["A1"]);
+  }
   return state;
 }
