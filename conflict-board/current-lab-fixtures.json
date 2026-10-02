@@ -1,0 +1,698 @@
+[
+  {
+    "name": "Opening march",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "d4b432fc3e5169091152a9c1549a4639119602c76c1cf3cba2930be2686546f7"
+  },
+  {
+    "name": "Opening march",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "c1ecec8f127bf24cb0c3620134637eec0c7eb979d0c97a11dc3a0c8a1101c39c"
+  },
+  {
+    "name": "Opening march",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "6e0a4e4807182db7e52a0b774141c3abc95274ed4893d6cd03d1441e9f177b58"
+  },
+  {
+    "name": "Opening march",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "54a348b660e8bfd04852acd752f6c1995fd59a87b2c3b4314e71b7ced3fb8de7"
+  },
+  {
+    "name": "Opening march",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "48a52b94bbec931ac3384967cd8d82302dbdabf8157bf087dec5b1fcaace3483"
+  },
+  {
+    "name": "Opening march",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "d40991db72703a031fc2c46d25e48ddd6d0b937ca02aea47008ac13f8e37f74b"
+  },
+  {
+    "name": "Opening march",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "1a76ca9a8e3a8fb6ca5e1ccedc45965e9a4f0e48d71b19f9b0f06b6407966afa"
+  },
+  {
+    "name": "Opening march",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "c46378f49aa17337151a53222f3ccff2723027a3fa3fd0c5d688efce0c66f265"
+  },
+  {
+    "name": "Deathball",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "e8af60c97678eac5ed1ce19a7f1394c98cbad7ab2128925526b79aeffcbdf4ac"
+  },
+  {
+    "name": "Deathball",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "1f38f50bd94d03c358f182d084c030b336bff28e8522c36483850b4126f8b96a"
+  },
+  {
+    "name": "Deathball",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "e2be7979ca5805bfd5bf673f7f03c728a46904cd171ba5cae2734c4bdaf983d9"
+  },
+  {
+    "name": "Deathball",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "e596e480b7db2d11d7c5d1ccf2f5926741540a24d619d55997fce157fa224229"
+  },
+  {
+    "name": "Deathball",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "9c07d589345a9ab23779fa4720b9ef09d012c64970aba1922cb723e66a0a9e50"
+  },
+  {
+    "name": "Deathball",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "07b294fc09d1f8d3e61b8868d5ed788101ab6ee05910213b4ad3d115ecf0ac82"
+  },
+  {
+    "name": "Deathball",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "d81398adf6d64e85e3c4a13ce60521efb2f17ccdc1aa8047aaa155fb62d74235"
+  },
+  {
+    "name": "Deathball",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "7b06937b3103007af6ee4a759787b3fd6ed11475f97f3d2217b94d55ff3c4196"
+  },
+  {
+    "name": "Speed screen",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "46cf06455416e247d6e9924552c56cacd37732fafa65b571187b7f91d1d05e3b"
+  },
+  {
+    "name": "Speed screen",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "140faf0e26ad221d7ff944040564d3cfa1f96a7453841eca817d46d5c7f5f55d"
+  },
+  {
+    "name": "Speed screen",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "cb618435f57cbf93e850b0789ed8e02735657ade14d699826ae9fd4b94914a29"
+  },
+  {
+    "name": "Speed screen",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "843abb68e4ee3e300102636abcc5e8c18c4c1652c97e75d9014583caa0df1231"
+  },
+  {
+    "name": "Speed screen",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "bd7cbdcbe101a7171b8b84805eb22daad22901434573f63aebd305a8225a4430"
+  },
+  {
+    "name": "Speed screen",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "54beeea65cb3e91389683ac31388578b4cc6a5825493ac9413fc8c39d986a72f"
+  },
+  {
+    "name": "Speed screen",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "1e8bc36d88a22fe6d8549cb2dc5cf46f52101499a3d1835881c3a8766be99ad5"
+  },
+  {
+    "name": "Speed screen",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "87b10572f22e6e77a285371807400e80439f0923310501b29f2a750bf1118e5e"
+  },
+  {
+    "name": "Speed flank",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "1852a369c83c9d259d0f2adf56428da132683ce8dfaf04c71d3f061e6b784686"
+  },
+  {
+    "name": "Speed flank",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "446cc8b52c3c7d91b474e5095154a84fdfb57a3d125d92ac1df35dd6c366afee"
+  },
+  {
+    "name": "Speed flank",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "4ce83e7a461a670b03a17bcbf88e5831b4b69549e33e837f175ebb7eb43f170e"
+  },
+  {
+    "name": "Speed flank",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "e7dc06d346d3b9533e1f767b1801c77d5ea6d007a32fe0046c2a74ba5586b23f"
+  },
+  {
+    "name": "Speed flank",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "88883955090942ed65807d8e9ba2a45063de7505678be39fa438fde18534db0b"
+  },
+  {
+    "name": "Speed flank",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "15caf19fd9f19aca6c0a2af3d2ded228337a6ffc418c3f062d661c86e400666b"
+  },
+  {
+    "name": "Speed flank",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "5e7d4590a6cdbf2bb42792b164e8601f643f0cb3d4ea30d5d8304bff8c562e87"
+  },
+  {
+    "name": "Speed flank",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "f5d4ad903cb4ce292c1fadf4426bac3a431a15dfe6d2f186aac56d652f0f8e44"
+  },
+  {
+    "name": "Three kingdoms",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "7c5db6bb98c7512d9966e13e22c85dd179acebe442e0e58ce7166de9e2c8743f"
+  },
+  {
+    "name": "Three kingdoms",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "6ca7b1b58859695ef3fd65e5421feb24564f37ee0fcf1e7adcaa973ec5a812df"
+  },
+  {
+    "name": "Three kingdoms",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "dbba5c3510fea43330e831ff056fdb7ecf3e8c2a82c0e118502802808d3104c1"
+  },
+  {
+    "name": "Three kingdoms",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "b790681d06df63ecf5072ab2d3dbf9cd417fa427dae60ce457a1ef252b6d7333"
+  },
+  {
+    "name": "Three kingdoms",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "f68d8dbcaf1028912e0398a950337a46e5d81d219aff4223eda9374e9ee8b64b"
+  },
+  {
+    "name": "Three kingdoms",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "e22838e09dd91e9a04d7c3c0d8f4bdad51966e06c8c4d2c84f16ed4e51b0622e"
+  },
+  {
+    "name": "Three kingdoms",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "039753634762026216ccad5843ddc737d944165258269d27b7f334cc3d947af9"
+  },
+  {
+    "name": "Three kingdoms",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "94895bc96ed09168058dad7b0214b6bc365867370e6926086115aae1f9c4219d"
+  },
+  {
+    "name": "Highest tie",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "557ff15ee079e6012e6a419f23048962b7b22c545694e847e7e1d89a5202b924"
+  },
+  {
+    "name": "Highest tie",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "c15f9ff75a7b0992a091b0fd2700688ef0e53d759c3b5b7a8311c7f8410f3812"
+  },
+  {
+    "name": "Highest tie",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "dc7fcf1899a80a4b6fc2da5dba266fd28e7c1507bcd060cd23f50535794e07db"
+  },
+  {
+    "name": "Highest tie",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "4d306e7b9a6ffb31c201447ac2289176ddf71794dd14bc500b6f951d8650fa3c"
+  },
+  {
+    "name": "Highest tie",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "f97a77d00dedf03595d0583f6345cef3da40058cf274abad95f41906613e2ff2"
+  },
+  {
+    "name": "Highest tie",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "9b9001a6788180ef4e5cd5b4fd4e7f6fce2438f2d3fbddcad50e23274fab558f"
+  },
+  {
+    "name": "Highest tie",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "85ca08b33fef6b908c3e422617e82b9449cce0e30d2a5eedd0d669a4f2dd767e"
+  },
+  {
+    "name": "Highest tie",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "fd56bffdf8c58bbb65aed209d0011fbea13fc23fc6c93a52176244378c5b195e"
+  },
+  {
+    "name": "Retreat collision",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "628b5de62a942e0d2ac4aef7a2e39926cf1f90894533b25d8694931beea542c1"
+  },
+  {
+    "name": "Retreat collision",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "1fee3d42df67bb37c9acd8ea45055e6e2078cbe065542df0c85726fee9312340"
+  },
+  {
+    "name": "Retreat collision",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "e6dd22232e712f7d4013d388a0b04a32110b0f99fc1cf0d717260fd05e989748"
+  },
+  {
+    "name": "Retreat collision",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "83af077d74bbfcc355c642edacfd4f27ee0c566f5112ad5407a2226b25dab9ed"
+  },
+  {
+    "name": "Retreat collision",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "b11d297e3638addbff041aefe85389837a81e65c46814656453295dc7228232f"
+  },
+  {
+    "name": "Retreat collision",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "9f747bb7f4279e29292c5c65ec940271d32e375e5b907c47047ca8873baa2c7a"
+  },
+  {
+    "name": "Retreat collision",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "938c4cfcf503a63b49db377393c82d867cc5a30758a8d9d7c6020863bfb8d678"
+  },
+  {
+    "name": "Retreat collision",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "649e802b1df84ea13296ec3839df52ce06c60d8e101aa1e7bc66b594eeffc429"
+  },
+  {
+    "name": "Converging friends",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "126117503ecc9b3f429d4300a7bc1e6784804d1d94f6471d9a9a40bd9de8dd5c"
+  },
+  {
+    "name": "Converging friends",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "88176a0759493325c7c2814edc6f83f21c084b7617873b86af12e2f132be76bb"
+  },
+  {
+    "name": "Converging friends",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "d57574b0703454152ea867b572a036831c932389e144cafa4b5a07eebb2b4562"
+  },
+  {
+    "name": "Converging friends",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "cdc6ee73a102a03ac85625e69aaed80ff0ad756bb18be99b34aa9b1aaeb7d530"
+  },
+  {
+    "name": "Converging friends",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "36b8c51b58dcc97af61c7e0256e97016e6dcd328d7d57c4f361d655546291f2a"
+  },
+  {
+    "name": "Converging friends",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "6aa93b434a7dfc407b2bee7ccf0949c83d89f580d37ba1adc737976c660e5d9b"
+  },
+  {
+    "name": "Converging friends",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "0947253595bfdf930a8e6438eda0150a585cce03c52058dd248f2e356baa2a18"
+  },
+  {
+    "name": "Converging friends",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "33a2bec81e64604b9786b5558713991d4799a62ff6d58ce1610c53a6f5a180ea"
+  },
+  {
+    "name": "Command Post hold",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "46f3c1ed6fbbcdc5da16a93f991e387e04150a88f3533e5aea8c3644fb66b558"
+  },
+  {
+    "name": "Command Post hold",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "31d8af2cf55c64c617b13433f6df91b089f7dfa145e2dbb80ea03ea2308c8b6b"
+  },
+  {
+    "name": "Command Post hold",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "93d011bbe01b7645247829f72520dfba50020a7691f2464468f2a549a166a23b"
+  },
+  {
+    "name": "Command Post hold",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "85d1d28fba528b87a0d925cb0bd00fad0daf167a685379e3e2725c5eaf8b966d"
+  },
+  {
+    "name": "Research comparison",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "a8274612c55cdfca65ee85845ccd06b15aca899d011cefb5669fcb8b13ff3dea"
+  },
+  {
+    "name": "Research comparison",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "9bc3fafc25bd9b7ea934709104e73cfa9ffc47443cf6874831b7a8afd38d0549"
+  },
+  {
+    "name": "Research comparison",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "382d5039b23da886d667beef64cf7a2484a783b157e90539b1a3b6e118105f4d"
+  },
+  {
+    "name": "Research comparison",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "2aec7a5b096990d6ee82aec07b29825242f5bed548ca522b8656168ce7747491"
+  },
+  {
+    "name": "Research comparison",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "0046c1672678f0ef31b0d1f477be8c8c4598d7a9ac235a34dd00e8c1528a7534"
+  },
+  {
+    "name": "Research comparison",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "6d087c68aa0fa88862305e7fb3e87b68cf48a7e17a422f15fef50689d7f73bd4"
+  },
+  {
+    "name": "Research comparison",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "8fd547a6bec0be831488ed2d27f62938e2d29139cdafdb8cf1a8c5917d45352c"
+  },
+  {
+    "name": "Research comparison",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "efcc7b796d5472eb83ffe4faac4008d65265bf0cf77b7c11f9f14ddaa6d32d41"
+  },
+  {
+    "name": "Chulls and escorts",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "2303ba3dddf47646394285062967b1ccfa1c8cca11a555e029123b7c397d1bb1"
+  },
+  {
+    "name": "Chulls and escorts",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "9e242eb671a74ef158a3fe5a79dabc91121c9d6b479030bd1f93d1ff235c09d9"
+  },
+  {
+    "name": "Chulls and escorts",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "b7bd5be054a06f90751d1c8d9ab7b03e4cd289efea3318ee0cc55ec168276786"
+  },
+  {
+    "name": "Chulls and escorts",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "9133902fa42fb3d97d19748b9fb7437c17eb6dfa95306b6d5edfa23554083d00"
+  },
+  {
+    "name": "Chulls and escorts",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "c3a890c3d43fed435e9e2844609dcbb6eb709eb6795ff179fb246d1c9e47ae60"
+  },
+  {
+    "name": "Chulls and escorts",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "7ef175f11d5ba2f5cdc44b9ad9c33bd0c455a58c4d313fbe15a2ecf5daaeadd0"
+  },
+  {
+    "name": "Chulls and escorts",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "e49f22d77b9a58e633ec6588b62f364b183265a4d7972b1cc8362ed9a3aa6deb"
+  },
+  {
+    "name": "Chulls and escorts",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "f07a481ea68d67f9f7b461a37c9f34912ce2e601ca0c09b11575a0815a5a2b59"
+  },
+  {
+    "name": "Sleep order",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "7c1675b2ed8eac7e27fed7b688556b395493a4872317ea1283d02106a0243544"
+  },
+  {
+    "name": "Sleep order",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "f5f72b4d7491a3e10e353336b9282e20745636570f8a779e046311345f13794f"
+  },
+  {
+    "name": "Sleep order",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "a2e6294c161f5d2b38ac08be3ea66aa7fe97d8c8a83e2e32b0bd0656e1c1ef0b"
+  },
+  {
+    "name": "Sleep order",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "3efbbb12833d3a574183e4467ab5ae278ea75f3d88872e0f1571af6651da8fc4"
+  },
+  {
+    "name": "Sleep order",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "b153c7a1edd60371d2f8105d3cf3f5f5856aca54c70a53a93dad20d8ac491e79"
+  },
+  {
+    "name": "Sleep order",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "9afc7949ce839ee7ce024a530f99ed53aa8281e9815062ffa5e898dae83e95c9"
+  },
+  {
+    "name": "Sleep order",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "97aa329b4af9a3c73dbfe050c62b09d9375904091c4159da96e8114a294b3bf2"
+  },
+  {
+    "name": "Sleep order",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "77826c2b879b274db38c2c6cf575f92fe89ce8a185e35aada0add57c43adec31"
+  },
+  {
+    "name": "Center vs flanks",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "0b952a3bee9e7b368d1b56bf3fa9c0677dd6c0e1c89e62d5b672a231f6364ec7"
+  },
+  {
+    "name": "Center vs flanks",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "bd5de3aec45f8e8e4a51c2a880f4610887af832d7e4fde580585be88b1abcb3d"
+  },
+  {
+    "name": "Center vs flanks",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "5c46b7dc57582cd373f67e0c1e5c3a4940c850da6bd99cd28c567521e97406d9"
+  },
+  {
+    "name": "Center vs flanks",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "44317265dcc7dd7f65153e05d753c5d94975675e9f886c6b9225beddd10769ac"
+  },
+  {
+    "name": "Center vs flanks",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "1c1e949df7362e43ca65c6227a819c83a8a1d353f2f47d6f81890dabe6e6270d"
+  },
+  {
+    "name": "Center vs flanks",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "693865d65090cd9c1cfbbe3278aad31f89e4c8dddbe0a0ec16dcb07d2f9bac7e"
+  },
+  {
+    "name": "Center vs flanks",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "85aff8f54436c936593715e644e765b52845f6a976ba007facbd39e3708c9840"
+  },
+  {
+    "name": "Center vs flanks",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "5f4a5829c26f6c4c8512189b4a57c37b346874804af821f76c6c3bff533a18f2"
+  },
+  {
+    "name": "Chull raid",
+    "seed": "reference-a",
+    "cycle": 1,
+    "hash": "9d8f629f588c904fbc04a1037d2363b3231e345cf06e1c6e2c05e5a3b5ccdb37"
+  },
+  {
+    "name": "Chull raid",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "d40ac255d5d5dc0fede8f84324de818a4a054ce1bb0b362e222e357b33b71a81"
+  },
+  {
+    "name": "Chull raid",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "b19be3ee72ec743eba387aeb43dd3b8e5c0cb961991e2465b808b67d0253a767"
+  },
+  {
+    "name": "Chull raid",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "404426a9e3573fda921ffc3dd14437f6f0a9f310a4d8a33ef0741c56e230dd01"
+  },
+  {
+    "name": "Chull raid",
+    "seed": "reference-b",
+    "cycle": 1,
+    "hash": "0b4bbf8340450b08edb0a5322f764029484fa661eb1ceb021820536b76b2704e"
+  },
+  {
+    "name": "Chull raid",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "d716a0ce225cb54a30eea5e76f1d78674f3a62494ba61735f34cc236d6817138"
+  },
+  {
+    "name": "Chull raid",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "bf0cc8871907899299b3a2959ab740b01f0bd6119884c4ed45cc3ee55aee8b4f"
+  },
+  {
+    "name": "Chull raid",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "9fa3aa370a2ec82627736d5eb89b33a75d20c3366ed4a77ba4c9ee2079a5a04d"
+  },
+  {
+    "name": "Raid under attack",
+    "seed": "reference-a",
+    "cycle": 2,
+    "hash": "05895b8760aeebc74be16b3c692fa0631ba09e3f79a11d37a5788374c4707102"
+  },
+  {
+    "name": "Raid under attack",
+    "seed": "reference-a",
+    "cycle": 3,
+    "hash": "b06320eaef90bc05f94a76aa5a01ff01103c61aab6cec3948a4021d6fff79a0d"
+  },
+  {
+    "name": "Raid under attack",
+    "seed": "reference-a",
+    "cycle": 4,
+    "hash": "32ae41ecfb3cb3f4fb2575e74246b4939150540ce81332ee6ab9bdd0e55a729c"
+  },
+  {
+    "name": "Raid under attack",
+    "seed": "reference-a",
+    "cycle": 5,
+    "hash": "ba718b465aed67bd66f7ceb3db6bd20c21e47620029b3cb57b327dab5e3b6c94"
+  },
+  {
+    "name": "Raid under attack",
+    "seed": "reference-b",
+    "cycle": 2,
+    "hash": "0ce5a0642e2b7051f879dac3f6c70a84b913c3c7d347dadb6051530823a58248"
+  },
+  {
+    "name": "Raid under attack",
+    "seed": "reference-b",
+    "cycle": 3,
+    "hash": "e0e5f118f5c75d97d1b41ec6fd1b10f5698fcb05c99ca6d7316cf4a39f516cd8"
+  },
+  {
+    "name": "Raid under attack",
+    "seed": "reference-b",
+    "cycle": 4,
+    "hash": "0960f6bd7c37da16c12c35608776716b98a6606af20217d8bb1372755390b5e3"
+  },
+  {
+    "name": "Raid under attack",
+    "seed": "reference-b",
+    "cycle": 5,
+    "hash": "1154456e720863a11b220ba8b531983edb8c930837982623a1bd51d6dae97a9a"
+  }
+]

@@ -51,6 +51,14 @@ Continue after defeat restores the approved path from the accepted retreat node.
 
 ### Stats and casualties
 
+The **Combat model** selector defaults to **Current · reference**. **Experimental Survival** uses the existing balance-harness experiment: effective Survival = `100 × researched total Survival / troop count`, followed by weighted individual casualty selection with `weight = exp(clamp(-ln(2) × researched singleton Survival, -20, 20))`. Sampling uses the harness's seeded exponential race without replacement and preserves the rounded casualty count. It is not a balance decision.
+
+Experimental keeps the fixed 25% base factor, 3% minimum, 80% maximum base rate, 95% final rate cap, and no optional Survival cap. Current's scientist casualty controls are disabled/ignored while Experimental is selected and retained when switching back. Research, unit values, Power winners and all movement/objective rules stay unchanged. Same-kingdom groups at a position still combine for one casualty calculation, so splitting does not multiply the normalization or lottery.
+
+Every preset works under either model; loading a preset retains the selection. Use the same preset and seed for comparison. Switching midway affects future battles only, not previous outcomes. The journal labels each battle's actual model and shows per-type `lost/starting` counts, including zero losses for participating unit types. Saves retain the selection; older saves without it load as Current.
+
+`conflict-board/experimental-survival.ts` carries only the browser-safe experimental calculation from `combat-balance/models.ts` at analysis commit `45733e7`, with no CLI/report imports. `survival-harness-fixtures.json` contains 162 exact harness outputs across size, research, Shardbearer and zero-Power cases (three seeds each). `current-lab-fixtures.json` contains 116 cycle hashes from the unchanged resolver at `d5ec7ed`, covering all presets and two seeds, up to four cycles or conquest. Tests verify the port against the former and Current against the latter, excluding only the newly added battle-model label. Neither the analysis branch nor its report corpus was merged into this Lab branch.
+
 Directly imports `effectivePower`, `effectiveSpeed`, `effectiveSurvivability`, `unitPlunder`, `applySurvivalLosses` and troop helpers from `convex/rules.ts`, which is a pure rules module. Shardbearer support is calculated once per kingdom per engagement. Casualties are rolled once per kingdom and allocated fairly back to temporary groups with a seeded draw. Splitting does not multiply support or casualty rolls.
 
 Specialization is independent of Power. For N troops, ratings are:

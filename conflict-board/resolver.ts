@@ -1,5 +1,6 @@
 import {
   addUnits,
+  ARMY_RULES,
   applySurvivalLosses,
   effectivePower,
   emptyUnits,
@@ -9,6 +10,7 @@ import {
 } from "../convex/rules";
 import { appendHistory, connected, holdOrder } from "./planning";
 import { formationStats } from "./stats";
+import { experimentalSurvivalLosses } from "./experimental-survival";
 import { observeRaidControl, finishRaids } from "./raids";
 import type {
   BattleForce,
@@ -60,6 +62,8 @@ function random(seed: string) {
 }
 function validate(input: CycleInput) {
   const { state, config, cycle } = input;
+  if (config.combatModel !== undefined && !["current", "experimental-survival"].includes(config.combatModel))
+    throw new Error("Unknown Lab combat model.");
   if (
     config.raidCap !== undefined &&
     (!Number.isFinite(config.raidCap) || config.raidCap < 0)
@@ -335,7 +339,13 @@ function movementStep(
     const forces: BattleForce[] = [];
     for (const p of powers) {
       const research = state.kingdoms.find((k) => k.id === p.kingdom)!.research;
-      const c = input.config.casualties,
+      const experimental = input.config.combatModel === "experimental-survival";
+      const c = experimental ? {
+        factor: ARMY_RULES.baseCasualtyFactor,
+        minimum: ARMY_RULES.minimumBaseCasualtyRate,
+        maximum: ARMY_RULES.maximumBaseCasualtyRate,
+        surviveCap: null,
+      } : input.config.casualties,
         hostilePower = sum - p.power;
       const baseRate =
         hostilePower <= 0
@@ -354,7 +364,7 @@ function movementStep(
         position,
         p.kingdom,
       ]);
-      const result = applySurvivalLosses(
+      const result = experimental ? experimentalSurvivalLosses(combined(p.rows), baseRate, seed, research) : applySurvivalLosses(
         combined(p.rows),
         baseRate,
         seed,
@@ -395,6 +405,7 @@ function movementStep(
       !totalUnits(forces.find((f) => f.kingdom === winner)!.survivors);
     events.push({
       type: "battle",
+      combatModel: input.config.combatModel ?? "current",
       step,
       position,
       forces,

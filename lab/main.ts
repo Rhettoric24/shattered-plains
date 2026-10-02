@@ -33,6 +33,7 @@ const escape = (s: unknown) =>
 const option = (id: string, name: string, active?: string) =>
   `<option value="${escape(id)}" ${id === active ? "selected" : ""}>${escape(name)}</option>`;
 const formation = () => state.formations.find((f) => f.id === selected);
+const modelName = (model?: string) => model === "experimental-survival" ? "Experimental Survival" : "Current";
 const uid = () => `lab-${Date.now()}-${serial++}`;
 const action = (id: string, fn: () => void) =>
   $(id).addEventListener("click", () => {
@@ -58,7 +59,7 @@ function render() {
     : presetNames[0];
   const f = formation();
   $("app").innerHTML =
-    `<header><h1>Conflict Board Resolution Lab</h1><p class="muted">Local experiments · fake armies · no Convex traffic · experimental rules, not live sieges</p></header>
+    `<header><h1>Conflict Board Resolution Lab</h1><p class="muted">Local experiments · fake armies · no Convex traffic · experimental rules, not live sieges</p><label>Combat model<select id="combatModel">${option("current", "Current · reference", config.combatModel ?? "current")}${option("experimental-survival", "Experimental Survival · normalized + weighted", config.combatModel)}</select></label><p id="combatModelStatus"><strong>${modelName(config.combatModel)}</strong> · ${config.combatModel === "experimental-survival" ? "Survival = 100 × researched Survival / troops; weighted individual losses. Fixed 3% floor, 25% factor, 80% base cap, 95% final cap; no Survival cap. Current debug casualty settings are ignored." : "Existing total Survival and equal individual casualty selection. Reference defaults include the 3% floor; scientist constants remain available."} Changes apply to future battles only. Load the same preset and seed to compare.</p></header>
  <section><div class="row"><label>Scenario<select id="preset">${presetNames.map((n) => option(n, n)).join("")}</select></label><label>Casualty seed<input id="seed" value="playtest"></label></div><button id="reset">Load preset</button><button id="save">Save in this browser</button><button id="load">Load saved</button><button id="resolve">Resolve Next Cycle</button><p id="status">Cycle ${state.cycle} · legal owner: ${escape(state.originalOwner)} · Command Post: ${escape(state.objective.controller ?? "empty")}${state.objective.hold ? ` · hold began cycle ${state.objective.hold.beganCycle}` : ""}${state.objective.conqueredBy ? ` · CONQUEST: ${escape(state.objective.conqueredBy)}` : ""}</p><p id="error" class="error" role="alert"></p></section>
  <div class="layout"><div><section id="battlefield"><h2>Battlefield · Center = Conquest / Flanks = Raid</h2><p class="muted">Tap an army to command it. Move: tap connected positions, then Confirm. Only B1 connects to the Command Post.</p><p class="legend">● Current · <span class="forward-key">→ Approved</span> · <span class="history-key">↶ Retreat</span> · <span class="draft-key">◇ Proposed</span></p><div id="routeBuilder" hidden><strong id="routeTitle"></strong><p id="proposedPath"></p><p id="routeError" class="error" role="alert"></p><button id="clearRoute">Clear</button><button id="cancelRoute">Cancel</button><button id="confirmRoute">Confirm route</button></div><div class="board">${[
    ...state.board.positions,
@@ -119,7 +120,7 @@ function render() {
    .join("")}${Object.entries(config.casualties)
    .map(
      ([k, v]) =>
-       `<label>Casualties: ${k}<input id="casualty-${k}" type="number" step="0.01" value="${v ?? ""}" placeholder="uncapped"></label>`,
+       `<label>Current casualties: ${k}<input id="casualty-${k}" ${config.combatModel === "experimental-survival" ? "disabled" : ""} type="number" step="0.01" value="${v ?? ""}" placeholder="uncapped"></label>`,
    )
    .join(
      "",
@@ -161,6 +162,10 @@ function render() {
     preferences = {};
     render();
   });
+  $<HTMLSelectElement>("combatModel").onchange = () => {
+    config.combatModel = value("combatModel") as "current" | "experimental-survival";
+    render();
+  };
   action("save", () =>
     localStorage.setItem(
       "conflict-lab",
@@ -172,6 +177,7 @@ function render() {
     if (!data) throw Error("No saved Lab state.");
     state = data.state;
     config = data.config;
+    config.combatModel ??= "current";
     config.raidCap ??= 100;
     // Older local saves retain all armies/orders. Only add flank metadata.
     for (const p of state.board.positions)
@@ -499,7 +505,7 @@ function describe(e: CycleResult["events"][number]) {
     case "raid":
       return `${escape(e.kingdom)} raided ${escape(e.target)} at ${escape(e.position)}. Plunder: ${e.plunder}. Lab Raid value: ${e.value}.`;
     case "battle":
-      return `${escape(e.position)}: ${e.forces.map((f) => `${escape(f.kingdom)} P ${f.power} faces ${f.hostilePower}; loses ${totalUnits(f.casualties)} (${(f.finalRate * 100).toFixed(1)}%)`).join(" · ")}. ${e.annihilated ? "Nominal winner annihilated; no controller." : e.winner ? `${escape(e.winner)} wins.` : "Highest Power tied; everyone retreats."}`;
+      return `[${modelName(e.combatModel)}] ${escape(e.position)}: ${e.forces.map((f) => `${escape(f.kingdom)} P ${f.power} faces ${f.hostilePower}; loses ${totalUnits(f.casualties)} (${(f.finalRate * 100).toFixed(1)}% rate). Casualties: ${unitKeys().filter(k => f.casualties[k] + f.survivors[k] > 0).map(k => `${escape(k)} ${f.casualties[k]}/${f.casualties[k]+f.survivors[k]}`).join(", ")} (lost/starting)`).join(" · ")}. ${e.annihilated ? "Nominal winner annihilated; no controller." : e.winner ? `${escape(e.winner)} wins.` : "Highest Power tied; everyone retreats."}`;
     case "move":
       return `${escape(e.formation)} moves ${escape(e.from)} → ${escape(e.to)} (step ${e.step}).`;
     case "retreat":

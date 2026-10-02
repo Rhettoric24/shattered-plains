@@ -2,6 +2,7 @@ import { emptyUnits } from "../convex/rules";
 import { holdOrder } from "../conflict-board/planning";
 import type { ConflictState, ResolverConfig } from "../conflict-board/types";
 export const defaults: ResolverConfig = {
+  combatModel: "current",
   raidCap: 100,
   specialization: {
     speedScale: 0.75,

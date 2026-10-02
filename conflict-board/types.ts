@@ -64,6 +64,7 @@ export type ConflictState = {
   raidValues?: Record<string, number>;
 };
 export type ResolverConfig = {
+  combatModel?: "current" | "experimental-survival";
   raidCap?: number;
   specialization: {
     speedScale: number;
@@ -123,6 +124,7 @@ export type Event =
   | { type: "move"; step: number; formation: string; from: string; to: string }
   | {
       type: "battle";
+      combatModel?: "current" | "experimental-survival";
       step: number;
       position: string;
       forces: BattleForce[];
