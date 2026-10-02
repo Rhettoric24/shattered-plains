@@ -1,7 +1,9 @@
 // Bundle analysis code in memory; the CLI only writes local reports.
 import { build } from "esbuild";
+const focused = process.argv.includes("--survivability");
+process.argv = process.argv.filter(arg => arg !== "--survivability");
 const result = await build({
-  entryPoints: ["./combat-balance/run.ts"],
+  entryPoints: [focused ? "./combat-balance/survival-run.ts" : "./combat-balance/run.ts"],
   bundle: true,
   write: false,
   platform: "node",

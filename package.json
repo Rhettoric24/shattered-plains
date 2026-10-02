@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "balance:survivability": "node scripts/combat-balance.mjs --survivability",
     "balance:combat": "node scripts/combat-balance.mjs",
     "lab": "node scripts/conflict-lab.mjs",
     "build:lab": "node scripts/build-lab.mjs",

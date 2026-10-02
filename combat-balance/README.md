@@ -39,3 +39,9 @@ CSV includes all unit types, researched stats, hostile Power, analytical rates/e
 Finite Monte Carlo estimates are not guarantees. Zero observed deaths is not immortality. Seed pairing removes count differences from selection-only comparisons. Weighting necessarily reallocates casualties to other troops. No model is recommended by the tool.
 
 Run tests with `npx vitest run combat-balance` or the full `npm test`. The baseline equivalence suite compares every catalog participant directly against production losses for multiple seeds.
+
+## Focused Survivability experiment
+
+Run `npm run balance:survivability` for the separate four-model study, holding the 3% floor and all experimental constants fixed. Optional `-- --reps 1000 --rare-reps 10000` changes sample counts only. It writes `docs/audits/SURVIVABILITY_MODEL_EXPERIMENT.md` and aggregate CSV plus provenance manifest in `analysis/survivability-model/`; it does not overwrite the broad baseline. Source hashes identify the exact working sources (the revision is the pre-report commit).
+
+Controlled scenarios supply explicit scalar hostile Power to the shared aggregator. This preserves production stat/casualty calls but intentionally makes no claim about an opposing composition or battle winner. At 100 troops normalized and total Survival coincide; proportional size checks distinguish them. The 25/75 research check uses 20 rather than 10 troops to avoid silently rounding composition.

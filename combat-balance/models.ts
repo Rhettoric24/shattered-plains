@@ -24,6 +24,8 @@ export type Scenario = {
   category: string;
   note: string;
   armies: Army[];
+  /** Analysis-only controlled opposition; no opposing army or winner is inferred. */
+  hostilePowers?: number[];
 };
 export type Model = {
   family?: string;

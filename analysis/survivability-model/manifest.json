@@ -1,0 +1,60 @@
+{
+  "sourceRevision": "86a69e37bacf0a629d0321ada2b91dab93310456",
+  "sourceHashes": {
+    "convex/rules.ts": "11d31686330efc5ffd2a48ff69605fe9fb1183b052fc26b1c1badcecefe624ab",
+    "conflict-board/resolver.ts": "cb466b53fba0e3e9a11f63f3562802c93fa4f39b28fde3f125463a94397182d6",
+    "combat-balance/models.ts": "283fdd92267df93ad5b26c303d244c82c2e2c76e523d7d0d72e48ada22c15d79",
+    "combat-balance/aggregate.ts": "a1621cd7d176b81e985e1d55c2ff05987de316e981510ff5087e49ecd639a268",
+    "combat-balance/catalog.ts": "4cd77293c2368e55455ffdbfd40bbd66fd0fc3ae2239c1b06573ade36aa74551",
+    "combat-balance/report.ts": "56fcb177e8cdb960892b8893a25ccd3b3948d23b151c19b6daaf79efd2a25ed1",
+    "combat-balance/survival-catalog.ts": "5d8a1b38c7b09668002d4b0bf36f7bdc86de1ce43569c602787bddb093674624",
+    "combat-balance/survival-report.ts": "9778a9d8a3af88199efbfe6067edd3ae9ff8d2a7f4ec384d7a8d59a0bac8b502",
+    "combat-balance/survival-run.ts": "10ad782620cae33ed95245c6e0b6bbf749bd97991544c55e2a269fc3f4525c5c",
+    "scripts/combat-balance.mjs": "ca04b054bfbb9fb88827d778dfccb4b2a52ffffd7b685a0b3a6a4f4c7b808d5f"
+  },
+  "replications": 1000,
+  "rareReplications": 10000,
+  "seedStart": 0,
+  "models": [
+    {
+      "floor": 0.03,
+      "survival": "total",
+      "selection": "equal",
+      "densityScale": 100,
+      "weightStrength": 0.6931471805599453,
+      "id": "current",
+      "label": "CURRENT / BASELINE"
+    },
+    {
+      "floor": 0.03,
+      "survival": "density",
+      "selection": "equal",
+      "densityScale": 100,
+      "weightStrength": 0.6931471805599453,
+      "id": "normalized",
+      "label": "EXPERIMENTAL / normalized Survival — NOT BALANCED"
+    },
+    {
+      "floor": 0.03,
+      "survival": "total",
+      "selection": "weighted",
+      "densityScale": 100,
+      "weightStrength": 0.6931471805599453,
+      "id": "weighted",
+      "label": "EXPERIMENTAL / weighted selection"
+    },
+    {
+      "floor": 0.03,
+      "survival": "density",
+      "selection": "weighted",
+      "densityScale": 100,
+      "weightStrength": 0.6931471805599453,
+      "id": "normalized-weighted",
+      "label": "EXPERIMENTAL / normalized + weighted — NOT BALANCED"
+    }
+  ],
+  "scenarios": 102,
+  "rows": 408,
+  "evaluations": 696000,
+  "opposition": "Explicit scalar hostile Power; no opponent or winner inferred."
+}

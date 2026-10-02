@@ -22,6 +22,8 @@ export function aggregate(
   start = 0,
 ) {
   validateModel(model);
+  if (scenario.hostilePowers && (scenario.hostilePowers.length !== scenario.armies.length || scenario.hostilePowers.some(p => !Number.isFinite(p) || p < 0)))
+    throw Error("Controlled hostile Powers must match armies and be finite and nonnegative.");
   if (
     !Number.isSafeInteger(replications) ||
     replications < 1 ||
@@ -37,9 +39,9 @@ export function aggregate(
   );
   const top = Math.max(...powers),
     winner =
-      powers.filter((p) => p === top).length === 1 ? powers.indexOf(top) : null;
+      !scenario.hostilePowers && powers.filter((p) => p === top).length === 1 ? powers.indexOf(top) : null;
   const rows = scenario.armies.map((a, side) => {
-    const hostile = powers.reduce((n, p, i) => n + (i === side ? 0 : p), 0),
+    const hostile = scenario.hostilePowers?.[side] ?? powers.reduce((n, p, i) => n + (i === side ? 0 : p), 0),
       m = armyMetrics(a, hostile, model);
     const counts: number[] = [],
       byUnit = Object.fromEntries(unitKeys().map((k) => [k, 0]));
