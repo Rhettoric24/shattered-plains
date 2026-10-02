@@ -3,6 +3,6 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "edge-runtime",
-    include: ["outputs/**/*.test.js", "convex/**/*.test.ts", "conflict-board/**/*.test.ts"],
+    include: ["outputs/**/*.test.js", "convex/**/*.test.ts", "conflict-board/**/*.test.ts", "combat-balance/**/*.test.ts"],
   },
 });

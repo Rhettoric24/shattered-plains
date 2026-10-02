@@ -1,0 +1,84 @@
+{
+  "formatVersion": 1,
+  "sourceRevision": "d5ec7ed73532f73f661055e95f55fd6380bf4b85",
+  "sourceHashes": {
+    "convex/rules.ts": "11d31686330efc5ffd2a48ff69605fe9fb1183b052fc26b1c1badcecefe624ab",
+    "conflict-board/resolver.ts": "cb466b53fba0e3e9a11f63f3562802c93fa4f39b28fde3f125463a94397182d6",
+    "lab/scenarios.ts": "69018249dd159c1dad7ef5b47f78406cb86c5dbf0c3511eb96be439c14a0cb8c",
+    "combat-balance/models.ts": "69bf256a0a8494c1d130fc3b572ce8ce7bfb28afd106d0dbc8fefc50982ef14c",
+    "combat-balance/catalog.ts": "4cd77293c2368e55455ffdbfd40bbd66fd0fc3ae2239c1b06573ade36aa74551",
+    "combat-balance/aggregate.ts": "a21d2c6c9761ed21ce4f7bb7c23e5a707608bbc45d29fb9604b75b1ade153036",
+    "combat-balance/report.ts": "56fcb177e8cdb960892b8893a25ccd3b3948d23b151c19b6daaf79efd2a25ed1",
+    "combat-balance/run.ts": "6b6cc85b10d9fcfad46790089abd347f5fe03ede60ab7426037878011255b340"
+  },
+  "seedSchedule": "SHA256(combat-balance/v1|scenario|replication|side), same across variants",
+  "replications": 1000,
+  "shardReplications": 5000,
+  "seedStart": 0,
+  "scenarios": 45,
+  "models": [
+    {
+      "floor": 0.03,
+      "survival": "total",
+      "selection": "equal",
+      "densityScale": 100,
+      "weightStrength": 0.6931471805599453,
+      "id": "current",
+      "label": "CURRENT / BASELINE",
+      "family": "current"
+    },
+    {
+      "floor": 0.01,
+      "survival": "total",
+      "selection": "equal",
+      "densityScale": 100,
+      "weightStrength": 0.6931471805599453,
+      "id": "floor1",
+      "label": "EXPERIMENTAL / 1% floor",
+      "family": "floor1"
+    },
+    {
+      "floor": 0,
+      "survival": "total",
+      "selection": "equal",
+      "densityScale": 100,
+      "weightStrength": 0.6931471805599453,
+      "id": "floor0",
+      "label": "EXPERIMENTAL / 0% floor",
+      "family": "floor0"
+    },
+    {
+      "floor": 0.03,
+      "survival": "total",
+      "selection": "weighted",
+      "densityScale": 100,
+      "weightStrength": 0.6931471805599453,
+      "id": "weighted",
+      "label": "EXPERIMENTAL / weighted selection",
+      "family": "weighted"
+    },
+    {
+      "floor": 0.03,
+      "survival": "density",
+      "selection": "equal",
+      "densityScale": 100,
+      "weightStrength": 0.6931471805599453,
+      "id": "normalized",
+      "label": "EXPERIMENTAL / normalized Survival — NOT BALANCED",
+      "family": "normalized"
+    },
+    {
+      "floor": 0.03,
+      "survival": "density",
+      "selection": "weighted",
+      "densityScale": 100,
+      "weightStrength": 0.6931471805599453,
+      "id": "normalized-weighted",
+      "label": "EXPERIMENTAL / normalized + weighted — NOT BALANCED",
+      "family": "normalized-weighted"
+    }
+  ],
+  "battleReplications": 390000,
+  "armyEvaluations": 786000,
+  "aggregateRows": 546
+}
