@@ -1,3 +1,4 @@
+import { DEFAULT_CARGO_DROP_RATES } from "../conflict-board/cargo";
 import { cargoAmount, cargoCapacity, DEFAULT_TREASURY } from "../conflict-board/cargo";
 import { emptyUnits, totalUnits, unitKeys } from "../convex/rules";
 import { resolveCycle } from "../conflict-board/resolver";
@@ -125,7 +126,7 @@ function render() {
    )
    .join(
      "",
-   )}<label>Fake defender Treasury remaining<input id="treasury" type="number" min="0" value="${state.treasury ?? DEFAULT_TREASURY}"></label><label>Raid cap per objective per cycle<input id="raidCap" type="number" min="0" value="${config.raidCap ?? 100}"></label><button id="config">Apply constants</button><p class="muted">Bridge Engineering is excluded from tactical Speed only. The comparison travel Speed retains it. Existing casualty rounding, troop selection and final loss cap are reused.</p></section></div></div><dialog id="armyDialog" aria-labelledby="armyTitle"></dialog>`;
+   )}<h3>Defeat cargo drop percentages</h3><p>Winner / loser Power before casualties. Applies to both combat models. Ties drop no defeat percentage; annihilation always drops 100%.</p>${["1×–<1.5×","1.5×–<2×","2×–<3×","3×+"].map((label,i)=>`<label>${label} cargo dropped (%)<input id="cargoDrop-${i}" type="number" min="0" max="100" step="0.1" value="${(config.cargoDropRates ?? DEFAULT_CARGO_DROP_RATES)[i]*100}"></label>`).join("")}<button id="resetCargoDrops">Reset cargo percentages</button><label>Fake defender Treasury remaining<input id="treasury" type="number" min="0" value="${state.treasury ?? DEFAULT_TREASURY}"></label><label>Raid cap per objective per cycle<input id="raidCap" type="number" min="0" value="${config.raidCap ?? 100}"></label><button id="config">Apply constants</button><p class="muted">Bridge Engineering is excluded from tactical Speed only. The comparison travel Speed retains it. Existing casualty rounding, troop selection and final loss cap are reused.</p></section></div></div><dialog id="armyDialog" aria-labelledby="armyTitle"></dialog>`;
   document.querySelectorAll<HTMLButtonElement>("[data-formation]").forEach(
     (b) =>
       (b.onclick = () => {
@@ -304,9 +305,14 @@ function render() {
       k.research[id] = Number(value(`research-${id}`));
     render();
   });
+  action("resetCargoDrops", () => {
+    config.cargoDropRates = [...DEFAULT_CARGO_DROP_RATES];
+    render();
+  });
   action("config", () => {
     const next = structuredClone(config);
     next.raidCap = Number(value("raidCap"));
+    next.cargoDropRates = [0,1,2,3].map(i => value(`cargoDrop-${i}`).trim() === "" ? NaN : Number(value(`cargoDrop-${i}`))/100) as [number,number,number,number];
     for (const k of Object.keys(
       next.specialization,
     ) as (keyof typeof next.specialization)[])

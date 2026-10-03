@@ -71,6 +71,7 @@ function random(seed: string) {
 }
 function validate(input: CycleInput) {
   const { state, config, cycle } = input;
+  if (config.cargoDropRates !== undefined && (!Array.isArray(config.cargoDropRates) || config.cargoDropRates.length !== 4 || !config.cargoDropRates.every(n => Number.isFinite(n) && n >= 0 && n <= 1))) throw Error("Cargo drop percentages must each be between 0 and 100.");
   if (
     config.combatModel !== undefined &&
     !["current", "experimental-survival"].includes(config.combatModel)
@@ -450,6 +451,7 @@ function movementStep(
       winner,
       events,
       new Map(powers.map((p) => [p.kingdom, p.power])),
+      input.config.cargoDropRates,
     );
     const annihilated =
       winner !== null &&
