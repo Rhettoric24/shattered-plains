@@ -5,6 +5,7 @@ import {
   combineCargo,
   limitCargo,
   settleCargo,
+  settleUnclaimed,
 } from "./cargo";
 import {
   addUnits,
@@ -97,13 +98,10 @@ function validate(input: CycleInput) {
     ...state.formations,
     ...state.arrivals.map((a) => a.formation),
   ])
-    for (const [owner, amount] of Object.entries(f.cargo ?? {}))
-      if (
-        !state.kingdoms.some((k) => k.id === owner) ||
-        !Number.isFinite(amount) ||
-        amount < 0
-      )
-        throw Error("Invalid cargo.");
+    for (const amount of Object.values(
+      typeof f.cargo === "number" ? { amount: f.cargo } : (f.cargo ?? {}),
+    ))
+      if (!Number.isFinite(amount) || amount < 0) throw Error("Invalid cargo.");
   const unique = (ids: string[]) =>
     ids.every(Boolean) && new Set(ids).size === ids.length;
   if (
@@ -446,7 +444,13 @@ function movementStep(
         }
       }
     }
-    battleCargo(state, local, winner, events);
+    battleCargo(
+      state,
+      local,
+      winner,
+      events,
+      new Map(powers.map((p) => [p.kingdom, p.power])),
+    );
     const annihilated =
       winner !== null &&
       !totalUnits(forces.find((f) => f.kingdom === winner)!.survivors);
@@ -673,6 +677,7 @@ export function resolveCycle(input: CycleInput): CycleResult {
       state.objective.hold.beganCycle < input.cycle
     ) {
       state.objective.conqueredBy = controller;
+      settleUnclaimed(state, events);
       events.push({ type: "conquest", kingdom: controller });
     } else if (!state.objective.hold) {
       state.objective.hold = { kingdom: controller, beganCycle: input.cycle };

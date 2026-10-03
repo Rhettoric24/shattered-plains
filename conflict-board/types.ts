@@ -28,7 +28,8 @@ export type Order = {
   paused?: boolean;
 };
 export type Formation = {
-  cargo?: Record<string, number>;
+  /** Legacy source maps are accepted on load; new cargo is owner-agnostic. */
+  cargo?: number | Record<string, number>;
   id: string;
   name: string;
   kingdom: string;
@@ -53,6 +54,7 @@ export type ConflictState = {
   treasury?: number;
   recovered?: number;
   cargoLost?: number;
+  cargoDestroyed?: number;
   id: string;
   cycle: number;
   board: Board;
@@ -105,10 +107,19 @@ export type Event =
   | {
       type: "cargo";
       action:
-        "lost" | "captured" | "annihilated" | "routed" | "banked" | "recovered";
+        | "lost"
+        | "dropped"
+        | "destroyed"
+        | "captured"
+        | "annihilated"
+        | "routed"
+        | "banked"
+        | "recovered";
       formation: string;
       amount: number;
-      cargo: Record<string, number>;
+      kingdom?: string;
+      ratio?: number;
+      dropRate?: number;
       reason: string;
     }
   | {

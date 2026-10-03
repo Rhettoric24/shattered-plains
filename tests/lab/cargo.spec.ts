@@ -22,7 +22,7 @@ test("raid cargo survives browser save and escape banks it", async ({
   await page.locator('[data-formation="Chull company"]').click();
   await expect(page.locator("#cargoInfo")).toContainText("Cargo: 100 / 915");
   await expect(page.locator("#cargoInfo")).toContainText(
-    "originally belonging to red",
+    "Owner-agnostic Spheres",
   );
   await page.locator("#split").click();
   await expect(page.locator("#armyError")).toContainText("carrying Raid cargo");
