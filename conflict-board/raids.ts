@@ -102,9 +102,7 @@ export function finishRaids(
       config.raidCap ?? 100,
       state.treasury,
     );
-    force.cargo ??= {};
-    force.cargo[state.originalOwner] =
-      (force.cargo[state.originalOwner] ?? 0) + value;
+    force.cargo = cargoAmount(force) + value;
     state.treasury -= value;
     if (!value)
       events.push({

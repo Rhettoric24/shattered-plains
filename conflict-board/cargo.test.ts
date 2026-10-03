@@ -1,7 +1,13 @@
 import { expect, it } from "vitest";
 import { emptyUnits } from "../convex/rules";
 import { scenario, defaults } from "../lab/scenarios";
-import { battleCargo, cargoAmount, limitCargo, settleCargo } from "./cargo";
+import {
+  battleCargo,
+  cargoAmount,
+  limitCargo,
+  settleCargo,
+  defeatCargoRate,
+} from "./cargo";
 import { resolveCycle } from "./resolver";
 import { approveRoute, splitFormation } from "./planning";
 import type { Event } from "./types";
@@ -51,18 +57,18 @@ it("cargo prevents splitting; escape banks automatically and clears cargo", () =
   expect(cargoAmount(s.formations[0])).toBe(0);
   expect(s.raidValues?.blue).toBe(100);
 });
-it("capacity overflow is lost proportionally, preserving provenance", () => {
+it("capacity overflow is unclaimed and legacy provenance is discarded", () => {
   const s = ready(),
     f = s.formations[0],
     events: Event[] = [];
   f.units = { ...emptyUnits(), spearman: 10 };
   f.cargo = { red: 80, green: 20 };
   limitCargo(s, f, events, "test");
-  expect(f.cargo).toEqual({ red: 4, green: 1 });
+  expect(f.cargo).toBe(5);
   expect(s.cargoLost).toBe(95);
 });
 it.each(["blue", "green", "red"])(
-  "annihilation transfers original provenance to single %s winner up to capacity",
+  "annihilation transfers owner-agnostic cargo to %s winner up to capacity",
   (kingdom) => {
     const s = ready(),
       dead = s.formations[0],
@@ -76,8 +82,17 @@ it.each(["blue", "green", "red"])(
       units: { ...emptyUnits(), spearman: 40 },
       cargo: {},
     };
-    battleCargo(s, [dead, winner], kingdom, events);
-    expect(winner.cargo).toEqual({ red: 20 });
+    battleCargo(
+      s,
+      [dead, winner],
+      kingdom,
+      events,
+      new Map([
+        [kingdom, 100],
+        ["blue", 1],
+      ]),
+    );
+    expect(winner.cargo).toBe(20);
     expect(cargoAmount(dead)).toBe(0);
     expect(s.cargoLost).toBe(80);
     winner.position = "approach";
@@ -86,7 +101,7 @@ it.each(["blue", "green", "red"])(
     else expect(cargoAmount(winner)).toBe(20);
   },
 );
-it("ambiguous winning detachments or ties lose annihilated cargo", () => {
+it("winning detachments pool capacity; ties leave annihilated cargo unclaimed", () => {
   for (const winner of [null, "green"]) {
     const s = ready(),
       dead = s.formations[0];
@@ -99,11 +114,20 @@ it("ambiguous winning detachments or ties lose annihilated cargo", () => {
       units: { ...emptyUnits(), spearman: 100 },
       cargo: {},
     };
-    battleCargo(s, [dead, a, { ...a, id: "b" }], winner, []);
-    expect(s.cargoLost).toBe(10);
+    battleCargo(
+      s,
+      [dead, a, { ...a, id: "b" }],
+      winner,
+      [],
+      new Map([
+        ["green", 200],
+        ["blue", 1],
+      ]),
+    );
+    expect(s.cargoLost ?? 0).toBe(winner ? 0 : 10);
   }
 });
-it("defender recovers only original-owner cargo at controlled post, not reserve/enemy post", () => {
+it("defender deposits all cargo at controlled post, not reserve/enemy post", () => {
   const s = ready(),
     f = s.formations[0];
   f.kingdom = "red";
@@ -112,13 +136,13 @@ it("defender recovers only original-owner cargo at controlled post, not reserve/
     f.position = position;
     s.objective.controller = "blue";
     settleCargo(s, [f], []);
-    expect(f.cargo.red).toBe(40);
+    expect(cargoAmount(f)).toBe(43);
   }
   s.objective.controller = "red";
   settleCargo(s, [f], []);
-  expect(f.cargo).toEqual({ green: 3 });
-  expect(s.treasury).toBe(50040);
-  expect(s.recovered).toBe(40);
+  expect(f.cargo).toBe(0);
+  expect(s.treasury).toBe(50043);
+  expect(s.recovered).toBe(43);
 });
 it("empty Command Post stays controlled and defender arrivals land there", () => {
   let s = scenario();
@@ -146,7 +170,7 @@ it("friendly merges conserve cargo and route preferences", () => {
   s.formations.push(friend);
   const r = run(s);
   expect(r.state.formations).toHaveLength(1);
-  expect(r.state.formations[0].cargo).toEqual({ green: 30, red: 20 });
+  expect(r.state.formations[0].cargo).toBe(50);
   expect(run({ ...s, formations: [...s.formations].reverse() })).toEqual(r);
 });
 it("routed survivors retain cargo and cannot Raid", () => {
@@ -165,12 +189,10 @@ it("routed survivors retain cargo and cannot Raid", () => {
   approveRoute(s.board, enemy, ["A1"], "pause");
   s.formations.push(enemy);
   const r = run(s);
-  expect(r.state.formations.find((g) => g.id === f.id)?.cargo).toEqual({
-    red: 100,
-  });
+  expect(cargoAmount(r.state.formations.find((g) => g.id === f.id)!)).toBe(0);
   expect(r.events.some((e) => e.type === "raid")).toBe(false);
   expect(r.events).toContainEqual(
-    expect.objectContaining({ type: "cargo", action: "routed", amount: 100 }),
+    expect.objectContaining({ type: "cargo", action: "captured", amount: 100 }),
   );
 });
 it.each(["current", "experimental-survival"] as const)(
@@ -202,9 +224,7 @@ it.each(["current", "experimental-survival"] as const)(
       const r = resolveCycle(input);
       if (!r.state.formations.some((g) => g.id === f.id)) {
         captured = true;
-        expect(r.state.formations.find((g) => g.id === "enemy")!.cargo).toEqual(
-          { red: 1 },
-        );
+        expect(r.state.formations.find((g) => g.id === "enemy")!.cargo).toBe(1);
         expect(r.events).toContainEqual(
           expect.objectContaining({
             type: "cargo",
@@ -249,5 +269,8 @@ it("actual casualties trim cargo before a surviving loser retreats", () => {
   const survivor = r.state.formations.find((g) => g.id === f.id)!;
   expect(cargoAmount(survivor)).toBe(survivor.units.bridgeman);
   expect(cargoAmount(survivor)).toBeLessThan(100);
-  expect(r.state.cargoLost! + cargoAmount(survivor)).toBe(100);
+  expect(
+    (r.state.cargoLost ?? 0) +
+      r.state.formations.reduce((n, f) => n + cargoAmount(f), 0),
+  ).toBe(100);
 });

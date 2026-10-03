@@ -116,7 +116,7 @@ describe("Raid V1", () => {
         cycle: 2,
       }),
     ]);
-    expect(r.state.formations[0].cargo?.red).toBe(100);
+    expect(r.state.formations[0].cargo).toBe(100);
     expect(r.state.raidValues?.blue ?? 0).toBe(0);
   });
   it("uses actual Plunder when below cap", () => {
@@ -141,7 +141,7 @@ describe("Raid V1", () => {
   it("raids repeatedly without reissuing the order", () => {
     const first = run(ready());
     const second = run(first.state);
-    expect(second.state.formations[0].cargo?.red).toBe(200);
+    expect(second.state.formations[0].cargo).toBe(200);
     expect(second.state.raidFootholds?.A1.establishedCycle).toBe(1);
   });
   it.each([1, 30])("failed %s-Power attacks do not interrupt Raid", (power) => {
