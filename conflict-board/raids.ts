@@ -1,3 +1,4 @@
+import { cargoAmount, DEFAULT_TREASURY } from "./cargo";
 import { totalUnits, unitPlunder } from "../convex/rules";
 import type { ConflictState, Event, Formation, ResolverConfig } from "./types";
 
@@ -95,9 +96,29 @@ export function finishRaids(
       force.units,
       state.kingdoms.find((k) => k.id === force.kingdom)!.research,
     );
-    const value = Math.min(Math.max(0, plunder), config.raidCap ?? 100);
-    state.raidValues[force.kingdom] =
-      (state.raidValues[force.kingdom] ?? 0) + value;
+    state.treasury ??= DEFAULT_TREASURY;
+    const value = Math.min(
+      Math.max(0, plunder - cargoAmount(force)),
+      config.raidCap ?? 100,
+      state.treasury,
+    );
+    force.cargo ??= {};
+    force.cargo[state.originalOwner] =
+      (force.cargo[state.originalOwner] ?? 0) + value;
+    state.treasury -= value;
+    if (!value)
+      events.push({
+        type: "raidFailed",
+        position: position.id,
+        formation: force.id,
+        cycle,
+        reason:
+          state.treasury === 0
+            ? "Defender Treasury empty."
+            : cargoAmount(force) >= plunder
+              ? "Cargo capacity reached."
+              : "Raid cap is zero.",
+      });
     events.push({
       type: "raid",
       position: position.id,
@@ -106,6 +127,9 @@ export function finishRaids(
       formation: force.id,
       plunder,
       value,
+      treasuryRemaining: state.treasury,
+      carried: cargoAmount(force),
+      capacityReached: cargoAmount(force) >= plunder,
       cycle,
     });
   }

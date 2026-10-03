@@ -1,3 +1,4 @@
+import { cargoAmount, cargoCapacity, DEFAULT_TREASURY } from "../conflict-board/cargo";
 import { emptyUnits, totalUnits, unitKeys } from "../convex/rules";
 import { resolveCycle } from "../conflict-board/resolver";
 import { formationStats } from "../conflict-board/stats";
@@ -60,7 +61,7 @@ function render() {
   const f = formation();
   $("app").innerHTML =
     `<header><h1>Conflict Board Resolution Lab</h1><p class="muted">Local experiments · fake armies · no Convex traffic · experimental rules, not live sieges</p><label>Combat model<select id="combatModel">${option("current", "Current · reference", config.combatModel ?? "current")}${option("experimental-survival", "Experimental Survival · normalized + weighted", config.combatModel)}</select></label><p id="combatModelStatus"><strong>${modelName(config.combatModel)}</strong> · ${config.combatModel === "experimental-survival" ? "Survival = 100 × researched Survival / troops; weighted individual losses. Fixed 3% floor, 25% factor, 80% base cap, 95% final cap; no Survival cap. Current debug casualty settings are ignored." : "Existing total Survival and equal individual casualty selection. Reference defaults include the 3% floor; scientist constants remain available."} Changes apply to future battles only. Load the same preset and seed to compare.</p></header>
- <section><div class="row"><label>Scenario<select id="preset">${presetNames.map((n) => option(n, n)).join("")}</select></label><label>Casualty seed<input id="seed" value="playtest"></label></div><button id="reset">Load preset</button><button id="save">Save in this browser</button><button id="load">Load saved</button><button id="resolve">Resolve Next Cycle</button><p id="status">Cycle ${state.cycle} · legal owner: ${escape(state.originalOwner)} · Command Post: ${escape(state.objective.controller ?? "empty")}${state.objective.hold ? ` · hold began cycle ${state.objective.hold.beganCycle}` : ""}${state.objective.conqueredBy ? ` · CONQUEST: ${escape(state.objective.conqueredBy)}` : ""}</p><p id="error" class="error" role="alert"></p></section>
+ <section><div class="row"><label>Scenario<select id="preset">${presetNames.map((n) => option(n, n)).join("")}</select></label><label>Casualty seed<input id="seed" value="playtest"></label></div><button id="reset">Load preset</button><button id="save">Save in this browser</button><button id="load">Load saved</button><button id="resolve">Resolve Next Cycle</button><p id="status">Cycle ${state.cycle} · legal owner: ${escape(state.originalOwner)} · Command Post: ${escape(state.objective.controller ?? "empty")}${state.objective.hold ? ` · hold began cycle ${state.objective.hold.beganCycle}` : ""}${state.objective.conqueredBy ? ` · CONQUEST: ${escape(state.objective.conqueredBy)}` : ""}</p><div id="cargoSummary"><strong>Fake defender Treasury: ${state.treasury ?? DEFAULT_TREASURY}</strong><p>Recovered: ${state.recovered ?? 0} · Lost: ${state.cargoLost ?? 0}</p>${state.kingdoms.map(k => `<p>${escape(k.name)} · carried ${state.formations.filter(f => f.kingdom === k.id).reduce((sum,f) => sum+cargoAmount(f),0)} · banked ${state.raidValues?.[k.id] ?? 0}</p>`).join("")}</div><p id="error" class="error" role="alert"></p></section>
  <div class="layout"><div><section id="battlefield"><h2>Battlefield · Center = Conquest / Flanks = Raid</h2><p class="muted">Tap an army to command it. Move: tap connected positions, then Confirm. Only B1 connects to the Command Post.</p><p class="legend">● Current · <span class="forward-key">→ Approved</span> · <span class="history-key">↶ Retreat</span> · <span class="draft-key">◇ Proposed</span></p><div id="routeBuilder" hidden><strong id="routeTitle"></strong><p id="proposedPath"></p><p id="routeError" class="error" role="alert"></p><button id="clearRoute">Clear</button><button id="cancelRoute">Cancel</button><button id="confirmRoute">Confirm route</button></div><div class="board">${[
    ...state.board.positions,
  ]
@@ -71,7 +72,7 @@ function render() {
          .filter((g) => g.position === p.id)
          .map(
            (g) =>
-             `<button class="army" data-formation="${escape(g.id)}" style="border-color:${state.kingdoms.find((k) => k.id === g.kingdom)!.color}">${escape(g.name)} · ${totalUnits(g.units)} troops<br>${formationStats(g.units, state.kingdoms.find((k) => k.id === g.kingdom)!.research, config).specialization} · P ${formationStats(g.units, state.kingdoms.find((k) => k.id === g.kingdom)!.research, config).power}</button>`,
+             `<button class="army" data-formation="${escape(g.id)}" style="border-color:${state.kingdoms.find((k) => k.id === g.kingdom)!.color}">${escape(g.name)} · ${totalUnits(g.units)} troops · cargo ${cargoAmount(g)}<br>${formationStats(g.units, state.kingdoms.find((k) => k.id === g.kingdom)!.research, config).specialization} · P ${formationStats(g.units, state.kingdoms.find((k) => k.id === g.kingdom)!.research, config).power}</button>`,
          )
          .join("")}</div>`,
    )
@@ -88,7 +89,7 @@ function render() {
          .join("")
      : "Issue an order, then resolve a cycle."
  }</div></section></div>
- <div><div id="armyPanel"><section><button id="closeArmy" ${inspectorOpen ? "" : "hidden"}>Close army panel</button><h2 id="armyTitle">Army workshop · ${escape(f?.name ?? "New army")}</h2><p>Standing order: <strong>${escape(f?.order.kind ?? "hold")}</strong></p><button id="moveArmy">Move · draw route</button><button id="raidArmy" ${canOrderRaid(f) ? "" : "disabled"}>Raid</button><p id="raidHint">${raidHint(f)}</p><label>Formation<select id="formation">${state.formations.map((g) => option(g.id, g.name, selected)).join("")}</select></label><label>Name<input id="name" value="${escape(f?.name ?? "New army")}"></label><div class="row"><label>Kingdom<select id="kingdom">${state.kingdoms.map((k) => option(k.id, k.name, f?.kingdom)).join("")}</select></label><label>Position<select id="position">${state.board.positions.map((p) => option(p.id, p.name, f?.position)).join("")}</select></label></div><div class="units">${unitKeys()
+ <div><div id="armyPanel"><section><button id="closeArmy" ${inspectorOpen ? "" : "hidden"}>Close army panel</button><h2 id="armyTitle">Army workshop · ${escape(f?.name ?? "New army")}</h2><p id="cargoInfo">Cargo: ${f ? cargoAmount(f) : 0} / ${f ? cargoCapacity(state,f) : 0}<br>${Object.entries(f?.cargo ?? {}).map(([owner,n]) => `${n} Spheres originally belonging to ${escape(owner)}`).join("<br>")}</p><p>Standing order: <strong>${escape(f?.order.kind ?? "hold")}</strong></p><button id="moveArmy">Move · draw route</button><button id="raidArmy" ${canOrderRaid(f) ? "" : "disabled"}>Raid</button><p id="raidHint">${raidHint(f)}</p><label>Formation<select id="formation">${state.formations.map((g) => option(g.id, g.name, selected)).join("")}</select></label><label>Name<input id="name" value="${escape(f?.name ?? "New army")}"></label><div class="row"><label>Kingdom<select id="kingdom">${state.kingdoms.map((k) => option(k.id, k.name, f?.kingdom)).join("")}</select></label><label>Position<select id="position">${state.board.positions.map((p) => option(p.id, p.name, f?.position)).join("")}</select></label></div><div class="units">${unitKeys()
    .map(
      (k) =>
        `<label>${k}<input id="unit-${k}" type="number" min="0" step="1" value="${f?.units[k] ?? 0}"></label>`,
@@ -124,7 +125,7 @@ function render() {
    )
    .join(
      "",
-   )}<label>Raid cap per objective per cycle<input id="raidCap" type="number" min="0" value="${config.raidCap ?? 100}"></label><button id="config">Apply constants</button><p class="muted">Bridge Engineering is excluded from tactical Speed only. The comparison travel Speed retains it. Existing casualty rounding, troop selection and final loss cap are reused.</p></section></div></div><dialog id="armyDialog" aria-labelledby="armyTitle"></dialog>`;
+   )}<label>Fake defender Treasury remaining<input id="treasury" type="number" min="0" value="${state.treasury ?? DEFAULT_TREASURY}"></label><label>Raid cap per objective per cycle<input id="raidCap" type="number" min="0" value="${config.raidCap ?? 100}"></label><button id="config">Apply constants</button><p class="muted">Bridge Engineering is excluded from tactical Speed only. The comparison travel Speed retains it. Existing casualty rounding, troop selection and final loss cap are reused.</p></section></div></div><dialog id="armyDialog" aria-labelledby="armyTitle"></dialog>`;
   document.querySelectorAll<HTMLButtonElement>("[data-formation]").forEach(
     (b) =>
       (b.onclick = () => {
@@ -319,6 +320,9 @@ function render() {
           : Number(value(`casualty-${k}`));
     const probe = scenario();
     resolveCycle({ state: probe, cycle: 1, seed: "validate", config: next });
+    const treasury = Number(value("treasury"));
+    if (!Number.isFinite(treasury) || treasury < 0) throw Error("Treasury must be nonnegative and finite.");
+    state.treasury = treasury;
     config = next;
     render();
   });
@@ -427,10 +431,10 @@ function raidHint(f: Formation | undefined) {
 }
 function raidStatus(id: string) {
   const h = state.raidFootholds?.[id];
-  if (!h) return '<p class="raid-status">No established foothold</p>';
+  if (!h) return `<p class="raid-status">No established foothold · Cap ${config.raidCap ?? 100} · Treasury ${state.treasury ?? DEFAULT_TREASURY}</p>`;
   const name =
     state.kingdoms.find((k) => k.id === h.kingdom)?.name ?? h.kingdom;
-  return `<p class="raid-status">${escape(name)} · ${h.kingdom === state.originalOwner ? "Defending" : h.establishedCycle === state.cycle ? "Foothold · Raid available next resolution" : "RAID-READY"}<br>Lab Raid total: ${state.raidValues?.[h.kingdom] ?? 0}</p>`;
+  return `<p class="raid-status">${escape(name)} · ${h.kingdom === state.originalOwner ? "Defending" : h.establishedCycle === state.cycle ? "Foothold · Raid available next resolution" : "RAID-READY"}<br>Cap: ${config.raidCap ?? 100} · Treasury: ${state.treasury ?? DEFAULT_TREASURY} · Banked: ${state.raidValues?.[h.kingdom] ?? 0}</p>`;
 }
 function paintBoard() {
   const f = formation();
@@ -494,6 +498,8 @@ function statsPreview() {
 }
 function describe(e: CycleResult["events"][number]) {
   switch (e.type) {
+    case "cargo":
+      return `${escape(e.formation)} · cargo ${e.action}: ${e.amount}. ${escape(e.reason)}`;
     case "raidFoothold":
       return `${escape(e.kingdom)} established a foothold at ${escape(e.position)}. Raid available next resolution if control is retained.`;
     case "raidReady":
@@ -503,7 +509,7 @@ function describe(e: CycleResult["events"][number]) {
     case "raidFailed":
       return `${escape(e.formation)} could not Raid ${escape(e.position)}: ${escape(e.reason)}`;
     case "raid":
-      return `${escape(e.kingdom)} raided ${escape(e.target)} at ${escape(e.position)}. Plunder: ${e.plunder}. Lab Raid value: ${e.value}.`;
+      return `${escape(e.kingdom)} raided ${escape(e.target)} at ${escape(e.position)}. Plunder: ${e.plunder}. Extracted ${e.value} into carried cargo; fake Treasury reduced by ${e.value} (remaining ${e.treasuryRemaining ?? "legacy"}). ${e.capacityReached ? "Cargo capacity reached. " : ""}Escape to staging to bank it.`;
     case "battle":
       return `[${modelName(e.combatModel)}] ${escape(e.position)}: ${e.forces.map((f) => `${escape(f.kingdom)} P ${f.power} faces ${f.hostilePower}; loses ${totalUnits(f.casualties)} (${(f.finalRate * 100).toFixed(1)}% rate). Casualties: ${unitKeys().filter(k => f.casualties[k] + f.survivors[k] > 0).map(k => `${escape(k)} ${f.casualties[k]}/${f.casualties[k]+f.survivors[k]}`).join(", ")} (lost/starting)`).join(" · ")}. ${e.annihilated ? "Nominal winner annihilated; no controller." : e.winner ? `${escape(e.winner)} wins.` : "Highest Power tied; everyone retreats."}`;
     case "move":

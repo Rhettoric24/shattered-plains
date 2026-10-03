@@ -56,7 +56,7 @@ function ready() {
 const payouts = (r: ReturnType<typeof run>) =>
   r.events.filter((e) => e.type === "raid");
 
-describe("Raid V0", () => {
+describe("Raid V1", () => {
   it("an old occupier dying while a fresh friendly entrant wins still breaks continuity", () => {
     let found = false;
     for (let seed = 0; seed < 100 && !found; seed++) {
@@ -116,7 +116,8 @@ describe("Raid V0", () => {
         cycle: 2,
       }),
     ]);
-    expect(r.state.raidValues?.blue).toBe(100);
+    expect(r.state.formations[0].cargo?.red).toBe(100);
+    expect(r.state.raidValues?.blue ?? 0).toBe(0);
   });
   it("uses actual Plunder when below cap", () => {
     const s = ready();
@@ -140,7 +141,7 @@ describe("Raid V0", () => {
   it("raids repeatedly without reissuing the order", () => {
     const first = run(ready());
     const second = run(first.state);
-    expect(second.state.raidValues?.blue).toBe(200);
+    expect(second.state.formations[0].cargo?.red).toBe(200);
     expect(second.state.raidFootholds?.A1.establishedCycle).toBe(1);
   });
   it.each([1, 30])("failed %s-Power attacks do not interrupt Raid", (power) => {

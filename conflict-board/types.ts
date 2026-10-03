@@ -28,6 +28,7 @@ export type Order = {
   paused?: boolean;
 };
 export type Formation = {
+  cargo?: Record<string, number>;
   id: string;
   name: string;
   kingdom: string;
@@ -49,6 +50,9 @@ export type Objective = {
   conqueredBy?: string;
 };
 export type ConflictState = {
+  treasury?: number;
+  recovered?: number;
+  cargoLost?: number;
   id: string;
   cycle: number;
   board: Board;
@@ -99,6 +103,15 @@ export type BattleForce = {
 };
 export type Event =
   | {
+      type: "cargo";
+      action:
+        "lost" | "captured" | "annihilated" | "routed" | "banked" | "recovered";
+      formation: string;
+      amount: number;
+      cargo: Record<string, number>;
+      reason: string;
+    }
+  | {
       type: "raidFoothold" | "raidReady" | "raidBroken";
       position: string;
       kingdom: string;
@@ -119,6 +132,9 @@ export type Event =
       formation: string;
       plunder: number;
       value: number;
+      treasuryRemaining?: number;
+      carried?: number;
+      capacityReached?: boolean;
       cycle: number;
     }
   | { type: "move"; step: number; formation: string; from: string; to: string }

@@ -35,13 +35,27 @@ Each cycle:
 7. Auto-merge same kingdom/position. Preserve explicit nominated source; otherwise a unique stationary resident; otherwise identical histories/orders; otherwise Hold with the current node as a fresh retreat root. No database/ID initiative chooses strategic routes. Temporary groups stay distinct until this point so merging cannot carry slow or already-fought troops into a second move.
 8. Resolve eligible Raid orders against uninterrupted flank footholds, using surviving troops after combat/merges. Then an enemy end-of-cycle Post occupant starts a hold. Maintaining Post control through the next complete cycle marks conquest. Any displacement breaks it, including step-one loss followed by step-two recapture. An unsuccessful attack does not. Legal owner stays separate; no real ownership transfer. A conquered scenario must be reset before more cycles.
 
-### Raid V0: center = conquest, flanks = Raid
+### Raid V1: carried loot (Lab only)
 
 West Raid occupies **A1**, East Raid **C1**; graph connections are unchanged. Position metadata (`objective: "raid"`), not those labels, drives Raid rules. The Command Post remains the only conquest objective. New presets: **Center vs flanks**, **Chull raid**, and **Raid under attack**.
 
 An outside kingdom must end a resolution controlling a Raid objective. It may then choose **Raid** for the subsequent resolution. Arrival never pays automatically, including Speed's second step. Hold and Move never pay. An active Raid order repeats each resolution while uninterrupted control remains; it does not require Plunder specialization. The original defender cannot raid itself.
 
-Value per flank per cycle is **min(surviving merged formation's nonnegative Plunder, Raid cap)**. The default editable cap is **100**, and Research affects Plunder through the existing calculation. Values accumulate per kingdom in local Lab state; they are not Spheres and do not interact with any treasury, legal ownership or season score.
+Extraction per flank per cycle is **min(max(0, surviving Plunder − carried cargo), Raid cap, fake Treasury remaining)**. The existing editable cap stays **100** (the brief mentioned 20,000, but this checkout used 100). The original defender starts with **50,000 fake Spheres**, editable as remaining Treasury in scientist controls. Research affects capacity through existing Plunder. Extraction reduces Treasury and attaches cargo to the formation; it does not bank value.
+
+Cargo is an amount per original source kingdom, not individual items. Splitting with any cargo is rejected. Friendly merges sum cargo and retain provenance; capacity is recalculated. Surviving carriers lose capacity overflow proportionally across sources, then retain the remainder even if routed. Overflow disappears, never returns to Treasury.
+
+After all casualty rolls at a position, annihilated carriers' cargo goes to the **single surviving winning formation**, up to its remaining capacity. Existing cargo has priority over salvage. Ties, an annihilated winner, or multiple surviving winning detachments lose salvage rather than choosing by ID. Captured cargo keeps its original owner through third-party capture. Fractional amounts are retained (Plunder can already be fractional); multi-source overflow is proportional. No ground loot or transfer UI.
+
+After control and retreats settle **at each movement substep**, outside armies at Approach automatically bank cargo into `raidValues` and clear it. Original-defender armies at a defender-controlled Command Post restore only cargo sourced from that defender to Treasury and increment `recovered`. Reserve is not a drop-off. This happens before the next substep and before flank extraction; newly extracted cargo cannot bank that cycle. A routed army reaching staging banks normally.
+
+Cycle order: validate/clone and clamp preexisting capacity (including debug edits) → arrivals → movement step one → simultaneous casualties → survivor overflow and annihilation capture → control/readiness observation → retreats → control/readiness observation → bank/recover → same sequence for Speed step two → friendly merges/capacity check → flank extraction → conquest bookkeeping.
+
+**Command Post discrepancy resolved explicitly:** the checkout previously neutralized an empty Post. V1 retains control when an occupier simply leaves; a defeated/annihilated incumbent still loses control, and a new surviving occupant takes it. Empty defender-controlled Post still receives reinforcements. Existing conquest hold timing is unchanged.
+
+**Temporary deterministic choices:** if both flanks exhaust a shared Treasury in one cycle, sorted objective ID order allocates the remainder (A1 before C1 on this prototype). Cargo on a destroyed winning detachment can be salvaged by its sole surviving local comrade. Ambiguous recipients lose salvage. Scientist removal discards the removed army's cargo; editing an army preserves cargo and capacity is enforced on resolution. Old V0 saves keep historical `raidValues` as already-banked value, default to 50,000 remaining fake Treasury, and acquire no retroactive cargo; reset a preset for a fresh V1 experiment.
+
+The summary shows Treasury, carried/banked value per kingdom, recovered value and lost cargo. Army cards show carried amounts; the selected army shows capacity and provenance. Journal events explain extraction, full/empty limits, annihilation, capture, overflow, routed cargo, banking and recovery. All saves stay browser-local. None of these numbers touch the real economy.
 
 `raidFootholds[position]` stores kingdom, establishment cycle, and occupying formation IDs. Each movement/combat/retreat boundary checks that at least one previously occupying formation remains alive, in place and unrouted. Friendly overlap extends the occupant set. Splits propagate membership; final merges rebind identity without restarting the foothold. Replacing all occupiers breaks continuity even if the kingdom color stays the same, including an old occupier dying while a new friendly entrant wins the battle. Losing and retaking in a later substep also resets readiness. Failed enemy attacks do **not** reset it.
 
@@ -57,7 +71,7 @@ Experimental keeps the fixed 25% base factor, 3% minimum, 80% maximum base rate,
 
 Every preset works under either model; loading a preset retains the selection. Use the same preset and seed for comparison. Switching midway affects future battles only, not previous outcomes. The journal labels each battle's actual model and shows per-type `lost/starting` counts, including zero losses for participating unit types. Saves retain the selection; older saves without it load as Current.
 
-`conflict-board/experimental-survival.ts` carries only the browser-safe experimental calculation from `combat-balance/models.ts` at analysis commit `45733e7`, with no CLI/report imports. `survival-harness-fixtures.json` contains 162 exact harness outputs across size, research, Shardbearer and zero-Power cases (three seeds each). `current-lab-fixtures.json` contains 116 cycle hashes from the unchanged resolver at `d5ec7ed`, covering all presets and two seeds, up to four cycles or conquest. Tests verify the port against the former and Current against the latter, excluding only the newly added battle-model label. Neither the analysis branch nor its report corpus was merged into this Lab branch.
+`conflict-board/experimental-survival.ts` carries only the browser-safe experimental calculation from `combat-balance/models.ts` at analysis commit `45733e7`, with no CLI/report imports. `survival-harness-fixtures.json` contains 162 exact harness outputs across size, research, Shardbearer and zero-Power cases (three seeds each). `current-lab-fixtures.json` contains 116 cycle hashes from the unchanged resolver at `d5ec7ed`, covering all presets and two seeds, up to four cycles or conquest. Tests verify the port against the former and Current against the latter, excluding the newly added battle-model label and the Raid-under-attack preset whose V0 score semantics were intentionally replaced by V1 cargo. Direct model integration tests still verify real casualty outputs for both selectors. Neither the analysis branch nor its report corpus was merged into this Lab branch.
 
 Directly imports `effectivePower`, `effectiveSpeed`, `effectiveSurvivability`, `unitPlunder`, `applySurvivalLosses` and troop helpers from `convex/rules.ts`, which is a pure rules module. Shardbearer support is calculated once per kingdom per engagement. Casualties are rolled once per kingdom and allocated fairly back to temporary groups with a seeded draw. Splitting does not multiply support or casualty rolls.
 
@@ -67,7 +81,7 @@ Specialization is independent of Power. For N troops, ratings are:
 - Survive: positive Survive / (2 × N)
 - Plunder: positive Plunder / (15 × N)
 
-The unique largest rating must be at least 1 and strictly greater than 60% of the sum. Otherwise None. All constants are editable Lab settings. Speed grants tactical movement; Entrenchment remains deferred. Raid V0 is available to any eligible outside formation, with its payout derived from actual Plunder rather than a specialization gate.
+The unique largest rating must be at least 1 and strictly greater than 60% of the sum. Otherwise None. All constants are editable Lab settings. Speed grants tactical movement; Entrenchment remains deferred. Raid V1 is available to any eligible outside formation, with its payout derived from actual Plunder rather than a specialization gate.
 
 Field Surgery (`painrialMedicine`) affects Survive. Tailored Armor (`soulcastArmor`) affects Power and Speed. Pack Harnesses (`packHarnessDesign`) affects Plunder and Speed. Bridge Engineering's flat bonus is excluded only from tactical Speed; the displayed travel comparison includes it. Conclave modifiers are off. Production Research is unchanged.
 
@@ -96,3 +110,7 @@ Pure deterministic replay is not database idempotency: replaying identical input
 Live sieges, real treasury theft, final Raid balance, deadlines/overtime, withdrawal missions, Intel, storms, equipment, Conclaves, notifications, production scoring and all production migration/integration. Formations are command groups, not permanent equipment or exposure identities; later accounting cohorts can sit beneath them without changing graph/order concepts.
 
 Verified unrelated accounting issue: `ownedUnitsIncludingAway` in `convex/provisionHelpers.ts` includes deployed siege troops but omits traveling `siegeReinforcements`. Recruitment uses this for provisions and Gemheart Baron Chull limits. Left unchanged; resolve separately before live integration.
+
+### Publishing this feature branch
+
+No deployment is part of Raid V1 implementation. The existing main-branch Pages workflow republishes the combined game + Lab artifact, not Lab alone. Publishing later requires reviewing/merging the focused branch with explicit publication approval, or approving a separate Lab-only artifact workflow. No Convex deploy is needed.

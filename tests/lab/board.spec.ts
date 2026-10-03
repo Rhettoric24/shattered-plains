@@ -72,14 +72,15 @@ test("Raid action repeats through failed attacks and scientist controls remain a
   await page.locator("#raidArmy").click();
   await page.locator("#closeArmy").click();
   await page.locator("#resolve").click();
-  await expect(page.locator("#log")).toContainText("Lab Raid value: 100");
+  await expect(page.locator("#log")).toContainText("Extracted 100 into carried cargo");
   await expect(page.locator('[data-position="A1"] .raid-status')).toContainText(
     "RAID-READY",
   );
   await page.locator("#resolve").click();
   await expect(page.locator('[data-position="A1"] .raid-status')).toContainText(
-    "Lab Raid total: 200",
+    "Banked: 0",
   );
+  await expect(page.locator("#cargoSummary")).toContainText("carried 200");
   await page.screenshot({
     path: testInfo.outputPath("raid-board.png"),
     fullPage: true,
