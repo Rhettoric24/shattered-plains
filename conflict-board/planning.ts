@@ -1,3 +1,4 @@
+import { cargoAmount } from "./cargo";
 import {
   normalizeUnits,
   totalUnits,
@@ -61,6 +62,10 @@ export function splitFormation(
     next.arrivals.some((a) => a.formation.id === childId)
   )
     throw new Error("Choose an existing formation and a new child identity.");
+  if (cargoAmount(parent))
+    throw Error(
+      "This formation is carrying Raid cargo. Bank or resolve the cargo before splitting.",
+    );
   const units = normalizeUnits(requested);
   for (const key of unitKeys())
     if (

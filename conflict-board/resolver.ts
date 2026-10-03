@@ -1,4 +1,12 @@
 import {
+  battleCargo,
+  cargoAmount,
+  cargoEvent,
+  combineCargo,
+  limitCargo,
+  settleCargo,
+} from "./cargo";
+import {
   addUnits,
   ARMY_RULES,
   applySurvivalLosses,
@@ -62,7 +70,10 @@ function random(seed: string) {
 }
 function validate(input: CycleInput) {
   const { state, config, cycle } = input;
-  if (config.combatModel !== undefined && !["current", "experimental-survival"].includes(config.combatModel))
+  if (
+    config.combatModel !== undefined &&
+    !["current", "experimental-survival"].includes(config.combatModel)
+  )
     throw new Error("Unknown Lab combat model.");
   if (
     config.raidCap !== undefined &&
@@ -77,6 +88,22 @@ function validate(input: CycleInput) {
     throw new Error(
       "This scenario has completed conquest. Reset or edit a new scenario.",
     );
+  if (
+    state.treasury !== undefined &&
+    (!Number.isFinite(state.treasury) || state.treasury < 0)
+  )
+    throw Error("Treasury must be nonnegative and finite.");
+  for (const f of [
+    ...state.formations,
+    ...state.arrivals.map((a) => a.formation),
+  ])
+    for (const [owner, amount] of Object.entries(f.cargo ?? {}))
+      if (
+        !state.kingdoms.some((k) => k.id === owner) ||
+        !Number.isFinite(amount) ||
+        amount < 0
+      )
+        throw Error("Invalid cargo.");
   const unique = (ids: string[]) =>
     ids.every(Boolean) && new Set(ids).size === ids.length;
   if (
@@ -191,7 +218,15 @@ function updateControl(
         g.position === state.board.objective &&
         !g.retreatPath &&
         totalUnits(g.units),
-    )?.kingdom ?? null;
+    )?.kingdom ??
+    (groups.some(
+      (g) =>
+        g.position === state.board.objective &&
+        g.kingdom === state.objective.controller &&
+        (g.retreatPath || !totalUnits(g.units)),
+    )
+      ? null
+      : state.objective.controller);
   if (controller === state.objective.controller) return;
   events.push({
     type: "control",
@@ -288,6 +323,13 @@ function resolveRetreats(
               ? "Standing objective remains active after defeat."
               : "Standing objective paused after defeat.",
         });
+        if (cargoAmount(g))
+          cargoEvent(
+            events,
+            g,
+            "routed",
+            "Routed survivor retains cargo subject to surviving capacity.",
+          );
         delete g.retreatPath;
         delete g.resume;
       }
@@ -340,12 +382,14 @@ function movementStep(
     for (const p of powers) {
       const research = state.kingdoms.find((k) => k.id === p.kingdom)!.research;
       const experimental = input.config.combatModel === "experimental-survival";
-      const c = experimental ? {
-        factor: ARMY_RULES.baseCasualtyFactor,
-        minimum: ARMY_RULES.minimumBaseCasualtyRate,
-        maximum: ARMY_RULES.maximumBaseCasualtyRate,
-        surviveCap: null,
-      } : input.config.casualties,
+      const c = experimental
+          ? {
+              factor: ARMY_RULES.baseCasualtyFactor,
+              minimum: ARMY_RULES.minimumBaseCasualtyRate,
+              maximum: ARMY_RULES.maximumBaseCasualtyRate,
+              surviveCap: null,
+            }
+          : input.config.casualties,
         hostilePower = sum - p.power;
       const baseRate =
         hostilePower <= 0
@@ -364,14 +408,16 @@ function movementStep(
         position,
         p.kingdom,
       ]);
-      const result = experimental ? experimentalSurvivalLosses(combined(p.rows), baseRate, seed, research) : applySurvivalLosses(
-        combined(p.rows),
-        baseRate,
-        seed,
-        research,
-        false,
-        c.surviveCap ?? undefined,
-      );
+      const result = experimental
+        ? experimentalSurvivalLosses(combined(p.rows), baseRate, seed, research)
+        : applySurvivalLosses(
+            combined(p.rows),
+            baseRate,
+            seed,
+            research,
+            false,
+            c.surviveCap ?? undefined,
+          );
       distributeCasualties(p.rows, result.casualties, seed + ":allocation");
       forces.push({
         kingdom: p.kingdom,
@@ -400,6 +446,7 @@ function movementStep(
         }
       }
     }
+    battleCargo(state, local, winner, events);
     const annihilated =
       winner !== null &&
       !totalUnits(forces.find((f) => f.kingdom === winner)!.survivors);
@@ -422,6 +469,11 @@ function movementStep(
   resolveRetreats(state, groups, step, events);
   updateControl(state, groups, step, events);
   observeRaidControl(state, groups, input.cycle, events);
+  settleCargo(
+    state,
+    groups.filter((g) => totalUnits(g.units)),
+    events,
+  );
   return groups.filter((g) => totalUnits(g.units));
 }
 function mergeGroups(
@@ -482,6 +534,9 @@ function mergeGroups(
         history: source ? [...source.history] : [first.position],
         order,
       };
+      if (rows.some((g) => g.cargo !== undefined))
+        result.cargo = combineCargo(rows);
+      limitCargo(state, result, events, "Merged capacity overflow is lost.");
       if (rows.length > 1)
         events.push({
           type: "merge",
@@ -504,6 +559,13 @@ export function resolveCycle(input: CycleInput): CycleResult {
   validate(input);
   const state = structuredClone(input.state),
     events: Event[] = [];
+  for (const f of sorted(state.formations))
+    limitCargo(
+      state,
+      f,
+      events,
+      "Current capacity overflow is lost (including scientist edits).",
+    );
   observeRaidControl(state, state.formations, input.cycle, events);
   state.kingdoms = sorted(state.kingdoms);
   state.board.positions = sorted(state.board.positions);
@@ -531,6 +593,8 @@ export function resolveCycle(input: CycleInput): CycleResult {
         : state.board.approach;
     events.push({ type: "arrival", formation: a.formation.id, position });
     if (position === state.board.objective && arrivalRecipient) {
+      if (a.formation.cargo)
+        arrivalRecipient.cargo = combineCargo([arrivalRecipient, a.formation]);
       arrivalRecipient.units = addUnits(
         arrivalRecipient.units,
         a.formation.units,
