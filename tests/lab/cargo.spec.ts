@@ -42,3 +42,19 @@ test("raid cargo survives browser save and escape banks it", async ({
     ),
   ).toBe(true);
 });
+
+test("cargo percentage knobs validate, persist and reset", async ({page})=>{
+ await page.goto("/");
+ for(const [i,n] of [25,50,75,100].entries())await expect(page.locator(`#cargoDrop-${i}`)).toHaveValue(String(n));
+ await page.locator('#cargoDrop-1').fill('35');await page.locator('#config').click();
+ await page.locator('#combatModel').selectOption('experimental-survival');
+ await expect(page.locator('#cargoDrop-1')).toBeEnabled();
+ await page.locator('#preset').selectOption('Chull raid');await page.locator('#reset').click();
+ await expect(page.locator('#cargoDrop-1')).toHaveValue('35');
+ await page.locator('#save').click();await page.reload();await page.locator('#load').click();
+ await expect(page.locator('#cargoDrop-1')).toHaveValue('35');
+ await page.locator('#cargoDrop-1').fill('101');await page.locator('#config').click();
+ await expect(page.locator('#error')).toContainText('between 0 and 100');
+ await page.locator('#resetCargoDrops').click();
+ await expect(page.locator('#cargoDrop-1')).toHaveValue('50');
+});

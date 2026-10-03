@@ -215,3 +215,15 @@ it("seeded real combat conserves spheres under both casualty models", () => {
       expect(accounted).toBeCloseTo(130, 10);
     }
 });
+it("custom cargo percentages apply at each band and validate configuration", () => {
+ const rates:[number,number,number,number]=[0,.2,.4,.6];
+ for(const [ratio,rate] of [[1,0],[1.5,.2],[2,.4],[3,.6]])expect(defeatCargoRate(ratio*100,100,rates)).toBe(rate);
+ const s=scenario();s.formations=[force("l","blue",100,40),force("w","green",150)];
+ const config={...defaults,cargoDropRates:rates,casualties:{factor:0,minimum:0,maximum:0,surviveCap:null}};
+ const r=resolveCycle({state:s,config,cycle:1,seed:"knobs"});
+ expect(cargoAmount(r.state.formations.find(f=>f.kingdom==="green")!)).toBe(8);
+ for(const bad of [-.01,1.01,NaN,Infinity])expect(()=>resolveCycle({state:s,config:{...config,cargoDropRates:[bad,0,0,0]},cycle:1,seed:"bad"})).toThrow("Cargo drop percentages");
+ const dead=force("dead","blue",0,10),winner=force("winner","green",100);
+ battleCargo(s,[dead,winner],"green",[],new Map([["blue",1],["green",100]]),[0,0,0,0]);
+ expect(cargoAmount(winner)).toBe(10);
+});

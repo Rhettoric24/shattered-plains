@@ -1,6 +1,7 @@
 import { totalUnits, unitPlunder } from "../convex/rules";
 import type { ConflictState, Formation, Event } from "./types";
 export const DEFAULT_TREASURY = 50000;
+export const DEFAULT_CARGO_DROP_RATES: [number,number,number,number] = [.25,.5,.75,1];
 export const cargoAmount = (f: Pick<Formation, "cargo">) =>
   typeof f.cargo === "number"
     ? f.cargo
@@ -61,9 +62,9 @@ export function limitCargo(
     "Capacity overflow enters the unclaimed pool; it is not offered for capture.",
   );
 }
-export function defeatCargoRate(winnerPower: number, loserPower: number) {
+export function defeatCargoRate(winnerPower: number, loserPower: number, rates = DEFAULT_CARGO_DROP_RATES) {
   const ratio = loserPower > 0 ? winnerPower / loserPower : Infinity;
-  return ratio >= 3 ? 1 : ratio >= 2 ? 0.75 : ratio >= 1.5 ? 0.5 : 0.25;
+  return rates[ratio >= 3 ? 3 : ratio >= 2 ? 2 : ratio >= 1.5 ? 1 : 0];
 }
 /** Power snapshots precede casualties. Cargo still holds its pre-battle amount.
  * Temporary winning movement groups share capacity, without changing their routes.
@@ -74,6 +75,7 @@ export function battleCargo(
   winner: string | null,
   events: Event[],
   powers: ReadonlyMap<string, number>,
+  rates = DEFAULT_CARGO_DROP_RATES,
 ) {
   const rows = [...local].sort((a, b) => a.id.localeCompare(b.id));
   let dropped = 0;
@@ -84,7 +86,7 @@ export function battleCargo(
     const defeated = winner !== null && f.kingdom !== winner;
     const own = powers.get(f.kingdom) ?? 0,
       winning = powers.get(winner ?? "") ?? 0;
-    const rate = dead ? 1 : defeated ? defeatCargoRate(winning, own) : 0;
+    const rate = dead ? 1 : defeated ? defeatCargoRate(winning, own, rates) : 0;
     const amount = before * rate;
     f.cargo = before - amount;
     dropped += amount;

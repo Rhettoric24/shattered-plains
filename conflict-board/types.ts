@@ -72,6 +72,7 @@ export type ConflictState = {
 export type ResolverConfig = {
   combatModel?: "current" | "experimental-survival";
   raidCap?: number;
+  cargoDropRates?: [number, number, number, number];
   specialization: {
     speedScale: number;
     surviveScale: number;

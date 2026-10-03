@@ -118,3 +118,7 @@ Verified unrelated accounting issue: `ownedUnitsIncludingAway` in `convex/provis
 ### Publishing this feature branch
 
 No deployment is part of Raid V1 implementation. The existing main-branch Pages workflow republishes the combined game + Lab artifact, not Lab alone. Publishing later requires reviewing/merging the focused branch with explicit publication approval, or approving a separate Lab-only artifact workflow. No Convex deploy is needed.
+
+### Experimental cargo percentages
+
+Under Experimental constants, edit the four **Defeat cargo drop percentages** (0–100%) and click **Apply constants**. Defaults are 25/50/75/100. Power boundaries remain 1×, 1.5×, 2× and 3×; only the percentage dropped changes. Each band is independently adjustable, including non-monotonic experiments. Applies to future battles under either combat model. Highest-Power ties still have no defeat drop, annihilation always drops all cargo, and capacity overflow rules are unchanged. Settings persist across presets and browser saves; older saves use the defaults. **Reset cargo percentages** immediately restores these four defaults without changing other constants.
