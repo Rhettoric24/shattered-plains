@@ -106,6 +106,8 @@ button:hover {
   background: #4d3518;
   outline: 3px solid #ffad4e;
 }
+.tile.retreat-shade:not(.proposed) { background: var(--retreat-color); }
+[data-own].selected { outline: 3px solid #fff; }
 .tile.next .node-target {
   border-color: #7be3aa;
 }

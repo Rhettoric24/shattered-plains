@@ -140,3 +140,9 @@ Fog off reveals presence everywhere but preserves the Intel limits on details. H
 `conflict-board/disclosure.ts` creates an allowlisted transport projection; `lab/player-view.ts` renders only that projection. A later authenticated Convex query can supply authoritative state, viewer identity and per-rival Military Intel to these pure helpers. No backend schema, query, mutation or deployment is added now.
 
 **This is a visibility simulation, not secure multiplayer fog.** The browser still stores full scientist state and allows changing viewers/Intel. Real secrecy requires server-side projection and authorization. Ordinary play remains entirely client-side with zero Convex requests.
+
+### Selected-army Workshop in player view
+
+Tap your army on the board to select it and open its controls below the board. The player Workshop supports naming/editing troop counts, adding entered counts, splitting, creating a local army, removing an army, and queuing fake reinforcements for the next cycle. Existing split conservation/cargo restrictions and resolver-controlled reinforcement entry are reused. Continue/Pause, typed routes and planned merge-source nomination are also available. Edits affect only the selected viewer's armies; enemy disclosure is unchanged. Selection stays with the edited/split army across rerenders.
+
+Retreat history in both views uses a single purple hue: the nearest fallback is lighter, with progressively darker older positions. Fallback numbers accompany the colors. Current position, approved route and unconfirmed route retain distinct markers; selecting a different army clears the previous trail.

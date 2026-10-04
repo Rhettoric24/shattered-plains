@@ -4,7 +4,8 @@ import {
   extendRoute,
   holdOrder,
 } from "../conflict-board/planning";
-import { totalUnits } from "../convex/rules";
+import { totalUnits, unitKeys, type UnitCounts } from "../convex/rules";
+import { retreatShade, type WorkshopCommand } from "./workshop";
 import type {
   ConflictView,
   MilitaryIntel,
@@ -25,6 +26,10 @@ export function renderPlayerView(
   intel: MilitaryIntel,
   journal: ReturnType<typeof projectJournal>,
   actions: {
+    selected: string;
+    select: (id: string) => void;
+    workshop: (id: string, command: WorkshopCommand) => void;
+    nominate: (id: string, position: string) => void;
     scientist: () => void;
     viewer: (id: string) => void;
     fog: (on: boolean) => void;
@@ -35,7 +40,7 @@ export function renderPlayerView(
     load: () => void;
   },
 ) {
-  let selected = view.own[0]?.formation.id ?? "",
+  let selected = view.own.some(f => f.formation.id === actions.selected) ? actions.selected : view.own[0]?.formation.id ?? "",
     draft: string[] | null = null;
   const name = (id: string) =>
     view.kingdoms.find((k) => k.id === id)?.name ?? id;
@@ -78,6 +83,18 @@ export function renderPlayerView(
     });
   const army = () =>
     view.own.find((f) => f.formation.id === selected)?.formation;
+  el("playerCancel").insertAdjacentHTML("afterend", `<div id="playerWorkshop"><p class="history-key">Purple retreat trail: lighter = nearest fallback, darker = farther back. Numbers show fallback order.</p><h3>Army workshop · Lab edits</h3><p>These controls create/edit fake troops only. Reinforcements arrive next cycle through the normal side entry, not at the selected army.</p><label>Name<input id="playerName"></label><div class="units">${unitKeys().map(k=>`<label>${esc(k)}<input id="playerUnit-${k}" type="number" min="0" step="1"></label>`).join("")}</div><label>After defeat<select id="playerDefeat"><option value="continue">Continue</option><option value="pause">Pause</option></select></label><button id="playerEdit">Apply army edit</button><button id="playerAdd">Add these units</button><button id="playerSplit">Split these counts off</button><button id="playerCreate">Create army here</button><button id="playerArrive">Queue these troops next cycle</button><button id="playerRemove">Remove army</button><p>Apply replaces troop counts; Add adds the entered counts. Split subtracts them and must leave troops in both armies. Cargo-bearing armies cannot split.</p><p>${view.ownArrivals.length} of your reinforcement arrivals pending.</p><details><summary>Advanced route / merge controls</summary><label>Approved route (comma separated)<input id="playerRoute"></label><button id="playerApprove">Approve typed route</button><label>Merge position<select id="playerMergePosition">${view.board.positions.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label><button id="playerNominate">Retain selected source on merge</button><p id="playerMergeStatus"></p></details></div>`);
+  const input = (id: string) => el(id) as HTMLInputElement;
+  const fillWorkshop = () => {
+    const f = army();
+    el("playerWorkshop").hidden = !f;
+    input("playerName").value = f?.name ?? "";
+    for (const k of unitKeys()) input(`playerUnit-${k}`).value = String(f?.units[k] ?? 0);
+    input("playerDefeat").value = f?.order.onDefeat ?? "pause";
+    input("playerRoute").value = f?.order.route.join(", ") ?? "";
+    input("playerMergePosition").value = f?.position ?? view.board.approach;
+    el("playerMergeStatus").textContent = "";
+  };
   const update = () => {
     const f = army();
     el("ownInfo").textContent = f
@@ -87,13 +104,34 @@ export function renderPlayerView(
       draft && f ? [f.position, ...draft].join(" → ") : "";
     root
       .querySelectorAll<HTMLElement>("[data-player-position]")
-      .forEach((e) =>
-        e.classList.toggle(
-          "proposed",
-          draft?.includes(e.dataset.playerPosition!) ?? false,
-        ),
-      );
+      .forEach((e) => {
+        const id = e.dataset.playerPosition!, shade = f ? retreatShade(f, id) : null;
+        e.classList.toggle("current", f?.position === id);
+        e.classList.toggle("route", f?.order.route.includes(id) ?? false);
+        e.classList.toggle("fallback", !!shade);
+        e.classList.toggle("retreat-shade", !!shade);
+        e.style.setProperty("--retreat-color", shade?.color ?? "transparent");
+        e.classList.toggle("proposed", draft?.includes(id) ?? false);
+        let marks = e.querySelector<HTMLElement>(".pathMarks");
+        if (!marks) { marks = document.createElement("p"); marks.className = "pathMarks"; e.append(marks); }
+        marks.textContent = [f?.position === id ? "● Current" : "", shade ? `↶ Fallback ${shade.depth}` : "", f?.order.route.includes(id) ? "→ Approved" : "", draft?.includes(id) ? "◇ Proposed" : ""].filter(Boolean).join(" · ");
+      });
+    root.querySelectorAll<HTMLElement>("[data-own]").forEach(e=>{
+      e.classList.toggle("selected", e.dataset.own === selected);
+      e.setAttribute("aria-pressed", String(e.dataset.own === selected));
+    });
   };
+  for (const [button, kind] of [["Edit","edit"],["Add","add"],["Split","split"],["Create","create"],["Arrive","arrive"],["Remove","remove"]] as const) {
+    act(`player${button}`, () => actions.workshop(selected, {kind, name: input("playerName").value,
+      units: Object.fromEntries(unitKeys().map(k=>[k, Number(input(`playerUnit-${k}`).value)])) as UnitCounts,
+      onDefeat: input("playerDefeat").value as Order["onDefeat"]}));
+  }
+  act("playerApprove", () => {
+    const f = army(); if (!f) return;
+    approveRoute(view.board, f, input("playerRoute").value.split(",").map(p=>p.trim()).filter(Boolean), input("playerDefeat").value as Order["onDefeat"]);
+    actions.order(selected, f.order);
+  });
+  act("playerNominate", () => { actions.nominate(selected, input("playerMergePosition").value); el("playerMergeStatus").textContent = "Selected source nominated for this merge position."; });
   act("scientistMode", actions.scientist);
   act("playerResolve", actions.resolve);
   act("playerSave", actions.save);
@@ -118,8 +156,11 @@ export function renderPlayerView(
     (e) =>
       (e.onclick = () => {
         selected = e.dataset.own!;
+        actions.select(selected);
         draft = null;
+        fillWorkshop();
         update();
+        el("ownInfo").scrollIntoView({block:"nearest"});
       }),
   );
   act("playerMove", () => {
@@ -133,7 +174,7 @@ export function renderPlayerView(
     update();
   });
   act("playerHold", () => {
-    if (army()) actions.order(selected, holdOrder());
+    if (army()) actions.order(selected, {...holdOrder(), onDefeat: input("playerDefeat").value as Order["onDefeat"]});
   });
   act("playerRaid", () => {
     const f = army();
@@ -143,13 +184,13 @@ export function renderPlayerView(
     actions.order(selected, {
       kind: "raid",
       route: [],
-      onDefeat: f.order.onDefeat,
+      onDefeat: input("playerDefeat").value as Order["onDefeat"],
     });
   });
   act("playerConfirm", () => {
     const f = army();
     if (!f || draft === null) return;
-    approveRoute(view.board, f, draft, f.order.onDefeat);
+    approveRoute(view.board, f, draft, input("playerDefeat").value as Order["onDefeat"]);
     actions.order(selected, f.order);
   });
   root.querySelectorAll<HTMLElement>("[data-player-node]").forEach(
@@ -171,5 +212,6 @@ export function renderPlayerView(
         }
       }),
   );
+  fillWorkshop();
   update();
 }
