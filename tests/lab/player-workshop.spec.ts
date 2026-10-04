@@ -1,0 +1,28 @@
+import {test,expect} from "@playwright/test";
+test("selected player army workshop, reinforcements and purple retreat history", async({page})=>{
+  await page.goto("/");await page.locator("#playerMode").click();
+  await page.locator('[data-own="Vanguard"]').click();
+  await expect(page.locator("#playerName")).toHaveValue("Vanguard");
+  for(const key of ["bridgeman","spearman","chull","shardbearer"])await page.locator(`#playerUnit-${key}`).fill(key==="bridgeman"?"5":"0");
+  await page.locator("#playerSplit").click();
+  await expect(page.locator("[data-own]")).toHaveCount(2);
+  await expect(page.locator("#playerName")).toHaveValue("Vanguard detachment");
+  await page.locator("#playerAdd").click();
+  await expect(page.locator("#playerUnit-bridgeman")).toHaveValue("10");
+  await page.locator("#playerName").fill("Scout");await page.locator("#playerEdit").click();
+  await expect(page.locator('[data-own="Vanguard"]')).toContainText("Vanguard");
+  await expect(page.locator('[data-own].selected')).toContainText("Scout");
+  await page.locator("#playerArrive").click();
+  await expect(page.locator("#playerWorkshop")).toContainText("1 of your reinforcement arrivals pending");
+  await page.locator("#playerMove").click();
+  await page.locator('[data-player-node="A3"]').click();await page.locator('[data-player-node="A2"]').click();
+  await page.locator("#playerConfirm").click();await page.locator("#playerResolve").click();
+  await page.locator('[data-player-position="A2"] [data-own]').click();
+  await expect(page.locator('[data-player-position="A3"]')).toContainText("Fallback 1");
+  await expect(page.locator('[data-player-position="approach"]')).toContainText("Fallback 2");
+  const colors=await page.locator('.retreat-shade').evaluateAll(es=>es.map(e=>getComputedStyle(e).backgroundColor));
+  expect(new Set(colors).size).toBe(2);
+  await page.locator('[data-player-position="approach"] [data-own]').click();
+  await expect(page.locator('[data-player-position="A3"]')).not.toHaveClass(/retreat-shade/);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});

@@ -1,5 +1,6 @@
 import { projectConflict, projectJournal } from "../conflict-board/disclosure";
 import { renderPlayerView } from "./player-view";
+import { playerWorkshop, queueReinforcements, retreatShade, validateTroops } from "./workshop";
 import { DEFAULT_CARGO_DROP_RATES } from "../conflict-board/cargo";
 import { cargoAmount, cargoCapacity, DEFAULT_TREASURY } from "../conflict-board/cargo";
 import { emptyUnits, totalUnits, unitKeys } from "../convex/rules";
@@ -74,6 +75,10 @@ function render() {
    if(!state.kingdoms.some(k=>k.id===viewingKingdom))viewingKingdom=state.kingdoms[0].id;
    const intel=militaryIntel[viewingKingdom]??{};
    renderPlayerView($("app"),projectConflict(state,viewingKingdom,intel,fogEnabled),intel,projectJournal(history,viewingKingdom),{
+     selected,
+     select:id=>{selected=id},
+     workshop:(id,command)=>{const result=playerWorkshop(state,viewingKingdom,id,command,uid);state=result.state;selected=result.selected;render()},
+     nominate:(id,position)=>{const f=state.formations.find(f=>f.id===id&&f.kingdom===viewingKingdom);if(!f)throw Error("Select your own army.");preferences[`${viewingKingdom}@${position}`]=id},
      scientist:()=>{playerMode=false;render()},
      viewer:id=>{viewingKingdom=id;render()},
      fog:on=>{fogEnabled=on;render()},
@@ -222,11 +227,7 @@ function render() {
   });
   const draft = (): Formation => {
     const units = unitInputs();
-    if (
-      unitKeys().some((k) => !Number.isSafeInteger(units[k]) || units[k] < 0) ||
-      !totalUnits(units)
-    )
-      throw Error("Use nonnegative whole troop counts and at least one troop.");
+    validateTroops(units);
     const position = value("position");
     return {
       id: uid(),
@@ -267,8 +268,7 @@ function render() {
     render();
   });
   action("arrive", () => {
-    const { position, history: routeHistory, ...g } = draft();
-    state.arrivals.push({ id: uid(), cycle: state.cycle + 1, formation: g });
+    queueReinforcements(state, draft(), uid());
     render();
   });
   action("addKingdom", () => {
@@ -470,6 +470,9 @@ function paintBoard() {
     tile.classList.toggle("current", current);
     tile.classList.toggle("route", forward);
     tile.classList.toggle("fallback", retreat);
+    const shade = f ? retreatShade(f, id) : null;
+    tile.style.setProperty("--retreat-color", shade?.color ?? "transparent");
+    tile.classList.toggle("retreat-shade", !!shade);
     tile.classList.toggle("proposed", draft);
     let valid = false;
     if (proposed !== null && f) {
@@ -487,7 +490,7 @@ function paintBoard() {
           .filter(Boolean)
           .join(",")}`,
       );
-    if (retreat) marks.push(`↶ History ${f!.history.indexOf(id) + 1}`);
+    if (shade) marks.push(`↶ Fallback ${shade.depth}`);
     if (draft)
       marks.push(
         `◇ Proposed ${proposed!
