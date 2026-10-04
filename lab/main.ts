@@ -74,7 +74,7 @@ function render() {
  if(playerMode) {
    if(!state.kingdoms.some(k=>k.id===viewingKingdom))viewingKingdom=state.kingdoms[0].id;
    const intel=militaryIntel[viewingKingdom]??{};
-   renderPlayerView($("app"),projectConflict(state,viewingKingdom,intel,fogEnabled),intel,projectJournal(history,viewingKingdom),{
+   renderPlayerView($("app"),projectConflict(state,viewingKingdom,intel,fogEnabled,config),intel,projectJournal(history,viewingKingdom),{
      selected,
      select:id=>{selected=id},
      workshop:(id,command)=>{const result=playerWorkshop(state,viewingKingdom,id,command,uid);state=result.state;selected=result.selected;render()},

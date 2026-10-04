@@ -3,7 +3,9 @@ import {
   ledgerMilitaryLevel,
   presentIntelNumber,
 } from "../convex/intelligenceRules";
-import type { ConflictState, CycleResult } from "./types";
+import type { ConflictState, CycleResult, ResolverConfig } from "./types";
+import { formationStats } from "./stats";
+import { cargoAmount, cargoCapacity } from "./cargo";
 
 export type MilitaryIntel = Record<string, number>;
 export function battlefieldVision(state: ConflictState, viewer: string) {
@@ -33,6 +35,7 @@ export function projectConflict(
   viewer: string,
   intel: MilitaryIntel,
   fog: boolean,
+  config?: ResolverConfig,
 ) {
   if (!state.kingdoms.some((k) => k.id === viewer))
     throw Error("Unknown viewing kingdom.");
@@ -41,6 +44,9 @@ export function projectConflict(
     .filter((f) => f.kingdom === viewer)
     .map((f) => ({
       formation: structuredClone(f),
+      stats: config ? formationStats(f.units, state.kingdoms.find(k => k.id === viewer)!.research, config) : undefined,
+      cargo: cargoAmount(f),
+      capacity: cargoCapacity(state, f),
       power: effectivePower(
         f.units,
         state.kingdoms.find((k) => k.id === viewer)!.research,

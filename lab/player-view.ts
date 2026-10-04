@@ -6,6 +6,7 @@ import {
 } from "../conflict-board/planning";
 import { totalUnits, unitKeys, type UnitCounts } from "../convex/rules";
 import { retreatShade, type WorkshopCommand } from "./workshop";
+import { attachRouteDrag } from "./route-drag";
 import type {
   ConflictView,
   MilitaryIntel,
@@ -20,6 +21,7 @@ const esc = (v: unknown) =>
         c
       ]!,
   );
+let disposeDrag: (() => void) | undefined;
 export function renderPlayerView(
   root: HTMLElement,
   view: ConflictView,
@@ -40,6 +42,8 @@ export function renderPlayerView(
     load: () => void;
   },
 ) {
+  const reopen = !!root.querySelector<HTMLDialogElement>("#playerArmyDialog")?.open;
+  disposeDrag?.();
   let selected = view.own.some(f => f.formation.id === actions.selected) ? actions.selected : view.own[0]?.formation.id ?? "",
     draft: string[] | null = null;
   const name = (id: string) =>
@@ -52,7 +56,7 @@ export function renderPlayerView(
     )
     .join(
       "",
-    )}<p>These are simulated values, independent for every viewer/rival pair.</p></details><p>Cycle ${view.cycle}</p><button id="playerResolve">Resolve next cycle</button><button id="playerSave">Save in this browser</button><button id="playerLoad">Load saved</button><p id="playerError" role="alert"></p></section><section><div class="board">${[
+    )}<p>These are simulated values, independent for every viewer/rival pair.</p></details><p>Cycle ${view.cycle}</p><button id="playerResolve">Resolve next cycle</button><button id="playerSave">Save in this browser</button><button id="playerLoad">Load saved</button><p id="playerError" role="alert"></p></section><section class="player-battlefield"><h2>Battlefield</h2><p class="muted">Tap an army for orders. Mouse: drag. Touch: hold, then drag. Release to review your route.</p><div class="board player-board">${[
     ...view.board.positions,
   ]
     .sort((a, b) => a.y - b.y || a.x - b.x)
@@ -71,7 +75,7 @@ export function renderPlayerView(
     })
     .join(
       "",
-    )}</div></section><section><h2>Your army</h2><div id="ownInfo"></div><button id="playerMove">Move · tap connected positions</button><button id="playerHold">Hold</button><button id="playerRaid">Raid</button><p id="draftPath"></p><button id="playerConfirm">Confirm route</button><button id="playerCancel">Cancel</button></section><section><h2>Your battle reports</h2><p>Only your battle results are shown here. The full debug journal remains in scientist mode.</p>${journal.map((e) => `<p>Cycle ${e.cycle} · ${esc(e.position)} · ${e.won ? "Held the position" : "Did not hold the position"} · Your losses: ${totalUnits(e.casualties)}</p>`).join("")}</section>`;
+    )}</div></section><section id="playerArmySection"><h2 id="playerArmyTitle">Your army</h2><div id="ownInfo"></div><button id="playerMove">Move</button><button id="playerHold">Hold</button><button id="playerRaid">Raid</button><button id="playerSplit">Split</button><button id="playerReinforce">Reinforcements · Lab</button><p id="playerRaidHint" class="muted"></p><div id="splitEditor" hidden><h3>Split a detachment</h3><p>Choose troops to detach; leave at least one troop behind.</p><div class="units">${unitKeys().map(k=>`<label>${esc(k)}<input id="splitUnit-${k}" type="number" min="0" step="1" value="0"></label>`).join("")}</div><button id="playerSplitConfirm">Create detachment</button></div><p id="draftPath"></p><button id="playerConfirm">Confirm route</button><button id="playerCancel">Cancel</button></section><section><h2>Your battle reports</h2><p>Only your battle results are shown here. The full debug journal remains in scientist mode.</p>${journal.map((e) => `<p>Cycle ${e.cycle} · ${esc(e.position)} · ${e.won ? "Held the position" : "Did not hold the position"} · Your losses: ${totalUnits(e.casualties)}</p>`).join("")}</section>`;
   const el = (id: string) => root.querySelector<HTMLElement>("#" + id)!;
   const act = (id: string, fn: () => void) =>
     (el(id).onclick = () => {
@@ -79,12 +83,26 @@ export function renderPlayerView(
         fn();
       } catch (e) {
         el("playerError").textContent = (e as Error).message;
+        const modalError=root.querySelector("#playerModalError");if(modalError)modalError.textContent=(e as Error).message;
       }
     });
   const army = () =>
     view.own.find((f) => f.formation.id === selected)?.formation;
-  el("playerCancel").insertAdjacentHTML("afterend", `<div id="playerWorkshop"><p class="history-key">Purple retreat trail: lighter = nearest fallback, darker = farther back. Numbers show fallback order.</p><h3>Army workshop · Lab edits</h3><p>These controls create/edit fake troops only. Reinforcements arrive next cycle through the normal side entry, not at the selected army.</p><label>Name<input id="playerName"></label><div class="units">${unitKeys().map(k=>`<label>${esc(k)}<input id="playerUnit-${k}" type="number" min="0" step="1"></label>`).join("")}</div><label>After defeat<select id="playerDefeat"><option value="continue">Continue</option><option value="pause">Pause</option></select></label><button id="playerEdit">Apply army edit</button><button id="playerAdd">Add these units</button><button id="playerSplit">Split these counts off</button><button id="playerCreate">Create army here</button><button id="playerArrive">Queue these troops next cycle</button><button id="playerRemove">Remove army</button><p>Apply replaces troop counts; Add adds the entered counts. Split subtracts them and must leave troops in both armies. Cargo-bearing armies cannot split.</p><p>${view.ownArrivals.length} of your reinforcement arrivals pending.</p><details><summary>Advanced route / merge controls</summary><label>Approved route (comma separated)<input id="playerRoute"></label><button id="playerApprove">Approve typed route</button><label>Merge position<select id="playerMergePosition">${view.board.positions.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label><button id="playerNominate">Retain selected source on merge</button><p id="playerMergeStatus"></p></details></div>`);
+  el("playerCancel").insertAdjacentHTML("afterend", `<div id="playerWorkshop"><p class="history-key">Purple retreat trail: lighter = nearest fallback, darker = farther back. Numbers show fallback order.</p><h3>Lab-only unit editor</h3><p>These controls create/edit fake troops only. Reinforcements arrive next cycle through the normal side entry, not at the selected army.</p><label>Name<input id="playerName"></label><div class="units">${unitKeys().map(k=>`<label>${esc(k)}<input id="playerUnit-${k}" type="number" min="0" step="1"></label>`).join("")}</div><button id="playerEdit">Apply army edit</button><button id="playerAdd">Add these units</button><button id="playerCreate">Create army here</button><button id="playerArrive">Queue these troops next cycle</button><button id="playerRemove">Remove army</button><p>Apply replaces troop counts; Add adds the entered counts. Split subtracts them and must leave troops in both armies. Cargo-bearing armies cannot split.</p><p>${view.ownArrivals.length} of your reinforcement arrivals pending.</p><h3>Standing orders</h3><label>After defeat<select id="playerDefeat"><option value="continue">Continue</option><option value="pause">Pause</option></select></label><button id="playerSaveDefeat">Save standing behavior</button><details><summary>Advanced route / merge controls</summary><label>Approved route (comma separated)<input id="playerRoute"></label><button id="playerApprove">Approve typed route</button><label>Merge position<select id="playerMergePosition">${view.board.positions.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label><button id="playerNominate">Retain selected source on merge</button><p id="playerMergeStatus"></p></details></div>`);
   const input = (id: string) => el(id) as HTMLInputElement;
+  const dialog = document.createElement("dialog");
+  dialog.id = "playerArmyDialog";
+  dialog.setAttribute("aria-labelledby", "playerArmyTitle");
+  dialog.innerHTML = '<button id="playerClose" aria-label="Close army">Close ×</button>';
+  dialog.append(el("playerArmySection"));root.append(dialog);
+  el("ownInfo").insertAdjacentHTML("beforebegin",'<p id="playerModalError" role="alert"></p>');
+  act("playerClose",()=>dialog.close());
+  dialog.addEventListener("click",e=>{if(e.target===dialog)dialog.close()});
+  const routeBar = document.createElement("div");routeBar.id="playerRouteBar";
+  for(const id of ["draftPath","playerConfirm","playerCancel"])routeBar.append(el(id));
+  routeBar.insertAdjacentHTML("beforeend",'<p id="routeFeedback" role="status"></p><button id="playerClear">Clear route</button>');
+  root.append(routeBar);
+  act("playerClear",()=>{draft=[];update()});
   const fillWorkshop = () => {
     const f = army();
     el("playerWorkshop").hidden = !f;
@@ -94,12 +112,20 @@ export function renderPlayerView(
     input("playerRoute").value = f?.order.route.join(", ") ?? "";
     input("playerMergePosition").value = f?.position ?? view.board.approach;
     el("playerMergeStatus").textContent = "";
+    for(const k of unitKeys()) input(`splitUnit-${k}`).value="0";
+    el("splitEditor").hidden=true;
   };
   const update = () => {
     const f = army();
-    el("ownInfo").textContent = f
-      ? `${f.name} · ${f.position} · Approved: ${f.order.route.join(" → ") || f.order.kind} · Retreat: ${f.history.join(" → ")} · Composition: ${JSON.stringify(f.units)}`
-      : "No deployed formations.";
+    const own = view.own.find(g=>g.formation.id===selected), stats=own?.stats;
+    el("playerArmyTitle").textContent=f?.name??"Your army";
+    el("ownInfo").innerHTML = f ? `<p class="army-specialization">${esc(stats?.specialization??"None")} specialization · ${esc(f.position)}</p><div class="army-unit-summary">${unitKeys().filter(k=>f.units[k]>0).map(k=>`<span><strong>${f.units[k]}</strong> ${esc(k)}</span>`).join("")}</div><div class="army-stat-grid">${[["Power",own?.power],["Speed",stats?.speed],["Survivability",stats?.survive],["Plunder",stats?.plunder]].map(([label,n])=>`<div><small>${label}</small><strong>${Number(n??0).toFixed(1)}</strong></div>`).join("")}</div><p>Normalized Speed / Survive / Plunder<br><strong>${stats?.ratings.map(n=>n.toFixed(2)).join(" / ")??"—"}</strong></p><p>Cargo <strong>${own?.cargo??0} / ${own?.capacity??0}</strong> · Standing order <strong>${esc(f.order.kind)}${f.order.paused?" (paused)":""}</strong></p><p class="muted">Approved: ${esc(f.order.route.join(" → ")||"Hold")}<br>Retreat: ${esc(f.history.join(" → "))}</p>` : "No deployed formations.";
+    const ready=!!f && view.raidReady.some(h=>h.position===f.position&&h.ready);
+    (el("playerRaid") as HTMLButtonElement).disabled=!ready;
+    el("playerRaidHint").textContent=ready?"Raid this flank next resolution if you retain control.":view.raidReady.some(h=>h.position===f?.position)?"Foothold established. Retain this flank to become Raid-ready.":"Reach a flank Raid objective and establish a foothold before raiding. The original defender cannot raid its own logistics.";
+    (el("playerSplit") as HTMLButtonElement).disabled=(own?.cargo??0)>0;
+    el("playerSplit").title=(own?.cargo??0)>0?"Bank or resolve carried cargo before splitting.":"Detach troops from this army";
+    routeBar.hidden=draft===null;
     el("draftPath").textContent =
       draft && f ? [f.position, ...draft].join(" → ") : "";
     root
@@ -114,14 +140,20 @@ export function renderPlayerView(
         e.classList.toggle("proposed", draft?.includes(id) ?? false);
         let marks = e.querySelector<HTMLElement>(".pathMarks");
         if (!marks) { marks = document.createElement("p"); marks.className = "pathMarks"; e.append(marks); }
-        marks.textContent = [f?.position === id ? "● Current" : "", shade ? `↶ Fallback ${shade.depth}` : "", f?.order.route.includes(id) ? "→ Approved" : "", draft?.includes(id) ? "◇ Proposed" : ""].filter(Boolean).join(" · ");
+        marks.textContent = [f?.position === id ? "● Current" : "", shade ? `↶ Fallback ${shade.depth}` : "", f?.order.route.includes(id) ? "→ Approved" : "", draft?.includes(id) ? `◇ ${draft.map((p,i)=>p===id?i+1:null).filter(Boolean).join(", ")}` : ""].filter(Boolean).join(" · ");
       });
     root.querySelectorAll<HTMLElement>("[data-own]").forEach(e=>{
       e.classList.toggle("selected", e.dataset.own === selected);
       e.setAttribute("aria-pressed", String(e.dataset.own === selected));
     });
   };
-  for (const [button, kind] of [["Edit","edit"],["Add","add"],["Split","split"],["Create","create"],["Arrive","arrive"],["Remove","remove"]] as const) {
+  act("playerSplit",()=>{el("splitEditor").hidden=false;el("splitEditor").scrollIntoView({block:"nearest"})});
+  act("playerSplitConfirm",()=>actions.workshop(selected,{kind:"split",name:input("playerName").value,
+    units:Object.fromEntries(unitKeys().map(k=>[k,Number(input(`splitUnit-${k}`).value)])) as UnitCounts,
+    onDefeat:input("playerDefeat").value as Order["onDefeat"]}));
+  act("playerReinforce",()=>{el("playerWorkshop").scrollIntoView({block:"start"});input("playerName").focus()});
+  act("playerSaveDefeat",()=>{const f=army();if(f)actions.order(selected,{...f.order,onDefeat:input("playerDefeat").value as Order["onDefeat"]})});
+  for (const [button, kind] of [["Edit","edit"],["Add","add"],["Create","create"],["Arrive","arrive"],["Remove","remove"]] as const) {
     act(`player${button}`, () => actions.workshop(selected, {kind, name: input("playerName").value,
       units: Object.fromEntries(unitKeys().map(k=>[k, Number(input(`playerUnit-${k}`).value)])) as UnitCounts,
       onDefeat: input("playerDefeat").value as Order["onDefeat"]}));
@@ -132,8 +164,8 @@ export function renderPlayerView(
     actions.order(selected, f.order);
   });
   act("playerNominate", () => { actions.nominate(selected, input("playerMergePosition").value); el("playerMergeStatus").textContent = "Selected source nominated for this merge position."; });
-  act("scientistMode", actions.scientist);
-  act("playerResolve", actions.resolve);
+  act("scientistMode", ()=>{disposeDrag?.();disposeDrag=undefined;actions.scientist()});
+  act("playerResolve", ()=>{if(draft!==null)throw Error("Confirm or Cancel the proposed route first.");actions.resolve()});
   act("playerSave", actions.save);
   act("playerLoad", actions.load);
   (el("viewKingdom") as HTMLSelectElement).onchange = (e) =>
@@ -160,13 +192,15 @@ export function renderPlayerView(
         draft = null;
         fillWorkshop();
         update();
-        el("ownInfo").scrollIntoView({block:"nearest"});
+        dialog.showModal();
       }),
   );
   act("playerMove", () => {
     if (army()) {
       draft = [];
+      dialog.close();
       update();
+      root.querySelector(".player-battlefield")?.scrollIntoView({block:"start"});
     }
   });
   act("playerCancel", () => {
@@ -212,6 +246,16 @@ export function renderPlayerView(
         }
       }),
   );
+  disposeDrag=attachRouteDrag(root,{
+    begin:id=>{selected=id;actions.select(id);draft=[];dialog.close();fillWorkshop();update();el("routeFeedback").textContent="Trace connected squares. Release, then Confirm."},
+    visit:id=>{
+      const f=army();if(!f||draft===null)return;
+      try{draft=extendRoute(view.board,f.position,draft,id);el("routeFeedback").textContent="Release to review. Backtrack to erase steps.";update()}
+      catch {el("routeFeedback").textContent="That square is not connected. Return to the last route square.";}
+    },
+    cancel:()=>{draft=null;update()},
+  });
   fillWorkshop();
   update();
+  if(reopen && army()) dialog.showModal();
 }

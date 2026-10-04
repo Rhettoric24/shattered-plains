@@ -15,7 +15,7 @@ test('player fog view filters enemy UI and keeps per-viewer Intel across saves',
  await page.locator('#viewKingdom').selectOption('blue');await expect(page.locator('[data-intel="red"]')).toHaveValue('100');
  await page.locator('#playerSave').click();await page.reload();await page.locator('#load').click();await page.locator('#playerMode').click();
  await expect(page.locator('[data-intel="red"]')).toHaveValue('100');await expect(page.locator('#fogToggle')).not.toBeChecked();
- await page.locator('#playerMove').click();await page.locator('[data-player-node="B3"]').click();await page.locator('#playerConfirm').click();await page.locator('#playerResolve').click();
+ await page.locator('[data-own="Vanguard"]').click();await page.locator('#playerMove').click();await page.locator('[data-player-node="B3"]').click();await page.locator('#playerConfirm').click();await page.locator('#playerResolve').click();
  await expect(page.locator('[data-player-position="B3"] [data-own]')).toHaveCount(1);
  await expect(page.locator('#app')).not.toContainText('SECRET');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
