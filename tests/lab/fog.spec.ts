@@ -1,0 +1,24 @@
+import {test,expect} from "@playwright/test";
+test('player fog view filters enemy UI and keeps per-viewer Intel across saves',async({page})=>{
+ const external:string[]=[];page.on('request',r=>{if(!r.url().startsWith('http://127.0.0.1:4186/'))external.push(r.url())});
+ await page.goto('/');await page.locator('#playerMode').click();
+ await expect(page.locator('#armyPanel')).toHaveCount(0);await expect(page.locator('#cargoSummary')).toHaveCount(0);
+ await expect(page.locator('.enemy-contact')).toHaveCount(0);
+ await expect(page.locator('[data-player-position="post"]')).toContainText('Unknown');
+ await page.getByText('Lab Intel controls', {exact:false}).click();
+ await page.locator('[data-intel="red"]').fill('100');await page.locator('[data-intel="red"]').blur();
+ await expect(page.locator('.enemy-contact')).toContainText('Red force');
+ await expect(page.locator('[data-player-position="post"]')).toContainText('Estimated');
+ await expect(page.locator('#app')).not.toContainText('Garrison');
+ await page.locator('#fogToggle').uncheck();await expect(page.locator('[data-player-position="post"]')).toContainText('Exact');
+ await page.locator('#viewKingdom').selectOption('green');await expect(page.locator('[data-intel="red"]')).toHaveValue('0');
+ await page.locator('#viewKingdom').selectOption('blue');await expect(page.locator('[data-intel="red"]')).toHaveValue('100');
+ await page.locator('#playerSave').click();await page.reload();await page.locator('#load').click();await page.locator('#playerMode').click();
+ await expect(page.locator('[data-intel="red"]')).toHaveValue('100');await expect(page.locator('#fogToggle')).not.toBeChecked();
+ await page.locator('#playerMove').click();await page.locator('[data-player-node="B3"]').click();await page.locator('#playerConfirm').click();await page.locator('#playerResolve').click();
+ await expect(page.locator('[data-player-position="B3"] [data-own]')).toHaveCount(1);
+ await expect(page.locator('#app')).not.toContainText('SECRET');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.locator('#scientistMode').click();await expect(page.locator('#armyPanel')).toHaveCount(1);
+ expect(external).toEqual([]);
+});

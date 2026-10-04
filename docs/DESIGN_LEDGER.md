@@ -370,3 +370,9 @@ Always report them separately.
 ### DECIDED --- Use regression guardrails instead of endless audits
 
 Audit when architecture is genuinely uncertain, not ritualistically.
+
+### TESTING --- Conflict Board Lab visibility and per-rival Military Intel
+
+The Lab has an optional player view with friendly-node/adjacent-node observation, per-viewer/per-rival simulated Military Intel, and an adjacency-fog toggle. It reuses the existing qualitative/estimated/exact Power ladder; outside vision it drops one disclosure tier, with basic becoming hidden. Enemy orders, composition, cargo and raw journal events are not in the player-view projection. Scientist mode remains unrestricted.
+
+This is browser-local testing, not secure multiplayer secrecy or live Intel integration. A pure allowlisted projection is the future server integration boundary. Historical discoveries, enemy reinforcement details and production authorization remain deferred. See `lab/README.md` for the testing controls and exact bands.

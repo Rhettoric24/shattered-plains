@@ -111,7 +111,7 @@ Pure deterministic replay is not database idempotency: replaying identical input
 
 ## Deliberately deferred
 
-Live sieges, real treasury theft, final Raid balance, deadlines/overtime, withdrawal missions, Intel, storms, equipment, Conclaves, notifications, production scoring and all production migration/integration. Formations are command groups, not permanent equipment or exposure identities; later accounting cohorts can sit beneath them without changing graph/order concepts.
+Live sieges, real treasury theft, final Raid balance, deadlines/overtime, withdrawal missions, live Intel integration, storms, equipment, Conclaves, notifications, production scoring and all production migration/integration. Formations are command groups, not permanent equipment or exposure identities; later accounting cohorts can sit beneath them without changing graph/order concepts.
 
 Verified unrelated accounting issue: `ownedUnitsIncludingAway` in `convex/provisionHelpers.ts` includes deployed siege troops but omits traveling `siegeReinforcements`. Recruitment uses this for provisions and Gemheart Baron Chull limits. Left unchanged; resolve separately before live integration.
 
@@ -122,3 +122,21 @@ No deployment is part of Raid V1 implementation. The existing main-branch Pages 
 ### Experimental cargo percentages
 
 Under Experimental constants, edit the four **Defeat cargo drop percentages** (0–100%) and click **Apply constants**. Defaults are 25/50/75/100. Power boundaries remain 1×, 1.5×, 2× and 3×; only the percentage dropped changes. Each band is independently adjustable, including non-monotonic experiments. Applies to future battles under either combat model. Highest-Power ties still have no defeat drop, annihilation always drops all cargo, and capacity overflow rules are unchanged. Settings persist across presets and browser saves; older saves use the defaults. **Reset cargo percentages** immediately restores these four defaults without changing other constants.
+
+## Lab player view and Military Intel (TESTING)
+
+Use **Enter player view · Fog / Intel** to test visibility and issue own-army orders. Return to scientist mode for unrestricted editing, presets and the existing Current/Experimental Survival controls. Select a viewing kingdom and expand **Lab Intel controls** to edit its Military Intel against each rival independently. Values, fog preference and viewing kingdom persist with browser-local saves.
+
+Vision includes every occupied friendly node and its directly connected neighbors. Intel uses the existing shared Military disclosure helpers, not a new ladder:
+
+| Military Intel | Inside vision (or fog off) | Outside vision with fog on |
+| --- | --- | --- |
+| 0–24 | Qualitative Power | Hidden |
+| 25–74 | Estimated Power | Qualitative Power |
+| 75–100 | Exact Power | Estimated Power |
+
+Fog off reveals presence everywhere but preserves the Intel limits on details. High Intel does not reveal enemy composition, cargo, routes, orders, Research or raw debug events. Player battle reports show only the viewer's own results. Historical investigation discoveries and enemy reinforcement ETA disclosure remain deferred.
+
+`conflict-board/disclosure.ts` creates an allowlisted transport projection; `lab/player-view.ts` renders only that projection. A later authenticated Convex query can supply authoritative state, viewer identity and per-rival Military Intel to these pure helpers. No backend schema, query, mutation or deployment is added now.
+
+**This is a visibility simulation, not secure multiplayer fog.** The browser still stores full scientist state and allows changing viewers/Intel. Real secrecy requires server-side projection and authorization. Ordinary play remains entirely client-side with zero Convex requests.

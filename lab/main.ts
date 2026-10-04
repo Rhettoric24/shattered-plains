@@ -1,3 +1,5 @@
+import { projectConflict, projectJournal } from "../conflict-board/disclosure";
+import { renderPlayerView } from "./player-view";
 import { DEFAULT_CARGO_DROP_RATES } from "../conflict-board/cargo";
 import { cargoAmount, cargoCapacity, DEFAULT_TREASURY } from "../conflict-board/cargo";
 import { emptyUnits, totalUnits, unitKeys } from "../convex/rules";
@@ -17,6 +19,8 @@ let state = scenario(),
   config = structuredClone(defaults),
   selected = state.formations[1].id,
   history: CycleResult[] = [];
+let playerMode = false, viewingKingdom = "blue", fogEnabled = true, labSeed = "playtest";
+let militaryIntel: Record<string, Record<string, number>> = {};
 let serial = 0,
   preferences: Record<string, string> = {};
 let inspectorOpen = false,
@@ -52,16 +56,43 @@ const unitInputs = () =>
   Object.fromEntries(
     unitKeys().map((k) => [k, Number(value(`unit-${k}`))]),
   ) as Formation["units"];
+function saveLab() {
+ if(document.getElementById("seed"))labSeed=value("seed");
+ localStorage.setItem("conflict-lab",JSON.stringify({state,config,history,preferences,viewingKingdom,fogEnabled,militaryIntel,labSeed}));
+}
+function loadLab() {
+ const data=JSON.parse(localStorage.getItem("conflict-lab")??"null");
+ if(!data)throw Error("No saved Lab state.");
+ labSeed=data.labSeed??"playtest";state=data.state;config=data.config;history=data.history??[];preferences=data.preferences??{};
+ config.combatModel??="current";config.raidCap??=100;
+ viewingKingdom=data.viewingKingdom??state.kingdoms[0].id;fogEnabled=data.fogEnabled??true;militaryIntel=data.militaryIntel??{};
+ for(const p of state.board.positions)if(p.id==="A1"||p.id==="C1")p.objective="raid";
+ inspectorOpen=false;proposed=null;selected=state.formations[0]?.id??"";
+}
 function render() {
+ if(playerMode) {
+   if(!state.kingdoms.some(k=>k.id===viewingKingdom))viewingKingdom=state.kingdoms[0].id;
+   const intel=militaryIntel[viewingKingdom]??{};
+   renderPlayerView($("app"),projectConflict(state,viewingKingdom,intel,fogEnabled),intel,projectJournal(history,viewingKingdom),{
+     scientist:()=>{playerMode=false;render()},
+     viewer:id=>{viewingKingdom=id;render()},
+     fog:on=>{fogEnabled=on;render()},
+     intel:(id,n)=>{militaryIntel[viewingKingdom]??={};militaryIntel[viewingKingdom][id]=n;render()},
+     order:(id,order)=>{const f=state.formations.find(f=>f.id===id&&f.kingdom===viewingKingdom);if(!f)throw Error("Select your own army.");f.order=structuredClone(order);render()},
+     resolve:()=>{const r=resolveCycle({state,config,cycle:state.cycle+1,seed:labSeed,mergePreferences:preferences});state=r.state;history.push(r);preferences={};render()},
+     save:saveLab,load:()=>{loadLab();render()},
+   });
+   return;
+ }
   const previousSeed = document.getElementById("seed")
     ? value("seed")
-    : "playtest";
+    : labSeed;
   const previousPreset = document.getElementById("preset")
     ? value("preset")
     : presetNames[0];
   const f = formation();
   $("app").innerHTML =
-    `<header><h1>Conflict Board Resolution Lab</h1><p class="muted">Local experiments · fake armies · no Convex traffic · experimental rules, not live sieges</p><label>Combat model<select id="combatModel">${option("current", "Current · reference", config.combatModel ?? "current")}${option("experimental-survival", "Experimental Survival · normalized + weighted", config.combatModel)}</select></label><p id="combatModelStatus"><strong>${modelName(config.combatModel)}</strong> · ${config.combatModel === "experimental-survival" ? "Survival = 100 × researched Survival / troops; weighted individual losses. Fixed 3% floor, 25% factor, 80% base cap, 95% final cap; no Survival cap. Current debug casualty settings are ignored." : "Existing total Survival and equal individual casualty selection. Reference defaults include the 3% floor; scientist constants remain available."} Changes apply to future battles only. Load the same preset and seed to compare.</p></header>
+    `<header><h1>Conflict Board Resolution Lab</h1><button id="playerMode">Enter player view · Fog / Intel</button><p class="muted">Local experiments · fake armies · no Convex traffic · experimental rules, not live sieges</p><label>Combat model<select id="combatModel">${option("current", "Current · reference", config.combatModel ?? "current")}${option("experimental-survival", "Experimental Survival · normalized + weighted", config.combatModel)}</select></label><p id="combatModelStatus"><strong>${modelName(config.combatModel)}</strong> · ${config.combatModel === "experimental-survival" ? "Survival = 100 × researched Survival / troops; weighted individual losses. Fixed 3% floor, 25% factor, 80% base cap, 95% final cap; no Survival cap. Current debug casualty settings are ignored." : "Existing total Survival and equal individual casualty selection. Reference defaults include the 3% floor; scientist constants remain available."} Changes apply to future battles only. Load the same preset and seed to compare.</p></header>
  <section><div class="row"><label>Scenario<select id="preset">${presetNames.map((n) => option(n, n)).join("")}</select></label><label>Casualty seed<input id="seed" value="playtest"></label></div><button id="reset">Load preset</button><button id="save">Save in this browser</button><button id="load">Load saved</button><button id="resolve">Resolve Next Cycle</button><p id="status">Cycle ${state.cycle} · legal owner: ${escape(state.originalOwner)} · Command Post: ${escape(state.objective.controller ?? "empty")}${state.objective.hold ? ` · hold began cycle ${state.objective.hold.beganCycle}` : ""}${state.objective.conqueredBy ? ` · CONQUEST: ${escape(state.objective.conqueredBy)}` : ""}</p><div id="cargoSummary"><strong>Fake defender Treasury: ${state.treasury ?? DEFAULT_TREASURY}</strong><p>Recovered: ${state.recovered ?? 0} · Unclaimed: ${state.cargoLost ?? 0} · Destroyed at settlement: ${state.cargoDestroyed ?? 0}</p>${state.kingdoms.map(k => `<p>${escape(k.name)} · carried ${state.formations.filter(f => f.kingdom === k.id).reduce((sum,f) => sum+cargoAmount(f),0)} · banked ${state.raidValues?.[k.id] ?? 0}</p>`).join("")}</div><p id="error" class="error" role="alert"></p></section>
  <div class="layout"><div><section id="battlefield"><h2>Battlefield · Center = Conquest / Flanks = Raid</h2><p class="muted">Tap an army to command it. Move: tap connected positions, then Confirm. Only B1 connects to the Command Post.</p><p class="legend">● Current · <span class="forward-key">→ Approved</span> · <span class="history-key">↶ Retreat</span> · <span class="draft-key">◇ Proposed</span></p><div id="routeBuilder" hidden><strong id="routeTitle"></strong><p id="proposedPath"></p><p id="routeError" class="error" role="alert"></p><button id="clearRoute">Clear</button><button id="cancelRoute">Cancel</button><button id="confirmRoute">Confirm route</button></div><div class="board">${[
    ...state.board.positions,
@@ -127,6 +158,7 @@ function render() {
    .join(
      "",
    )}<h3>Defeat cargo drop percentages</h3><p>Winner / loser Power before casualties. Applies to both combat models. Ties drop no defeat percentage; annihilation always drops 100%.</p>${["1×–<1.5×","1.5×–<2×","2×–<3×","3×+"].map((label,i)=>`<label>${label} cargo dropped (%)<input id="cargoDrop-${i}" type="number" min="0" max="100" step="0.1" value="${(config.cargoDropRates ?? DEFAULT_CARGO_DROP_RATES)[i]*100}"></label>`).join("")}<button id="resetCargoDrops">Reset cargo percentages</button><label>Fake defender Treasury remaining<input id="treasury" type="number" min="0" value="${state.treasury ?? DEFAULT_TREASURY}"></label><label>Raid cap per objective per cycle<input id="raidCap" type="number" min="0" value="${config.raidCap ?? 100}"></label><button id="config">Apply constants</button><p class="muted">Bridge Engineering is excluded from tactical Speed only. The comparison travel Speed retains it. Existing casualty rounding, troop selection and final loss cap are reused.</p></section></div></div><dialog id="armyDialog" aria-labelledby="armyTitle"></dialog>`;
+  action("playerMode",()=>{labSeed=value("seed");playerMode=true;inspectorOpen=false;proposed=null;render()});
   document.querySelectorAll<HTMLButtonElement>("[data-formation]").forEach(
     (b) =>
       (b.onclick = () => {
@@ -168,29 +200,8 @@ function render() {
     config.combatModel = value("combatModel") as "current" | "experimental-survival";
     render();
   };
-  action("save", () =>
-    localStorage.setItem(
-      "conflict-lab",
-      JSON.stringify({ state, config, history, preferences }),
-    ),
-  );
-  action("load", () => {
-    const data = JSON.parse(localStorage.getItem("conflict-lab") ?? "null");
-    if (!data) throw Error("No saved Lab state.");
-    state = data.state;
-    config = data.config;
-    config.combatModel ??= "current";
-    config.raidCap ??= 100;
-    // Older local saves retain all armies/orders. Only add flank metadata.
-    for (const p of state.board.positions)
-      if (p.id === "A1" || p.id === "C1") p.objective = "raid";
-    inspectorOpen = false;
-    proposed = null;
-    history = data.history;
-    preferences = data.preferences;
-    selected = state.formations[0]?.id ?? "";
-    render();
-  });
+  action("save", saveLab);
+  action("load", () => {loadLab();render()});
   action("resolve", () => {
     if (proposed !== null)
       throw Error("Confirm or Cancel the proposed route before resolving.");

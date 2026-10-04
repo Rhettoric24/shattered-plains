@@ -15,14 +15,14 @@ const result = await build({
   metafile: true,
 });
 
-// Only the pure shared rules module may enter from the backend directory.
+// Only these pure shared rules modules may enter from the backend directory.
 // Fail publication if a later Lab import introduces a client or server module.
 for (const input of Object.keys(result.metafile.inputs)) {
   const normalized = input.replaceAll("\\", "/");
   if (
     !normalized.startsWith("lab/") &&
     !normalized.startsWith("conflict-board/") &&
-    normalized !== "convex/rules.ts"
+    normalized !== "convex/rules.ts" && normalized !== "convex/intelligenceRules.ts"
   ) {
     throw new Error(`Unexpected dependency in static Lab: ${input}`);
   }

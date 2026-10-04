@@ -219,3 +219,7 @@ a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.fogged { background: #181d26; border-style: dashed; }
+.enemy-contact { padding: .4rem; border-left: 3px solid #d9ae66; }
+#ownInfo, #draftPath { overflow-wrap: anywhere; }
