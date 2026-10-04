@@ -3,8 +3,9 @@ test("selected player army workshop, reinforcements and purple retreat history",
   await page.goto("/");await page.locator("#playerMode").click();
   await page.locator('[data-own="Vanguard"]').click();
   await expect(page.locator("#playerName")).toHaveValue("Vanguard");
-  for(const key of ["bridgeman","spearman","chull","shardbearer"])await page.locator(`#playerUnit-${key}`).fill(key==="bridgeman"?"5":"0");
   await page.locator("#playerSplit").click();
+  await page.locator("#splitUnit-bridgeman").fill("5");
+  await page.locator("#playerSplitConfirm").click();
   await expect(page.locator("[data-own]")).toHaveCount(2);
   await expect(page.locator("#playerName")).toHaveValue("Vanguard detachment");
   await page.locator("#playerAdd").click();
@@ -22,6 +23,7 @@ test("selected player army workshop, reinforcements and purple retreat history",
   await expect(page.locator('[data-player-position="approach"]')).toContainText("Fallback 2");
   const colors=await page.locator('.retreat-shade').evaluateAll(es=>es.map(e=>getComputedStyle(e).backgroundColor));
   expect(new Set(colors).size).toBe(2);
+  await page.locator("#playerClose").click();
   await page.locator('[data-player-position="approach"] [data-own]').click();
   await expect(page.locator('[data-player-position="A3"]')).not.toHaveClass(/retreat-shade/);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
