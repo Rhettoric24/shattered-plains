@@ -7,6 +7,7 @@ import {
 import { totalUnits, unitKeys, type UnitCounts } from "../convex/rules";
 import { retreatShade, type WorkshopCommand } from "./workshop";
 import { attachRouteDrag } from "./route-drag";
+import { equipmentMarkup, equipmentLabMarkup, type EquipmentCommand } from "./equipment";
 import type {
   ConflictView,
   MilitaryIntel,
@@ -29,6 +30,9 @@ export function renderPlayerView(
   journal: ReturnType<typeof projectJournal>,
   actions: {
     selected: string;
+    consumableTest:boolean;
+    setConsumableTest:(on:boolean)=>void;
+    equipment: (id:string,command:EquipmentCommand)=>void;
     select: (id: string) => void;
     workshop: (id: string, command: WorkshopCommand) => void;
     nominate: (id: string, position: string) => void;
@@ -90,6 +94,11 @@ export function renderPlayerView(
     view.own.find((f) => f.formation.id === selected)?.formation;
   el("playerCancel").insertAdjacentHTML("afterend", `<div id="playerWorkshop"><p class="history-key">Purple retreat trail: lighter = nearest fallback, darker = farther back. Numbers show fallback order.</p><h3>Lab-only unit editor</h3><p>These controls create/edit fake troops only. Reinforcements arrive next cycle through the normal side entry, not at the selected army.</p><label>Name<input id="playerName"></label><div class="units">${unitKeys().map(k=>`<label>${esc(k)}<input id="playerUnit-${k}" type="number" min="0" step="1"></label>`).join("")}</div><button id="playerEdit">Apply army edit</button><button id="playerAdd">Add these units</button><button id="playerCreate">Create army here</button><button id="playerArrive">Queue these troops next cycle</button><button id="playerRemove">Remove army</button><p>Apply replaces troop counts; Add adds the entered counts. Split subtracts them and must leave troops in both armies. Cargo-bearing armies cannot split.</p><p>${view.ownArrivals.length} of your reinforcement arrivals pending.</p><h3>Standing orders</h3><label>After defeat<select id="playerDefeat"><option value="continue">Continue</option><option value="pause">Pause</option></select></label><button id="playerSaveDefeat">Save standing behavior</button><details><summary>Advanced route / merge controls</summary><label>Approved route (comma separated)<input id="playerRoute"></label><button id="playerApprove">Approve typed route</button><label>Merge position<select id="playerMergePosition">${view.board.positions.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label><button id="playerNominate">Retain selected source on merge</button><p id="playerMergeStatus"></p></details></div>`);
   const input = (id: string) => el(id) as HTMLInputElement;
+  el("ownInfo").insertAdjacentHTML("afterend",'<details id="playerEquipment"><summary>Fabrials · carried equipment</summary><div id="playerEquipmentContents"></div></details>');
+  el("playerWorkshop").insertAdjacentHTML("beforeend",`<h3>Fabrial test setup</h3><label>Equipment carrier<select id="equipmentCarrier"></select></label><div id="carrierEquipment"></div>${equipmentLabMarkup("playerFabrial")}`);
+  el("playerWorkshop").insertAdjacentHTML("beforeend",`<label><input id="playerConsumableTest" type="checkbox" ${actions.consumableTest?"checked":""}> Experimental: consume one Painrial per engagement. Half-Shard takes priority.</label><p>Automatic Painrial combat use is off by default pending Board design confirmation.</p>`);
+  el("playerWorkshop").insertAdjacentHTML("beforeend",`<details><summary>Your equipment records (${view.ownEquipmentRecords.length})</summary>${view.ownEquipmentRecords.map(r=>`<p>${esc(r.item.kind)} · ${esc(r.item.id)} · ${esc(r.status)} · ${esc(r.reason)}</p>`).join("")}</details>`);
+  input("playerConsumableTest").onchange=e=>actions.setConsumableTest((e.target as HTMLInputElement).checked);
   const dialog = document.createElement("dialog");
   dialog.id = "playerArmyDialog";
   dialog.setAttribute("aria-labelledby", "playerArmyTitle");
@@ -114,7 +123,22 @@ export function renderPlayerView(
     el("playerMergeStatus").textContent = "";
     for(const k of unitKeys()) input(`splitUnit-${k}`).value="0";
     el("splitEditor").hidden=true;
+    el("splitEditor").querySelector(".split-equipment")?.remove();
+    el("splitEditor").insertAdjacentHTML("beforeend",`<div class="split-equipment"><h4>Equipment for the detachment</h4><p>Unchecked devices stay with the parent. Activation state follows each selected item.</p>${(f?.equipment?.items??[]).map(i=>`<label><input type="checkbox" data-split-equipment="${esc(i.id)}"> ${esc(i.kind)} · ${esc(i.id)}</label>`).join("")}</div>`);
+    input("equipmentCarrier").innerHTML=[...view.own.map(g=>g.formation),...view.ownArrivals.map(a=>a.formation)].map(g=>`<option value="${esc(g.id)}">${esc(g.name)}${view.ownArrivals.some(a=>a.formation.id===g.id)?" (reinforcements)":""}</option>`).join("");
+    input("equipmentCarrier").value=f?.id??"";
+    fillEquipment();
   };
+  const fillEquipment=()=>{
+    const f=army();el("playerEquipmentContents").innerHTML=f?equipmentMarkup(f,"player"):"No selected army.";
+    root.querySelectorAll<HTMLElement>("[data-player-switch]").forEach(b=>b.onclick=()=>actions.equipment(selected,{kind:"switch",id:b.dataset.playerSwitch!}));
+    const carrier=[...view.own.map(g=>g.formation),...view.ownArrivals.map(a=>a.formation)].find(g=>g.id===input("equipmentCarrier").value);
+    el("carrierEquipment").textContent=(carrier?.equipment?.items??[]).map(i=>`${i.kind} · ${i.id}`).join(", ")||"No devices";
+    input("playerFabrialRemoveId").innerHTML=(carrier?.equipment?.items??[]).map(i=>`<option value="${esc(i.id)}">${esc(i.kind)} · ${esc(i.id)}</option>`).join("");
+  };
+  input("equipmentCarrier").onchange=fillEquipment;
+  act("playerFabrialGive",()=>actions.equipment(input("equipmentCarrier").value,{kind:"give",fabrial:input("playerFabrialKind").value as any,active:input("playerFabrialActive").checked}));
+  act("playerFabrialRemove",()=>actions.equipment(input("equipmentCarrier").value,{kind:"remove",id:input("playerFabrialRemoveId").value}));
   const update = () => {
     const f = army();
     const own = view.own.find(g=>g.formation.id===selected), stats=own?.stats;
@@ -149,6 +173,7 @@ export function renderPlayerView(
   };
   act("playerSplit",()=>{el("splitEditor").hidden=false;el("splitEditor").scrollIntoView({block:"nearest"})});
   act("playerSplitConfirm",()=>actions.workshop(selected,{kind:"split",name:input("playerName").value,
+    childEquipmentIds:[...root.querySelectorAll<HTMLInputElement>("[data-split-equipment]:checked")].map(e=>e.dataset.splitEquipment!),
     units:Object.fromEntries(unitKeys().map(k=>[k,Number(input(`splitUnit-${k}`).value)])) as UnitCounts,
     onDefeat:input("playerDefeat").value as Order["onDefeat"]}));
   act("playerReinforce",()=>{el("playerWorkshop").scrollIntoView({block:"start"});input("playerName").focus()});

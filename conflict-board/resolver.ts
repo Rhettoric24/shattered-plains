@@ -21,6 +21,7 @@ import { appendHistory, connected, holdOrder } from "./planning";
 import { formationStats } from "./stats";
 import { experimentalSurvivalLosses } from "./experimental-survival";
 import { observeRaidControl, finishRaids } from "./raids";
+import { validateEquipment, mergeEquipment, archiveEquipment, finishFabrialSwitches, protectWithEquipment, retainPooledEquipment, resolveFabrialLosses } from "./fabrials";
 import type {
   BattleForce,
   ConflictState,
@@ -71,6 +72,8 @@ function random(seed: string) {
 }
 function validate(input: CycleInput) {
   const { state, config, cycle } = input;
+  validateEquipment(state);
+  if(config.fabrialLossRates!==undefined && (!Array.isArray(config.fabrialLossRates)||config.fabrialLossRates.length!==4||!config.fabrialLossRates.every(n=>Number.isFinite(n)&&n>=0&&n<=1)))throw Error("Fabrial loss percentages must each be between 0 and 100.");
   if (config.cargoDropRates !== undefined && (!Array.isArray(config.cargoDropRates) || config.cargoDropRates.length !== 4 || !config.cargoDropRates.every(n => Number.isFinite(n) && n >= 0 && n <= 1))) throw Error("Cargo drop percentages must each be between 0 and 100.");
   if (
     config.combatModel !== undefined &&
@@ -407,7 +410,7 @@ function movementStep(
         position,
         p.kingdom,
       ]);
-      const result = experimental
+      const rawResult = experimental
         ? experimentalSurvivalLosses(combined(p.rows), baseRate, seed, research)
         : applySurvivalLosses(
             combined(p.rows),
@@ -417,7 +420,11 @@ function movementStep(
             false,
             c.surviveCap ?? undefined,
           );
+      const protectedResult=protectWithEquipment(state,p.rows,rawResult,input.cycle,events,input.config.consumeFabrialPerEngagement===true);
+      const result={...rawResult,...protectedResult};
       distributeCasualties(p.rows, result.casualties, seed + ":allocation");
+      retainPooledEquipment(p.rows);
+      resolveFabrialLosses(state,p.rows,{cycle:input.cycle,step,position,seed:input.seed,winnerPower:top,ownPower:p.power,defeated:winner!==null&&p.kingdom!==winner,rates:input.config.fabrialLossRates},events);
       forces.push({
         kingdom: p.kingdom,
         power: p.power,
@@ -480,6 +487,7 @@ function movementStep(
     groups.filter((g) => totalUnits(g.units)),
     events,
   );
+  for(const g of groups.filter(g=>!totalUnits(g.units)))archiveEquipment(state,g,input.cycle,events);
   return groups.filter((g) => totalUnits(g.units));
 }
 function mergeGroups(
@@ -540,6 +548,8 @@ function mergeGroups(
         history: source ? [...source.history] : [first.position],
         order,
       };
+      const equipment=mergeEquipment(rows);
+      if(equipment)result.equipment=equipment;
       if (rows.some((g) => g.cargo !== undefined))
         result.cargo = combineCargo(rows);
       limitCargo(state, result, events, "Merged capacity overflow is lost.");
@@ -565,6 +575,7 @@ export function resolveCycle(input: CycleInput): CycleResult {
   validate(input);
   const state = structuredClone(input.state),
     events: Event[] = [];
+  for(const f of state.formations.filter(f=>!totalUnits(f.units)))archiveEquipment(state,f,input.cycle,events);
   for (const f of sorted(state.formations))
     limitCargo(
       state,
@@ -590,6 +601,11 @@ export function resolveCycle(input: CycleInput): CycleResult {
     garrison.find((f) => f.id === nominatedGarrison) ??
     (garrison.length === 1 ? garrison[0] : undefined);
   const arrivals = sorted(state.arrivals.filter((a) => a.cycle <= input.cycle));
+  if(arrivalRecipient) {
+    const joining=arrivals.filter(a=>a.formation.kingdom===state.originalOwner && state.objective.controller===state.originalOwner);
+    const equipment=mergeEquipment([arrivalRecipient,...joining.map(a=>a.formation)]);
+    if(equipment)arrivalRecipient.equipment=equipment;
+  }
   for (const a of arrivals) {
     const position =
       a.formation.kingdom === state.originalOwner
@@ -687,6 +703,8 @@ export function resolveCycle(input: CycleInput): CycleResult {
     }
   }
   state.cycle = input.cycle;
+  finishFabrialSwitches(state,input.cycle,events);
+  validateEquipment(state);
   return {
     id: JSON.stringify([state.id, input.cycle, input.seed]),
     state,

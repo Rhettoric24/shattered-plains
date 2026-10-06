@@ -1,5 +1,7 @@
 import { projectConflict, projectJournal } from "../conflict-board/disclosure";
 import { renderPlayerView } from "./player-view";
+import { archiveEquipment, DEFAULT_FABRIAL_LOSS_RATES } from "../conflict-board/fabrials";
+import { labEquipmentCommand, equipmentMarkup, equipmentLabMarkup } from "./equipment";
 import { playerWorkshop, queueReinforcements, retreatShade, validateTroops } from "./workshop";
 import { DEFAULT_CARGO_DROP_RATES } from "../conflict-board/cargo";
 import { cargoAmount, cargoCapacity, DEFAULT_TREASURY } from "../conflict-board/cargo";
@@ -76,6 +78,9 @@ function render() {
    const intel=militaryIntel[viewingKingdom]??{};
    renderPlayerView($("app"),projectConflict(state,viewingKingdom,intel,fogEnabled,config),intel,projectJournal(history,viewingKingdom),{
      selected,
+     consumableTest:config.consumeFabrialPerEngagement===true,
+     setConsumableTest:on=>{config.consumeFabrialPerEngagement=on;render()},
+     equipment:(id,command)=>{state=labEquipmentCommand(state,viewingKingdom,id,command,uid);render()},
      select:id=>{selected=id},
      workshop:(id,command)=>{const result=playerWorkshop(state,viewingKingdom,id,command,uid);state=result.state;selected=result.selected;render()},
      nominate:(id,position)=>{const f=state.formations.find(f=>f.id===id&&f.kingdom===viewingKingdom);if(!f)throw Error("Select your own army.");preferences[`${viewingKingdom}@${position}`]=id},
@@ -164,6 +169,19 @@ function render() {
      "",
    )}<h3>Defeat cargo drop percentages</h3><p>Winner / loser Power before casualties. Applies to both combat models. Ties drop no defeat percentage; annihilation always drops 100%.</p>${["1×–<1.5×","1.5×–<2×","2×–<3×","3×+"].map((label,i)=>`<label>${label} cargo dropped (%)<input id="cargoDrop-${i}" type="number" min="0" max="100" step="0.1" value="${(config.cargoDropRates ?? DEFAULT_CARGO_DROP_RATES)[i]*100}"></label>`).join("")}<button id="resetCargoDrops">Reset cargo percentages</button><label>Fake defender Treasury remaining<input id="treasury" type="number" min="0" value="${state.treasury ?? DEFAULT_TREASURY}"></label><label>Raid cap per objective per cycle<input id="raidCap" type="number" min="0" value="${config.raidCap ?? 100}"></label><button id="config">Apply constants</button><p class="muted">Bridge Engineering is excluded from tactical Speed only. The comparison travel Speed retains it. Existing casualty rounding, troop selection and final loss cap are reused.</p></section></div></div><dialog id="armyDialog" aria-labelledby="armyTitle"></dialog>`;
   action("playerMode",()=>{labSeed=value("seed");playerMode=true;inspectorOpen=false;proposed=null;render()});
+  $("config").insertAdjacentHTML("beforebegin",`<h3>Reusable Fabrial loss chances</h3><p>Independent chance per carried reusable device after defeat. Uses pre-casualty winner/loser Power. Annihilation always loses all reusable devices; surviving winners and ties have no defeat roll.</p>${["1×–<1.5×","1.5×–<2×","2×–<3×","3×+"].map((label,i)=>`<label>${label} loss chance (%)<input id="fabrialLoss-${i}" type="number" min="0" max="100" value="${(config.fabrialLossRates??DEFAULT_FABRIAL_LOSS_RATES)[i]*100}"></label>`).join("")}<button id="resetFabrialLoss">Reset Fabrial loss chances</button>`);
+  action("resetFabrialLoss",()=>{config.fabrialLossRates=[...DEFAULT_FABRIAL_LOSS_RATES];render()});
+  const equipmentHost=document.createElement("div");equipmentHost.id="scientistEquipment";
+  $("armyRoutes").after(equipmentHost);
+  const own=formation();
+  if(own){
+    equipmentHost.innerHTML=equipmentMarkup(own,"science")+equipmentLabMarkup("scienceFabrial")+`<label><input id="scienceConsumableTest" type="checkbox" ${config.consumeFabrialPerEngagement?"checked":""}> Experimental: one Painrial per engagement (Half-Shard takes priority)</label><p>Consumed / unsettled / explicitly removed items recorded: ${state.equipmentRecords?.length??0}</p>`;
+    $<HTMLInputElement>("scienceConsumableTest").onchange=e=>{config.consumeFabrialPerEngagement=(e.target as HTMLInputElement).checked;render()};
+    $<HTMLSelectElement>("scienceFabrialRemoveId").innerHTML=(own.equipment?.items??[]).map(i=>option(i.id,i.kind+" · "+i.id)).join("");
+    equipmentHost.querySelectorAll<HTMLElement>("[data-science-switch]").forEach(b=>b.onclick=()=>{try{state=labEquipmentCommand(state,own.kingdom,own.id,{kind:"switch",id:b.dataset.scienceSwitch!},uid);render()}catch(e){$("error").textContent=(e as Error).message}});
+    action("scienceFabrialGive",()=>{state=labEquipmentCommand(state,own.kingdom,own.id,{kind:"give",fabrial:value("scienceFabrialKind") as any,active:$<HTMLInputElement>("scienceFabrialActive").checked},uid);render()});
+    action("scienceFabrialRemove",()=>{state=labEquipmentCommand(state,own.kingdom,own.id,{kind:"remove",id:value("scienceFabrialRemoveId")},uid);render()});
+  }
   document.querySelectorAll<HTMLButtonElement>("[data-formation]").forEach(
     (b) =>
       (b.onclick = () => {
@@ -249,6 +267,7 @@ function render() {
     const g = draft(),
       current = formation();
     if (!current) throw Error("Select an army.");
+    if(current.equipment?.items.length && g.kingdom!==current.kingdom)throw Error("Remove or transfer physical Fabrials before changing this army's kingdom.");
     if (g.position === current.position) {
       g.history = current.history;
       g.order = current.order;
@@ -257,6 +276,7 @@ function render() {
     render();
   });
   action("remove", () => {
+    const f=formation();if(f)archiveEquipment(state,f,state.cycle,[],"removed-in-lab","Formation explicitly removed in Lab.");
     state.formations = state.formations.filter((g) => g.id !== selected);
     selected = state.formations[0]?.id ?? "";
     render();
@@ -323,6 +343,7 @@ function render() {
   action("config", () => {
     const next = structuredClone(config);
     next.raidCap = Number(value("raidCap"));
+    next.fabrialLossRates=[0,1,2,3].map(i=>value(`fabrialLoss-${i}`).trim()===""?NaN:Number(value(`fabrialLoss-${i}`))/100) as [number,number,number,number];
     next.cargoDropRates = [0,1,2,3].map(i => value(`cargoDrop-${i}`).trim() === "" ? NaN : Number(value(`cargoDrop-${i}`))/100) as [number,number,number,number];
     for (const k of Object.keys(
       next.specialization,
@@ -518,6 +539,7 @@ function statsPreview() {
 }
 function describe(e: CycleResult["events"][number]) {
   switch (e.type) {
+    case "fabrial": return `${escape(e.kingdom)} · ${escape(e.formation)} · Fabrial ${escape(e.item)}: ${escape(e.action)}. ${escape(e.reason)}`;
     case "cargo":
       return `${escape(e.kingdom ?? e.formation)} · cargo ${e.action}: ${e.amount}. ${escape(e.reason)}`;
     case "raidFoothold":

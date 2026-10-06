@@ -1,6 +1,7 @@
 import { totalUnits, unitKeys, type UnitCounts } from "../convex/rules";
 import { holdOrder, splitFormation } from "../conflict-board/planning";
 import type { ConflictState, Formation, Order } from "../conflict-board/types";
+import { archiveEquipment } from "../conflict-board/fabrials";
 
 export function validateTroops(units: UnitCounts) {
   if (unitKeys().some(k => !Number.isSafeInteger(units[k]) || units[k] < 0) || !totalUnits(units))
@@ -17,6 +18,7 @@ export type WorkshopCommand = {
   name: string;
   units: UnitCounts;
   onDefeat: Order["onDefeat"];
+  childEquipmentIds?: string[];
 };
 /** Lab-only mutation boundary: edits are restricted to this viewer's army.
  * No rules engine or production resource/accounting changes. */
@@ -25,13 +27,14 @@ export function playerWorkshop(state: ConflictState, viewer: string, id: string,
   const f = next.formations.find(f => f.id === id && f.kingdom === viewer);
   if (!f) throw Error("Select your own army.");
   if (command.kind === "remove") {
+    archiveEquipment(next,f,next.cycle,[],"removed-in-lab","Formation explicitly removed in Lab.");
     next.formations = next.formations.filter(g => g.id !== id);
     return {state: next, selected: next.formations.find(g => g.kingdom === viewer)?.id ?? ""};
   }
   validateTroops(command.units);
   if (command.kind === "split") {
     const child = uid();
-    return {state: splitFormation(next, id, command.units, child), selected: child};
+    return {state: splitFormation(next, id, command.units, child,command.childEquipmentIds), selected: child};
   }
   if (command.kind === "edit" || command.kind === "add") {
     const units = structuredClone(command.units);

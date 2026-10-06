@@ -1,4 +1,5 @@
 import { cargoAmount } from "./cargo";
+import { splitEquipment, validateEquipment } from "./fabrials";
 import {
   normalizeUnits,
   totalUnits,
@@ -53,7 +54,9 @@ export function splitFormation(
   id: string,
   requested: UnitCounts,
   childId: string,
+  childEquipmentIds: string[] = [],
 ): ConflictState {
+  validateEquipment(state);
   const next = structuredClone(state);
   const parent = next.formations.find((f) => f.id === id);
   if (
@@ -83,6 +86,9 @@ export function splitFormation(
     name: `${parent.name} detachment`,
     units,
   };
+  const equipment=splitEquipment(parent.equipment,childEquipmentIds);
+  if(equipment.parent)parent.equipment=equipment.parent;
+  if(equipment.child)child.equipment=equipment.child;
   next.formations.push(child);
   for (const foothold of Object.values(next.raidFootholds ?? {})) {
     if (foothold.occupants.includes(parent.id))

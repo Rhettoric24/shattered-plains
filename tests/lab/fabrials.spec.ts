@@ -1,0 +1,30 @@
+import {test,expect} from "@playwright/test";
+test("physical Fabrials can be created, switched, split and saved in player Lab",async({page})=>{
+ const external:string[]=[];page.on("request",r=>{if(!r.url().startsWith("http://127.0.0.1:4186/"))external.push(r.url())});
+ await page.goto('/');await page.locator('#playerMode').click();await page.locator('[data-own="Vanguard"]').click();
+ await page.getByText('Lab-only Fabrial setup',{exact:true}).click();
+ await page.locator('#playerFabrialKind').selectOption('halfShard');await page.locator('#playerFabrialActive').check();await page.locator('#playerFabrialGive').click();
+ await page.locator('#playerEquipment').evaluate((e:HTMLDetailsElement)=>e.open=true);
+ await expect(page.locator('#playerEquipmentContents')).toContainText('Half-Shard — Active');
+ await page.getByText('Lab-only Fabrial setup',{exact:true}).click();await page.locator('#playerFabrialKind').selectOption('soulcaster');await page.locator('#playerFabrialGive').click();
+ await page.locator('#playerEquipment').evaluate((e:HTMLDetailsElement)=>e.open=true);
+ await page.locator('#playerEquipmentContents li').filter({hasText:'Soulcaster'}).getByRole('button').click();
+ await expect(page.locator('#playerEquipmentContents')).toContainText('Activates next resolution');
+ await expect(page.locator('#playerEquipmentContents')).toContainText('Half-Shard — Active');
+ await page.locator('#playerSplit').click();await page.locator('#splitUnit-bridgeman').fill('10');
+ await page.locator('.split-equipment label').filter({hasText:'soulcaster'}).locator('input').check();await page.locator('#playerSplitConfirm').click();
+ await expect(page.locator('#playerEquipmentContents')).toContainText('Soulcaster');
+ await expect(page.locator('#playerEquipmentContents')).not.toContainText('Half-Shard');
+ await page.locator('#playerClose').click();await page.locator('#playerResolve').click();
+ await page.locator('[data-own]').first().click();
+ await expect(page.locator('#playerEquipmentContents')).toContainText('Soulcaster — Active');
+ await page.locator('#playerClose').click();await page.locator('#playerSave').click();await page.reload();await page.locator('#load').click();await page.locator('#playerMode').click();await page.locator('[data-own]').first().click();
+ await expect(page.locator('#playerEquipmentContents')).toContainText('Soulcaster — Active');expect(external).toEqual([]);
+});
+test("Fabrial loss knobs persist independently from cargo and reset",async({page})=>{
+ await page.goto('/');await page.locator('#fabrialLoss-0').fill('12');await page.locator('#config').click();
+ await page.locator('#save').click();await page.reload();await page.locator('#load').click();
+ await expect(page.locator('#fabrialLoss-0')).toHaveValue('12');await expect(page.locator('#cargoDrop-0')).toHaveValue('25');
+ await page.locator('#fabrialLoss-1').fill('101');await page.locator('#config').click();await expect(page.locator('#error')).toContainText('Fabrial loss percentages');
+ await page.locator('#resetFabrialLoss').click();await expect(page.locator('#fabrialLoss-0')).toHaveValue('10');await expect(page.locator('#fabrialLoss-3')).toHaveValue('75');
+});
