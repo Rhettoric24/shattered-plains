@@ -376,3 +376,21 @@ Audit when architecture is genuinely uncertain, not ritualistically.
 The Lab has an optional player view with friendly-node/adjacent-node observation, per-viewer/per-rival simulated Military Intel, and an adjacency-fog toggle. It reuses the existing qualitative/estimated/exact Power ladder; outside vision it drops one disclosure tier, with basic becoming hidden. Enemy orders, composition, cargo and raw journal events are not in the player-view projection. Scientist mode remains unrestricted.
 
 This is browser-local testing, not secure multiplayer secrecy or live Intel integration. A pure allowlisted projection is the future server integration boundary. Historical discoveries, enemy reinforcement details and production authorization remain deferred. See `lab/README.md` for the testing controls and exact bands.
+
+### DECIDED --- Conflict Board physical formation Fabrials (Lab-gated)
+
+For the Conflict Board, multiple physical devices may be carried with one active persistent device per formation. A switch becomes pending and activates after the next resolution without spending movement/action. Splits distribute instance identities and their active/pending state. Merges combine inventory and preserve the active device from the incoming active carrier with the most troops, with stable ascending formation ID breaking ties. This does not change live V0's one-Fabrial-per-operation rule.
+
+### TESTING --- Board Fabrial integration policies
+
+The shared core lifecycle is exposed only through Lab. Half-Shard uses existing 50% post-casualty protection per engagement. Conflicting pending switches provisionally retain the largest pending source. Painrial auto-use is off by default; an explicit Lab toggle tests one per engagement, no stacking with an active Half-Shard. These repeated-engagement semantics are not a production balance approval.
+
+### OPEN --- Board Soulcaster rewards and residual equipment settlement
+
+Old Soulcaster reward recovery does not directly define carried Raid cargo behavior and remains deferred. Unspent consumables on destroyed formations and equipment on manually removed/zeroed test armies retain explicit unavailable records; reusable battle losses now follow the approved rule below.
+
+Implementation truth note: older sections above and CURRENT_STATE describe historical discovery/support. Current code/tests discover Painrial at Field Surgery I + Spren Studies I, and support manually committed PvP defenders and Plateau Run commitments. This Board work does not change those live rules.
+
+### DECIDED --- Conflict Board reusable Fabrial defeat-loss bands
+
+Each carried reusable device independently rolls once per lost engagement, regardless of active/pending/inactive status. Use pre-casualty winner Power divided by defeated kingdom Power: below 1.5x → 10%, 1.5x–<2x → 25%, 2x–<3x → 50%, 3x+ → 75%. Multiway fights use the actual Power winner, not summed hostile Power. Surviving winners and ties have no defeat-loss roll; annihilation overrides this with 100% loss. Roll identity includes the physical item and engagement, so retries/order changes cannot reroll results. Lost devices disappear from usable inventory (audited, never transferred to the victor), and pending activation is canceled if its device is lost. The Lab exposes independent percentage knobs for tuning. This does not change live V0 operation loss rules.

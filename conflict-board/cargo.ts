@@ -62,9 +62,12 @@ export function limitCargo(
     "Capacity overflow enters the unclaimed pool; it is not offered for capture.",
   );
 }
-export function defeatCargoRate(winnerPower: number, loserPower: number, rates = DEFAULT_CARGO_DROP_RATES) {
+export function defeatBandIndex(winnerPower: number, loserPower: number): 0|1|2|3 {
   const ratio = loserPower > 0 ? winnerPower / loserPower : Infinity;
-  return rates[ratio >= 3 ? 3 : ratio >= 2 ? 2 : ratio >= 1.5 ? 1 : 0];
+  return ratio >= 3 ? 3 : ratio >= 2 ? 2 : ratio >= 1.5 ? 1 : 0;
+}
+export function defeatCargoRate(winnerPower: number, loserPower: number, rates = DEFAULT_CARGO_DROP_RATES) {
+  return rates[defeatBandIndex(winnerPower,loserPower)];
 }
 /** Power snapshots precede casualties. Cargo still holds its pre-battle amount.
  * Temporary winning movement groups share capacity, without changing their routes.

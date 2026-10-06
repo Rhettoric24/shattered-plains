@@ -1,4 +1,5 @@
 import type { UnitCounts } from "../convex/rules";
+import type { FormationEquipment, EquipmentRecord } from "./fabrials";
 
 export type Position = {
   id: string;
@@ -28,6 +29,7 @@ export type Order = {
   paused?: boolean;
 };
 export type Formation = {
+  equipment?: FormationEquipment;
   /** Legacy source maps are accepted on load; new cargo is owner-agnostic. */
   cargo?: number | Record<string, number>;
   id: string;
@@ -51,6 +53,7 @@ export type Objective = {
   conqueredBy?: string;
 };
 export type ConflictState = {
+  equipmentRecords?: EquipmentRecord[];
   treasury?: number;
   recovered?: number;
   cargoLost?: number;
@@ -70,6 +73,9 @@ export type ConflictState = {
   raidValues?: Record<string, number>;
 };
 export type ResolverConfig = {
+  fabrialLossRates?: [number,number,number,number];
+  /** Explicit testing policy until repeated-engagement Painrial semantics settle. */
+  consumeFabrialPerEngagement?: boolean;
   combatModel?: "current" | "experimental-survival";
   raidCap?: number;
   cargoDropRates?: [number, number, number, number];
@@ -105,6 +111,7 @@ export type BattleForce = {
   survivors: UnitCounts;
 };
 export type Event =
+  | {type:"fabrial";formation:string;kingdom:string;item:string;action:string;reason:string;lossChance?:number;roll?:number}
   | {
       type: "cargo";
       action:
