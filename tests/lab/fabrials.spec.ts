@@ -1,5 +1,6 @@
 import {test,expect} from "@playwright/test";
 test("physical Fabrials can be created, switched, split and saved in player Lab",async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  const external:string[]=[];page.on("request",r=>{if(!r.url().startsWith("http://127.0.0.1:4186/"))external.push(r.url())});
  await page.goto('/');await page.locator('#playerMode').click();await page.locator('[data-own="Vanguard"]').click();
  await page.getByText('Lab-only Fabrial setup',{exact:true}).click();
@@ -19,7 +20,7 @@ test("physical Fabrials can be created, switched, split and saved in player Lab"
  await page.locator('[data-own]').first().click();
  await expect(page.locator('#playerEquipmentContents')).toContainText('Soulcaster — Active');
  await page.locator('#playerClose').click();await page.locator('#playerSave').click();await page.reload();await page.locator('#load').click();await page.locator('#playerMode').click();await page.locator('[data-own]').first().click();
- await expect(page.locator('#playerEquipmentContents')).toContainText('Soulcaster — Active');expect(external).toEqual([]);
+ await expect(page.locator('#playerEquipmentContents')).toContainText('Soulcaster — Active');expect(external).toEqual([]);expect(errors).toEqual([]);
 });
 test("Fabrial loss knobs persist independently from cargo and reset",async({page})=>{
  await page.goto('/');await page.locator('#fabrialLoss-0').fill('12');await page.locator('#config').click();

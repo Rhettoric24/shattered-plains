@@ -48,9 +48,11 @@ const action = (id: string, fn: () => void) =>
   $(id).addEventListener("click", () => {
     try {
       fn();
-      $("error").textContent = "";
+    const error = document.getElementById("error");
+    if (error) error.textContent = "";
     } catch (e) {
-      $("error").textContent = (e as Error).message;
+    const error = document.getElementById("error") ?? document.getElementById("playerError");
+    if (error) error.textContent = (e as Error).message;
       const panelError = document.getElementById("armyError");
       if (panelError) panelError.textContent = (e as Error).message;
     }
