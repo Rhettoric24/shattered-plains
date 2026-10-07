@@ -52,7 +52,7 @@ export function renderPlayerView(
     draft: string[] | null = null;
   const name = (id: string) =>
     view.kingdoms.find((k) => k.id === id)?.name ?? id;
-  root.innerHTML = `<header><h1>Conflict Board · Player view</h1><p>Lab visibility simulation only. This browser still holds full scientist state; this is not secure multiplayer fog.</p><button id="scientistMode">Return to scientist mode</button></header><section><label>Viewing kingdom<select id="viewKingdom">${view.kingdoms.map((k) => `<option value="${esc(k.id)}" ${k.id === view.viewer ? "selected" : ""}>${esc(k.name)}</option>`).join("")}</select></label><label><input id="fogToggle" type="checkbox" ${view.fog ? "checked" : ""}> Adjacency fog</label><details><summary>Lab Intel controls · this viewer against each rival</summary>${view.kingdoms
+  root.innerHTML = `<header><h1>Conflict Board · Player view</h1><p>Lab visibility simulation only. This browser still holds full scientist state; this is not secure multiplayer fog.</p><button id="scientistMode">Return to scientist mode</button></header><section><label>Viewing kingdom<select id="viewKingdom">${view.kingdoms.map((k) => `<option value="${esc(k.id)}" ${k.id === view.viewer ? "selected" : ""}>${esc(k.name)}</option>`).join("")}</select></label><label><input id="fogToggle" type="checkbox" ${view.fog ? "checked" : ""}> Battlefield fog${view.highstorm?" · Highstorm visibility":""}</label><details><summary>Lab Intel controls · this viewer against each rival</summary>${view.kingdoms
     .filter((k) => k.id !== view.viewer)
     .map(
       (k) =>

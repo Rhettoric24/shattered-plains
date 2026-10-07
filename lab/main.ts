@@ -1,3 +1,4 @@
+import { exposeHighstorm, setHighstorm, stormSettings } from "../conflict-board/highstorms";
 import { projectConflict, projectJournal } from "../conflict-board/disclosure";
 import { renderPlayerView } from "./player-view";
 import { archiveEquipment, DEFAULT_FABRIAL_LOSS_RATES } from "../conflict-board/fabrials";
@@ -74,7 +75,22 @@ function loadLab() {
  for(const p of state.board.positions)if(p.id==="A1"||p.id==="C1")p.objective="raid";
  inspectorOpen=false;proposed=null;selected=state.formations[0]?.id??"";
 }
+function toggleStorm() {
+ if(document.getElementById("seed"))labSeed=value("seed");
+ const active=!state.highstorm?.active;
+ const result=setHighstorm(state,config,active?`${state.id}:storm:${(state.highstorm?.sequence??0)+1}:${labSeed}`:state.highstorm!.id,active);
+ state=result.state;history.push({id:state.highstorm!.id+(active?":start":":end"),state:structuredClone(state),events:result.events});render();
+}
+function renderStormControls() {
+ const c=stormSettings(config);
+ $("app").insertAdjacentHTML("afterbegin",`<section id="stormPanel"><h2>Highstorm · ${state.highstorm?.active?"ACTIVE":"Clear skies"}</h2><button id="stormToggle">${state.highstorm?.active?"End Highstorm":"Start Highstorm · immediate casualties"}</button><p>Lab weather control · no real timer. Each new activation is a new storm. All committed armies, including staging/reserve and traveling reinforcements, face exposure once. Current weather casualty math is independent of the combat model. Active Half-Shards protect; Painrials are not automatically consumed.</p><details><summary>Highstorm tuning · Lab only</summary><label>Base exposure %<input id="stormBase" type="number" value="${c.baseRate*100}"></label><label>Positive Survivability cap (blank = uncapped)<input id="stormCap" type="number" value="${c.surviveCap??''}"></label><label>Vision distance (0 = occupied only)<input id="stormVision" type="number" value="${c.visionRadius}"></label><label>Fog disclosure bands lost<input id="stormFog" type="number" value="${c.fogPenalty}"></label><label>Raid extraction cap multiplier<input id="stormRaid" type="number" value="${c.raidMultiplier}"></label><button id="stormApply">Apply storm settings</button><p>Settings do not re-damage exposed armies. Toggle off/on for another exposure. Scientist troop edits are test overrides; use new formations/reinforcements to test fresh exposure.</p></details></section>`);
+ $("stormPanel").insertAdjacentHTML("beforeend",`<details><summary>${playerMode?"Your storm reports":"Storm reports"}</summary>${history.flatMap(r=>r.events).filter(e=>e.type==="highstorm"&&(!playerMode||e.kingdom===viewingKingdom)).map(e=>`<p>${describe(e)}</p>`).join("")||"No exposure recorded."}</details>`);
+ action("stormToggle",toggleStorm);
+ action("stormApply",()=>{const next={...config,highstorm:{baseRate:Number(value("stormBase"))/100,surviveCap:value("stormCap").trim()===""?null:Number(value("stormCap")),visionRadius:Number(value("stormVision")),fogPenalty:Number(value("stormFog")),raidMultiplier:Number(value("stormRaid"))}};stormSettings(next);config=next;render()});
+}
 function render() {
+ const weatherEvents:CycleResult["events"]=[];exposeHighstorm(state,config,weatherEvents);
+ if(weatherEvents.length)history.push({id:state.highstorm!.id+":arrivals:"+history.length,state:structuredClone(state),events:weatherEvents});
  if(playerMode) {
    if(!state.kingdoms.some(k=>k.id===viewingKingdom))viewingKingdom=state.kingdoms[0].id;
    const intel=militaryIntel[viewingKingdom]??{};
@@ -94,6 +110,7 @@ function render() {
      resolve:()=>{const r=resolveCycle({state,config,cycle:state.cycle+1,seed:labSeed,mergePreferences:preferences});state=r.state;history.push(r);preferences={};render()},
      save:saveLab,load:()=>{loadLab();render()},
    });
+   renderStormControls();
    return;
  }
   const previousSeed = document.getElementById("seed")
@@ -170,6 +187,7 @@ function render() {
    .join(
      "",
    )}<h3>Defeat cargo drop percentages</h3><p>Winner / loser Power before casualties. Applies to both combat models. Ties drop no defeat percentage; annihilation always drops 100%.</p>${["1×–<1.5×","1.5×–<2×","2×–<3×","3×+"].map((label,i)=>`<label>${label} cargo dropped (%)<input id="cargoDrop-${i}" type="number" min="0" max="100" step="0.1" value="${(config.cargoDropRates ?? DEFAULT_CARGO_DROP_RATES)[i]*100}"></label>`).join("")}<button id="resetCargoDrops">Reset cargo percentages</button><label>Fake defender Treasury remaining<input id="treasury" type="number" min="0" value="${state.treasury ?? DEFAULT_TREASURY}"></label><label>Raid cap per objective per cycle<input id="raidCap" type="number" min="0" value="${config.raidCap ?? 100}"></label><button id="config">Apply constants</button><p class="muted">Bridge Engineering is excluded from tactical Speed only. The comparison travel Speed retains it. Existing casualty rounding, troop selection and final loss cap are reused.</p></section></div></div><dialog id="armyDialog" aria-labelledby="armyTitle"></dialog>`;
+  renderStormControls();
   action("playerMode",()=>{labSeed=value("seed");playerMode=true;inspectorOpen=false;proposed=null;render()});
   $("config").insertAdjacentHTML("beforebegin",`<h3>Reusable Fabrial loss chances</h3><p>Independent chance per carried reusable device after defeat. Uses pre-casualty winner/loser Power. Annihilation always loses all reusable devices; surviving winners and ties have no defeat roll.</p>${["1×–<1.5×","1.5×–<2×","2×–<3×","3×+"].map((label,i)=>`<label>${label} loss chance (%)<input id="fabrialLoss-${i}" type="number" min="0" max="100" value="${(config.fabrialLossRates??DEFAULT_FABRIAL_LOSS_RATES)[i]*100}"></label>`).join("")}<button id="resetFabrialLoss">Reset Fabrial loss chances</button>`);
   action("resetFabrialLoss",()=>{config.fabrialLossRates=[...DEFAULT_FABRIAL_LOSS_RATES];render()});
@@ -541,6 +559,7 @@ function statsPreview() {
 }
 function describe(e: CycleResult["events"][number]) {
   switch (e.type) {
+    case "highstorm": return `${escape(e.kingdom)} · ${escape(e.formation)}: Highstorm exposure killed ${totalUnits(e.casualties)} troops; ${totalUnits(e.survivors)} survived.`;
     case "fabrial": return `${escape(e.kingdom)} · ${escape(e.formation)} · Fabrial ${escape(e.item)}: ${escape(e.action)}. ${escape(e.reason)}`;
     case "cargo":
       return `${escape(e.kingdom ?? e.formation)} · cargo ${e.action}: ${e.amount}. ${escape(e.reason)}`;

@@ -22,7 +22,7 @@ for (const input of Object.keys(result.metafile.inputs)) {
   if (
     !normalized.startsWith("lab/") &&
     !normalized.startsWith("conflict-board/") &&
-    normalized !== "convex/rules.ts" && normalized !== "convex/intelligenceRules.ts" && normalized !== "convex/fabrialRules.ts" && normalized !== "convex/worldPressureRules.ts"
+    normalized !== "convex/highstormRules.ts" && normalized !== "convex/rules.ts" && normalized !== "convex/intelligenceRules.ts" && normalized !== "convex/fabrialRules.ts" && normalized !== "convex/worldPressureRules.ts"
   ) {
     throw new Error(`Unexpected dependency in static Lab: ${input}`);
   }
