@@ -29,6 +29,7 @@ export type Order = {
   paused?: boolean;
 };
 export type Formation = {
+  lastHighstormExposureId?: string;
   equipment?: FormationEquipment;
   /** Legacy source maps are accepted on load; new cargo is owner-agnostic. */
   cargo?: number | Record<string, number>;
@@ -53,6 +54,7 @@ export type Objective = {
   conqueredBy?: string;
 };
 export type ConflictState = {
+  highstorm?: { id: string; active: boolean; sequence?: number };
   equipmentRecords?: EquipmentRecord[];
   treasury?: number;
   recovered?: number;
@@ -73,6 +75,7 @@ export type ConflictState = {
   raidValues?: Record<string, number>;
 };
 export type ResolverConfig = {
+  highstorm?: { baseRate: number; surviveCap: number | null; visionRadius: number; fogPenalty: number; raidMultiplier: number };
   fabrialLossRates?: [number,number,number,number];
   /** Explicit testing policy until repeated-engagement Painrial semantics settle. */
   consumeFabrialPerEngagement?: boolean;
@@ -111,6 +114,7 @@ export type BattleForce = {
   survivors: UnitCounts;
 };
 export type Event =
+  | { type:"highstorm"; formation:string; kingdom:string; stormId:string; casualties:UnitCounts; survivors:UnitCounts; finalRate:number }
   | {type:"fabrial";formation:string;kingdom:string;item:string;action:string;reason:string;lossChance?:number;roll?:number}
   | {
       type: "cargo";

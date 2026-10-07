@@ -1,3 +1,4 @@
+import { stormSettings } from "./highstorms";
 import { cargoAmount, DEFAULT_TREASURY } from "./cargo";
 import { totalUnits, unitPlunder } from "../convex/rules";
 import type { ConflictState, Event, Formation, ResolverConfig } from "./types";
@@ -99,7 +100,7 @@ export function finishRaids(
     state.treasury ??= DEFAULT_TREASURY;
     const value = Math.min(
       Math.max(0, plunder - cargoAmount(force)),
-      config.raidCap ?? 100,
+      (config.raidCap ?? 100) * (state.highstorm?.active ? stormSettings(config).raidMultiplier : 1),
       state.treasury,
     );
     force.cargo = cargoAmount(force) + value;

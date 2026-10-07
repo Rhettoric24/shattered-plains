@@ -394,3 +394,11 @@ Implementation truth note: older sections above and CURRENT_STATE describe histo
 ### DECIDED --- Conflict Board reusable Fabrial defeat-loss bands
 
 Each carried reusable device independently rolls once per lost engagement, regardless of active/pending/inactive status. Use pre-casualty winner Power divided by defeated kingdom Power: below 1.5x → 10%, 1.5x–<2x → 25%, 2x–<3x → 50%, 3x+ → 75%. Multiway fights use the actual Power winner, not summed hostile Power. Surviving winners and ties have no defeat-loss roll; annihilation overrides this with 100% loss. Roll identity includes the physical item and engagement, so retries/order changes cannot reroll results. Lost devices disappear from usable inventory (audited, never transferred to the victor), and pending activation is canceled if its device is lost. The Lab exposes independent percentage knobs for tuning. This does not change live V0 operation loss rules.
+
+### DECIDED / TESTING — Conflict Board Highstorms (Lab, 2026-10-06)
+
+Approved direction: immediate casualties when the storm hits; physical vision limited to occupied positions; fog costs two disclosure bands; storm raiding offers improved extraction. Existing shared weather casualty math remains the reference.
+
+TESTING defaults: 15% base exposure, positive Survival cap 300, vision radius 0, two-band fog penalty, 2× raid cap; all have Lab controls. Storms do not consume Military Intel or create extra treasury/carrying capacity. The global live schedule remains unchanged: one storm per Mountain date, starts 09:00–21:00 America/Denver, lasts two hours. Lab start/end is manual.
+
+Exposure applies once per committed force per storm, including transit and staging/reserve; new commitments must be processed before merges. Split survivors inherit exposure identity. Existing active reusable casualty protection applies; Painrial storm consumption remains deferred. Nonlethal weather is not a battle defeat. Annihilated carriers lose equipment; cargo capacity overflow becomes unclaimed; destroyed occupation ends objective continuity. No live siege, combat, or Convex changes.

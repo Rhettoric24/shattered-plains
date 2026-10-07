@@ -1,3 +1,4 @@
+import { exposeHighstorm, stormSettings } from "./highstorms";
 import {
   battleCargo,
   cargoAmount,
@@ -545,6 +546,7 @@ function mergeGroups(
         kingdom: first.kingdom,
         position: first.position,
         units: combined(rows),
+        lastHighstormExposureId: state.highstorm?.active ? state.highstorm.id : first.lastHighstormExposureId,
         history: source ? [...source.history] : [first.position],
         order,
       };
@@ -573,8 +575,10 @@ function mergeGroups(
  * and cycle; the pure function alone is not a persistence/idempotency layer. */
 export function resolveCycle(input: CycleInput): CycleResult {
   validate(input);
+  stormSettings(input.config);
   const state = structuredClone(input.state),
     events: Event[] = [];
+  exposeHighstorm(state,input.config,events);
   for(const f of state.formations.filter(f=>!totalUnits(f.units)))archiveEquipment(state,f,input.cycle,events);
   for (const f of sorted(state.formations))
     limitCargo(

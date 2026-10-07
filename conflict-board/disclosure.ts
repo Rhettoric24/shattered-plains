@@ -1,3 +1,4 @@
+import { stormSettings } from "./highstorms";
 import { effectivePower, totalUnits } from "../convex/rules";
 import {
   ledgerMilitaryLevel,
@@ -8,24 +9,28 @@ import { formationStats } from "./stats";
 import { cargoAmount, cargoCapacity } from "./cargo";
 
 export type MilitaryIntel = Record<string, number>;
-export function battlefieldVision(state: ConflictState, viewer: string) {
+export function battlefieldVision(state: ConflictState, viewer: string, radius = 1) {
   const visible = new Set<string>();
   for (const f of state.formations.filter(
     (f) => f.kingdom === viewer && totalUnits(f.units) > 0,
   )) {
     visible.add(f.position);
-    for (const [a, b] of state.board.connections) {
-      if (a === f.position) visible.add(b);
-      if (b === f.position) visible.add(a);
+  }
+  for(let step=0;step<radius;step++) {
+    const previous=new Set(visible);
+    for(const [a,b] of state.board.connections) {
+      if(previous.has(a))visible.add(b);
+      if(previous.has(b))visible.add(a);
     }
   }
   return visible;
 }
-export function disclosureLevel(amount: number, fogged: boolean) {
+export function disclosureLevel(amount: number, fogged: boolean, penalty = 1) {
   const normal = ledgerMilitaryLevel(
     Number.isFinite(amount) ? Math.max(0, Math.min(100, amount)) : 0,
   );
-  return fogged ? (normal === 3 ? 2 : normal === 2 ? 0 : -1) : normal;
+  const bands=[-1,0,2,3];
+  return fogged ? bands[Math.max(0,bands.indexOf(normal)-penalty)] : normal;
 }
 /** Allowlisted transport DTO. No state spread, hidden identities, enemy orders,
  * composition, cargo, Research, arrival records or raw journal events.
@@ -39,7 +44,9 @@ export function projectConflict(
 ) {
   if (!state.kingdoms.some((k) => k.id === viewer))
     throw Error("Unknown viewing kingdom.");
-  const visible = battlefieldVision(state, viewer);
+  const weather=stormSettings(config);
+  const storm=state.highstorm?.active===true;
+  const visible = battlefieldVision(state, viewer, storm ? weather.visionRadius : 1);
   const own = state.formations
     .filter((f) => f.kingdom === viewer)
     .map((f) => ({
@@ -62,7 +69,7 @@ export function projectConflict(
   for (const f of state.formations) {
     if (f.kingdom === viewer || !totalUnits(f.units)) continue;
     const physical = visible.has(f.position),
-      level = disclosureLevel(intel[f.kingdom] ?? 0, fog && !physical);
+      level = disclosureLevel(intel[f.kingdom] ?? 0, fog && !physical, storm ? weather.fogPenalty : 1);
     if (level < 0) continue;
     contacts.push({
       kingdom: f.kingdom,
@@ -79,6 +86,7 @@ export function projectConflict(
     });
   }
   return {
+    highstorm: storm,
     cycle: state.cycle,
     viewer,
     kingdoms: state.kingdoms.map((k) => ({
