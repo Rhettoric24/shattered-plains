@@ -11,8 +11,12 @@ Aspirations belong in `IDEA_VAULT.md` or `ROADMAP.md`.
 
 Authenticated backend participation/orders/viewer projection, real troop/Fabrial
 commitment, 10% treasury escrow and complete withdrawal/conquest/deadline settlement
-are implemented and locally tested. **Not deployed or enabled in the normal
-game.** The server gate defaults off; Lab play remains browser-local/zero-Convex.
+are implemented and tested. The production backend is deployed to
+`groovy-buzzard-108`. The normal **Plains → Sieges** screen now has authenticated
+Board discovery, real commitments/reinforcements, explicit routes, orders,
+splits, equipment controls, withdrawal and return reports. The runtime flag
+`CONFLICT_BOARD_V1_ENABLED` controls new commitments; see deployment instructions
+to inspect or disable it. Lab play remains browser-local/zero-Convex.
 See [integration evidence and exact boundaries](audits/CONFLICT_BOARD_LIVE_INTEGRATION.md).
 Earlier Lab-only descriptions below refer to the public testing surface; they
 do not supersede this gated backend implementation.

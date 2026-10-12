@@ -53,6 +53,53 @@ Changing the workflow's `CONVEX_URL` from Yak to Buzzard is a release
 action and must be explicitly requested and reported separately from
 committing, pushing, and deploying Convex functions.
 
+## Conflict Board V1 personal online testing
+
+User-authorized production rollout connects the normal **Plains → Sieges** screen
+to the deployed Board backend. GitHub Pages remains on Buzzard; no wipe or migration
+is required. The Lab remains separate at `/shattered-plains/lab/`.
+
+Inspect the runtime flag:
+
+```sh
+npx convex env get CONFLICT_BOARD_V1_ENABLED --deployment groovy-buzzard-108
+```
+
+Activate only after deploying the backend and publishing the matching frontend:
+
+```sh
+npx convex env set CONFLICT_BOARD_V1_ENABLED true --deployment groovy-buzzard-108
+```
+
+Quick stop (no redeploy required):
+
+```sh
+npx convex env set CONFLICT_BOARD_V1_ENABLED false --deployment groovy-buzzard-108
+```
+
+False blocks new Board openings and reinforcements, while existing Boards retain
+queries, orders, withdrawal, scheduled processing and asset settlement. It does
+not freeze or erase ongoing conflicts. Legacy PvP launch is rejected while true;
+preexisting legacy sieges and neutral expeditions keep their existing lifecycle.
+
+The normal UI subscribes only to this player's lobby/accounting and the selected
+Board while viewing Sieges. No resolver or Lab state enters the production bundle.
+Full load/reload retains discovery and recovers from authoritative queries. Orders
+include the current revision and an idempotency identity. Enemy contacts come only
+from the filtered backend projection.
+
+Personal test: recruit troops, open Sieges, choose **Open or join a rival conflict**,
+commit to a holding belonging to your other test kingdom, and select the approaching
+formation to plan its route. Switch accounts to reinforce/defend. Resolutions use
+real two-hour windows; no browser needs to remain open. Withdrawal happens at the
+next resolution. Check the return summary after settlement. Real backend support
+currently includes Half-Shards; Painrial/Soulcaster and Conclave attachment remain
+Lab-only/unavailable on live Boards. Main-game routes use tap/click plus Confirm;
+the Lab's richer drag controls remain intact.
+
+Checks: `npm test`, `npm run build`, `npm run build:lab`,
+`npm run test:board:browser`, `npm run test:lab:browser`, `npm run test:lab:static`.
+
 ## Future staging
 
 A third persistent staging deployment can be added later if the friend

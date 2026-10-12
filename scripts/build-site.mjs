@@ -67,6 +67,9 @@ await esbuild.build({
     {
       name: "local-convex-browser",
       setup(build) {
+        build.onResolve({ filter: /^\.\/conflict-board-ui\.js$/ }, () => ({
+          path: path.join(root, "outputs", "conflict-board-ui.js"),
+        }));
         build.onResolve({ filter: /^convex\/browser$/ }, () => ({
           path: path.join(root, "node_modules", "convex", "dist", "esm", "browser", "index.js"),
         }));

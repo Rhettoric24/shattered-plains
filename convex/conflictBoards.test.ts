@@ -162,6 +162,50 @@ async function move(
 }
 
 describe("gated authenticated Conflict Board integration", () => {
+  test("normal-game lobby is authenticated, scoped, and remains usable with the gate off", async () => {
+    const f = await setup();
+    await expect(f.t.query(q("lobby"), {})).rejects.toThrow();
+    const { conflictId: id } = await open(f);
+    expect((await f.green.client.query(q("lobby"), {})).conflicts).toEqual([]);
+    for (const p of [f.owner, f.blue]) {
+      const lobby = await p.client.query(q("lobby"), {});
+      expect(lobby.enabled).toBe(true);
+      expect(lobby.conflicts.map(c => c.conflictId)).toEqual([id]);
+      expect(JSON.stringify(lobby)).not.toContain("units");
+    }
+    const dto = await f.blue.client.query(q("get"), { conflictId: id });
+    expect(dto.conflictId).toBe(id);
+    expect(dto.participantStatus).toBe("active");
+    expect(dto.commandPostController).toBe(f.owner.id);
+    vi.stubEnv("CONFLICT_BOARD_V1_ENABLED", "false");
+    expect((await f.blue.client.query(q("lobby"), {})).enabled).toBe(false);
+    await cmd(f, id, f.blue, "withdraw");
+    await nextCycle(f, id);
+    expect((await f.blue.client.query(q("lobby"), {})).conflicts[0].status).toBe("settled");
+    const accounting = await f.blue.client.query(makeFunctionReference<"query">("players:getPlayerAccounting"), {});
+    expect(accounting.ownedUnits.spearman).toBe(2000);
+  });
+  test("enabled gate prevents an old client from creating a legacy PvP siege", async () => {
+    const f = await setup();
+    await expect(f.blue.client.mutation(makeFunctionReference<"mutation">("plateaus:launchPlayerSiege"), {
+      plateauId: f.plateauId, units: units(10),
+    })).rejects.toThrow("Conflict Board");
+    expect(await f.t.run(ctx => ctx.db.query("sieges").collect())).toEqual([]);
+  });
+  test("traveling route orders, authenticated reinforcement and recovery scheduler use normal-game seams", async () => {
+    const f = await setup(), { conflictId: id, formationId } = await open(f, units(40));
+    await move(f, id, f.blue, formationId, ["B3", "B2", "B1", "post"]);
+    await expect(cmd(f, id, f.green, "order", { formationId, kind: "hold", route: [], onDefeat: "continue" })).rejects.toThrow();
+    const home = await f.blue.client.query(makeFunctionReference<"query">("players:getPlayerAccounting"), {});
+    expect(home.ownedUnits.spearman).toBe(2000);
+    const scheduled = await f.t.run(ctx => ctx.db.system.query("_scheduled_functions").collect());
+    expect(scheduled.some(row => row.name === "conflictBoards:wake" || row.name === "conflictBoards.js:wake")).toBe(true);
+    await arrive(f, id);
+    await nextCycle(f, id);
+    const dto = await f.blue.client.query(q("get"), { conflictId: id });
+    expect(dto.view.own[0].formation.position).not.toBe("approach");
+    expect(dto.view.own[0].formation.order.route.length).toBeLessThan(4);
+  });
   test("return and re-entry cannot bank cargo or equipment twice", async () => {
     const f = await setup(), { conflictId: id } = await open(f);
     await cmd(f,id,f.green,"reinforce",{units:units(20),fabrials:[]});

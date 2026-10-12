@@ -738,6 +738,9 @@ export const launchPlayerSiege = mutation({
   },
   handler: async (ctx, args) => {
     const attacker = await requireCompetitivePlayer(ctx);
+    if (process.env.CONFLICT_BOARD_V1_ENABLED === "true") {
+      throw new Error("Use the Conflict Board in Plains → Sieges to challenge this holding. Refresh the game if needed.");
+    }
     const plateau = await ctx.db.get(args.plateauId);
     if (!plateau || plateau.status !== "owned" || !plateau.ownerPlayerId) {
       throw new Error("Choose an owned enemy plateau.");

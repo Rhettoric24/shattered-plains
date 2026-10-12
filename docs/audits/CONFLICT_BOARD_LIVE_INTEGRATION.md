@@ -145,12 +145,28 @@ legacy files (including optional `chull` fields); new integration/shared Board
 files have no reported TypeScript errors. A readiness-era cargo helper type was
 narrowed to its actual required fields, without changing its calculation.
 
-Convex API type generation ran, but no `convex dev`/`convex deploy`, deployment
+At the original integration checkpoint, Convex API type generation ran, but no `convex dev`/`convex deploy`, deployment
 finalization, migration, environment update, main push or Pages publication was
 performed. Convex component codegen does contact the configured service for
 analysis; its CLI source confirms it does not finalize a deployment. Live load
 and authenticated browser smoke tests against a development deployment have not
 been claimed. They remain rollout checks when deployment is authorized.
 
-No normal-game UI cutover, production activation, balance change, Conclave
+That original checkpoint included no normal-game UI cutover, production activation, balance change, Conclave
 attachment, new Fabrial effect or expanded Intel system is included.
+
+### Authorized online rollout follow-up
+
+The backend has since been explicitly deployed to `groovy-buzzard-108`. Normal
+Siege UI plumbing now supplies authenticated discovery, selected-board subscriptions,
+real commitments/reinforcements, explicit routes and standing orders, split/merge
+route preferences, equipment switching and withdrawal. The army roster uses backend
+owned-unit totals, including Board commitments. The enabled flag also prevents stale
+clients creating new legacy PvP sieges. Existing legacy operations are unchanged.
+
+Additional checks bring the unit suite to **434 tests across 41 files**, including
+20 backend Board integration stories. Four new browser checks cover 390/1440px
+route editing, scoped split/commit payloads and kill-switch withdrawal access.
+All 45 existing Lab browser checks and both zero-backend static checks still pass.
+Runtime activation/rollback commands and personal test steps are in
+[DEPLOYMENT.md](../DEPLOYMENT.md). No balance constants changed.

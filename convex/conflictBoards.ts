@@ -539,6 +539,7 @@ export const get = query({
       .order("desc")
       .take(12);
     return clean({
+      conflictId: s.conflict._id,
       enabled: process.env.CONFLICT_BOARD_V1_ENABLED === "true",
       revision: s.conflict.revision,
       status: s.conflict.status,
@@ -549,6 +550,8 @@ export const get = query({
       winnerId: s.conflict.winnerId,
       outcome: s.conflict.outcome,
       conquestHold: s.state.objective.hold ?? null,
+      participantStatus: p.status,
+      commandPostController: s.state.objective.controller,
       withdrawing: p.withdrawing,
       returnedUnits: p.returnedUnits,
       returnedSpheres: p.returnedSpheres,
@@ -571,6 +574,31 @@ export const get = query({
         player._id,
       ),
     });
+  },
+});
+/** Route-scoped discovery: only this player's commitments and recent returns.
+ * Never loads enemy forces or subscribes to all conflicts. */
+export const lobby = query({
+  args: {},
+  handler: async (ctx) => {
+    const player = await requireCurrentPlayer(ctx);
+    const active = await ctx.db.query("boardParticipants")
+      .withIndex("by_playerId_and_status", q => q.eq("playerId", player._id).eq("status", "active"))
+      .collect();
+    const recent = await ctx.db.query("boardParticipants")
+      .withIndex("by_playerId_and_status", q => q.eq("playerId", player._id).eq("status", "returned"))
+      .order("desc").take(10);
+    const conflicts = [];
+    for (const p of [...active, ...recent]) {
+      const c = await ctx.db.get(p.conflictId);
+      if (!c) continue;
+      const plateau = await ctx.db.get(c.plateauId);
+      conflicts.push({ conflictId: c._id, plateauId: c.plateauId,
+        name: plateau?.name ?? "Former holding", status: c.status,
+        participantStatus: p.status, nextCycleAt: c.nextCycleAt,
+        deadlineAt: c.deadlineAt, outcome: c.outcome ?? null });
+    }
+    return { enabled: process.env.CONFLICT_BOARD_V1_ENABLED === "true", conflicts };
   },
 });
 /** Discovery reveals no forces/participants. Existing plateau lookup is scoped,

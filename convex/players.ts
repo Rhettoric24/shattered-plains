@@ -250,6 +250,7 @@ async function buildPlayerAccounting(ctx: QueryCtx, player: Doc<"players">) {
   return {
     plateauCounts,
     ownedPlateauCount: owned.length,
+    ownedUnits,
     armyStats: calculateArmyStats(player.units, completed),
     completedResearch: completed,
     provisions: provisionsStatus(

@@ -3,6 +3,7 @@ import { espionageMissionAvailability, sphereHeistAvailability, syncEspionageCon
 import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
 import { createLoadCoordinator, createReconciliationLifecycle, createSessionQueryCache, createSubscriptionLifecycle, playerAccountingInputKey, playerStateSubscription, projectGameClock, projectPlayerSpheres, routeNeedsChronicle, routeNeedsPlateauBoard, routeNeedsTerritoryIntelligence, runMutationAction } from "./data-loading-state.js";
 import { formatDisclosedPower, plateauIdentityPresentation, raidDefenseMarkup } from "./intelligence-ui-state.js";
+import { createConflictBoardUI } from "./conflict-board-ui.js";
 
 const CONVEX_URL =
   window.SHATTERED_PLAINS_CONFIG?.convexUrl ||
@@ -127,6 +128,12 @@ const loadCoordinator = createLoadCoordinator((options) => load(options));
 let reactiveRenderPromise = Promise.resolve();
 
 const $ = (id) => document.getElementById(id);
+const conflictBoardUI = createConflictBoardUI({
+  root: $("live-conflict-board"),
+  query: (name, args) => client.query(name, args),
+  mutate: (name, args) => client.mutation(name, args),
+  onSelect: () => { if (rawStateData) ensureReactiveSubscriptions(rawStateData); },
+});
 
 function syncZoomedOutViewportWidth() {
   const viewport = window.visualViewport;
@@ -349,6 +356,7 @@ async function fetchSubscriptionAuthToken({ forceRefreshToken }) {
 }
 
 function clearAuthTokens() {
+  conflictBoardUI.reset();
   authToken = null;
   refreshToken = null;
   client.clearAuth();
@@ -451,6 +459,11 @@ function subscriptionSpecs(data) {
     { key: "worldPressure", query: refs.getWorldPressure },
     ...(routeNeedsChronicle(currentRoute) ? [{ key: "events", query: refs.listEvents }] : []),
     ...(routeNeedsPlateauBoard(currentRoute) ? [{ key: "plateauBoard", query: refs.getSiegeBoard }] : []),
+    ...(currentRoute.view === "plains" && currentRoute.tab === "sieges" ? [
+      { key: "conflictLobby", query: "conflictBoards:lobby" },
+      { key: "playerAccounting", query: refs.getPlayerAccounting },
+      ...(conflictBoardUI.selected ? [{ key: `board:${conflictBoardUI.selected}`, query: "conflictBoards:get", args: { conflictId: conflictBoardUI.selected } }] : []),
+    ] : []),
     ...(routeNeedsTerritoryIntelligence(currentRoute) ? [{ key: "intelligence", query: refs.listDossiers }] : []),
     ...(network >= 1 ? [
       { key: "espionage", query: refs.getEspionageStatus },
@@ -590,6 +603,8 @@ async function load(options = {}) {
     }
 
     rawStateData = {
+      ...(rawStateData?.playerSummary?.player?._id === playerSummary.player._id
+        ? Object.fromEntries(Object.entries(rawStateData).filter(([key]) => key === "conflictLobby" || key.startsWith("board:"))) : {}),
       config,
       playerSummary,
       playerAccounting,
@@ -659,10 +674,13 @@ function buildState(data) {
     outgoingRaids.reduce((total, raid) => addUnitObjects(total, raid.units), emptyUnits()),
     plateauAway,
   );
-  const unitsAway = outgoingSieges.reduce(
+  const legacyUnitsAway = outgoingSieges.reduce(
     (total, siege) => addUnitObjects(total, siege.attackerUnits || emptyUnits()),
     raidAway,
   );
+  const unitsAway = accounting.ownedUnits
+    ? Object.fromEntries(Object.keys(playerUnits).map(key => [key, Math.max(0, (accounting.ownedUnits[key] || 0) - playerUnits[key])]))
+    : legacyUnitsAway;
   const totalUnitsAtHome = sumUnits(playerUnits);
   const totalUnitsOwned = totalUnitsAtHome + sumUnits(unitsAway);
   const availableStats = accounting.armyStats;
@@ -1949,6 +1967,15 @@ function renderRaids() {
 
 function renderPlateaus() {
   if (!$("owned-plateaus")) return;
+  const boardEnabled = rawStateData?.conflictLobby?.enabled === true;
+  $("player-siege-form").hidden = boardEnabled;
+  if (currentRoute.view === "plains" && currentRoute.tab === "sieges") conflictBoardUI.update({
+    lobby: rawStateData?.conflictLobby,
+    conflict: rawStateData?.[`board:${conflictBoardUI.selected}`],
+    targets: rawStateData?.plateauBoard?.rivals || [],
+    ready: state.me.availableUnits,
+    focus: currentRoute.focus,
+  });
   renderPlateauBonusSummary();
   renderGroupedHoldings();
   renderRaidPreviews();
@@ -2067,9 +2094,9 @@ function renderGroupedHoldings() {
   if (!state.plateaus.mine.length) { container.innerHTML = '<div class="empty">No owned plateaus yet.</div>'; return; }
   if (!holdingsExpanded) {
     container.innerHTML = state.plateaus.mine.map((plateau) => {
-      const threatened = Boolean(plateau.activeSiegeId);
+      const threatened = Boolean(plateau.activeSiegeId || plateau.activeConflictBoardId);
       const timer = plateau.gemheartProgress ? ' · ' + formatCountdownAt(plateau.gemheartProgress.nextGemheartAt) : '';
-      return '<details class="compact-completed-row plateau-compact-row ' + (threatened ? 'warning' : '') + '"><summary><span><strong>' + escapeHtml(plateau.name) + '</strong><small>' + escapeHtml(plateau.typeName + ' · ' + plateauBonusLabel(plateau)) + escapeHtml(timer) + '</small></span><span class="status-badge ' + (threatened ? 'blocked' : 'ready') + '">' + (threatened ? 'Threatened' : 'Secure') + '</span></summary><div class="compact-detail"><p>' + escapeHtml(plateauTooltip(plateau)) + '</p>' + (threatened ? '<button type="button" data-route-view="plains" data-route-tab="sieges" data-focus="' + escapeHtml(plateau.activeSiegeId) + '">Respond to siege</button>' : '') + '</div></details>';
+      return '<details class="compact-completed-row plateau-compact-row ' + (threatened ? 'warning' : '') + '"><summary><span><strong>' + escapeHtml(plateau.name) + '</strong><small>' + escapeHtml(plateau.typeName + ' · ' + plateauBonusLabel(plateau)) + escapeHtml(timer) + '</small></span><span class="status-badge ' + (threatened ? 'blocked' : 'ready') + '">' + (threatened ? 'Threatened' : 'Secure') + '</span></summary><div class="compact-detail"><p>' + escapeHtml(plateauTooltip(plateau)) + '</p>' + (threatened ? '<button type="button" data-route-view="plains" data-route-tab="sieges" data-focus="' + escapeHtml(plateau.activeConflictBoardId || plateau.activeSiegeId) + '">Respond to siege</button>' : '') + '</div></details>';
     }).join("");
     $("toggle-holdings").textContent = "Expanded cards";
     $("toggle-holdings").setAttribute("aria-expanded", "false");
@@ -3303,6 +3330,7 @@ function decoratePlateaus(plateaus, players, unitsConfig) {
     gemheartProgress: plateau.gemheartProgress || null,
     neutralDefenseRemaining: plateau.neutralDefenseRemaining || 0,
     activeSiegeId: plateau.activeSiegeId || null,
+    activeConflictBoardId: plateau.activeConflictBoardId || null,
     resistance: plateau.resistance || null,
     intelligenceLevel: Number(plateau.intelligenceLevel || 0),
     parshendiReclamationCount: Number(plateau.parshendiReclamationCount || 0),
