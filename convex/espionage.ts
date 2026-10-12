@@ -240,7 +240,7 @@ async function createBonusDiscovery(
           `origin ${plateau.origin ?? "unknown"}`,
           `held since ${plateau.heldSince ? new Date(plateau.heldSince).toISOString() : "unknown"}`,
           `Parshendi reclamations ${Math.max(0, plateau.parshendiReclamationCount ?? 0)}`,
-          `siege status ${plateau.activeSiegeId ? "under siege" : "secure"}`,
+          `siege status ${(plateau.activeSiegeId || plateau.activeConflictBoardId) ? "under siege" : "secure"}`,
         ];
         if (identityPlateauType(plateau.type) === "gemheart") {
           const research = await ctx.db.query("playerResearch").withIndex("by_playerId", (q) => q.eq("playerId", target._id)).unique();

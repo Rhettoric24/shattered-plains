@@ -9,6 +9,21 @@ Statuses:
 
 # Core
 
+### TESTING — Conflict Board live settlement and treasury escrow
+
+Approved for gated V1 integration: withdrawal returns surviving assets before
+movement at the next resolution; owner withdrawal leaves other participants
+fighting; no outside forces ends the conflict. At 24 hours the owner retains the
+plateau unless an already-underway conquest hold completes its one pending final
+resolution. No repeated extension. Carried cargo at withdrawal/end goes to the
+carrying kingdom; unclaimed cargo follows the existing destruction rule.
+
+The testing vulnerable pool is 10% of the defender's current treasury at opening,
+reserved as escrow, with no invented minimum/maximum. Unstolen escrow returns to
+the original owner. This is not final economy balance. Half-Shard live commitment
+is supported; Painrial repeated-use and Soulcaster Board rewards remain unresolved
+and Lab-only. [Implementation and evidence](audits/CONFLICT_BOARD_LIVE_INTEGRATION.md).
+
 ### DECIDED --- Asynchronous planning is the primary rhythm
 
 Assess → decide → commit → leave → return. Avoid systems requiring

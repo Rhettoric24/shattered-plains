@@ -16,6 +16,8 @@ import type * as armyRules from "../armyRules.js";
 import type * as auth from "../auth.js";
 import type * as buildings from "../buildings.js";
 import type * as config from "../config.js";
+import type * as conflictBoardState from "../conflictBoardState.js";
+import type * as conflictBoards from "../conflictBoards.js";
 import type * as crons from "../crons.js";
 import type * as economy from "../economy.js";
 import type * as economyHelpers from "../economyHelpers.js";
@@ -73,6 +75,8 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   buildings: typeof buildings;
   config: typeof config;
+  conflictBoardState: typeof conflictBoardState;
+  conflictBoards: typeof conflictBoards;
   crons: typeof crons;
   economy: typeof economy;
   economyHelpers: typeof economyHelpers;

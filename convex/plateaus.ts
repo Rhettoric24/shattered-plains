@@ -92,7 +92,7 @@ function unitsAreAvailable(available: UnitCounts, requested: UnitCounts) {
     normalizedRequested[key as keyof UnitCounts] <= normalizedAvailable[key as keyof UnitCounts]);
 }
 
-async function chooseAutomaticDefense(
+export async function chooseAutomaticDefense(
   ctx: MutationCtx,
   defender: Doc<"players">,
 ) {
@@ -496,7 +496,7 @@ export const getSiegeBoard = query({
         return counts;
       }, { sphere: 0, bridged: 0, gemheart: 0, ancient: 0 }),
       mine: mine.map((plateau) => decoratePlateauForOwner(plateau, now, researchForPlayer(viewer._id))),
-      neutral: neutral.filter((plateau) => !plateau.activeSiegeId).map((plateau) => {
+      neutral: neutral.filter((plateau) => !plateau.activeSiegeId && !plateau.activeConflictBoardId).map((plateau) => {
         const report = reportsByPlateau.get(String(plateau._id));
         const disclosure = territoryResistanceDisclosure({
           currentResistance: plateau.neutralDefenseRemaining,
@@ -666,7 +666,7 @@ export const launchNeutralSiege = mutation({
     if (!plateau || plateau.status !== "neutral") {
       throw new Error("Choose an available neutral plateau.");
     }
-    if (plateau.activeSiegeId) {
+    if (plateau.activeSiegeId || plateau.activeConflictBoardId) {
       throw new Error("That plateau is already under siege.");
     }
 
@@ -745,7 +745,7 @@ export const launchPlayerSiege = mutation({
     if (plateau.ownerPlayerId === attacker._id) {
       throw new Error("You cannot siege your own plateau.");
     }
-    if (plateau.activeSiegeId) {
+    if (plateau.activeSiegeId || plateau.activeConflictBoardId) {
       throw new Error("That plateau is already under siege.");
     }
 

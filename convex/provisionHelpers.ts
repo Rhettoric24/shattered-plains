@@ -50,6 +50,17 @@ export async function ownedUnitsIncludingAway(
     units = addUnits(units, siege.defenderUnits ?? {});
   }
 
+  // Traveling reinforcements are no longer at home and are not yet included in
+  // their siege army. Arrived records must not be counted a second time.
+  for await (const reinforcement of ctx.db.query("siegeReinforcements")
+    .withIndex("by_playerId_and_status", q => q.eq("playerId", playerId).eq("status", "traveling"))) {
+    units = addUnits(units, reinforcement.units);
+  }
+  for await (const participant of ctx.db.query("boardParticipants")
+    .withIndex("by_playerId_and_status", q => q.eq("playerId", playerId).eq("status", "active"))) {
+    units = addUnits(units, participant.units);
+  }
+
   const recentCommitments = await ctx.db
     .query("plateauCommitments")
     .withIndex("by_player", (q) => q.eq("playerId", playerId))

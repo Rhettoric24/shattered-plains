@@ -1,3 +1,4 @@
+import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { requireCurrentPlayer } from "./ownership";
@@ -81,4 +82,4 @@ async function expose(ctx: MutationCtx, now: number) {
   return { active: true, stormId: storm.stormId, exposed };
 }
 export const processActiveStorm=internalMutation({args:{},handler:async ctx=>await expose(ctx,Date.now())});
-export const setDevelopmentOverride=mutation({args:{state:v.union(v.literal("forecast"),v.literal("active"),v.literal("ended"))},handler:async(ctx,args)=>{await requireAdmin(ctx);const now=Date.now();const world=await ctx.db.query("gameState").withIndex("by_key",q=>q.eq("key",WORLD_KEY)).unique();if(!world)throw new Error("World not found.");const start=args.state==="forecast"?now+3_600_000:args.state==="active"?now-60_000:now-7_260_000;await ctx.db.patch(world._id,{highstormOverrideStartAt:start,highstormOverrideEndAt:start+7_200_000,highstormOverrideId:`highstorm:dev:${now}`});return args.state==="active"?await expose(ctx,now):{state:args.state};}});
+export const setDevelopmentOverride=mutation({args:{state:v.union(v.literal("forecast"),v.literal("active"),v.literal("ended"))},handler:async(ctx,args)=>{await requireAdmin(ctx);const now=Date.now();const world=await ctx.db.query("gameState").withIndex("by_key",q=>q.eq("key",WORLD_KEY)).unique();if(!world)throw new Error("World not found.");const start=args.state==="forecast"?now+3_600_000:args.state==="active"?now-60_000:now-7_260_000;await ctx.db.patch(world._id,{highstormOverrideStartAt:start,highstormOverrideEndAt:start+7_200_000,highstormOverrideId:`highstorm:dev:${now}`});await ctx.scheduler.runAfter(0,makeFunctionReference<"mutation">("conflictBoards:weatherChanged"),{});return args.state==="active"?await expose(ctx,now):{state:args.state};}});

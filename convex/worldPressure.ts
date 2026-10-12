@@ -82,7 +82,7 @@ async function ownedEligiblePlateaus(ctx: DbCtx, playerId: Id<"players">) {
     .take(200);
   return plateaus.filter((plateau) =>
     plateau.status === "owned" &&
-    !plateau.activeSiegeId &&
+    !plateau.activeSiegeId && !plateau.activeConflictBoardId &&
     (plateau.origin === "neutral" || plateau.neutralDefenseInitial > 0),
   );
 }
@@ -520,7 +520,7 @@ export const launchRetaliation = internalMutation({
     const now = Date.now();
     const player = await ctx.db.get(retaliation.playerId);
     let target = await ctx.db.get(retaliation.targetPlateauId);
-    if (!target || target.ownerPlayerId !== retaliation.playerId || target.status !== "owned" || target.activeSiegeId) {
+    if (!target || target.ownerPlayerId !== retaliation.playerId || target.status !== "owned" || target.activeSiegeId || target.activeConflictBoardId) {
       target = weightedTarget(await ownedEligiblePlateaus(ctx, retaliation.playerId), now, `${retaliation._id}:${now}:retarget`);
     }
     if (!player || !target) {

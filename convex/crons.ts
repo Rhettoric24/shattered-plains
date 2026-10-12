@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 const crons = cronJobs();
 
 crons.cron("process active Highstorm exposure", "* * * * *", internal.highstorms.processActiveStorm, {});
+crons.interval("recover overdue Conflict Board events", { minutes: 5 }, internal.conflictBoards.recoverDue, {});
 
 crons.cron(
   "open scheduled Plateau Runs",

@@ -7,6 +7,16 @@ friend-test deployment.
 This document records what is believed to be implemented now.
 Aspirations belong in `IDEA_VAULT.md` or `ROADMAP.md`.
 
+### Conflict Board integration update — 2026-10-11
+
+Authenticated backend participation/orders/viewer projection, real troop/Fabrial
+commitment, 10% treasury escrow and complete withdrawal/conquest/deadline settlement
+are implemented and locally tested. **Not deployed or enabled in the normal
+game.** The server gate defaults off; Lab play remains browser-local/zero-Convex.
+See [integration evidence and exact boundaries](audits/CONFLICT_BOARD_LIVE_INTEGRATION.md).
+Earlier Lab-only descriptions below refer to the public testing surface; they
+do not supersede this gated backend implementation.
+
 ## Technical Shape
 
 -   Convex backend

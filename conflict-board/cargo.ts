@@ -7,7 +7,7 @@ export const cargoAmount = (f: Pick<Formation, "cargo">) =>
   typeof f.cargo === "number"
     ? f.cargo
     : Object.values(f.cargo ?? {}).reduce((a, b) => a + b, 0);
-export const cargoCapacity = (s: ConflictState, f: Formation) =>
+export const cargoCapacity = (s: ConflictState, f: Pick<Formation, "units" | "kingdom">) =>
   Math.max(
     0,
     unitPlunder(f.units, s.kingdoms.find((k) => k.id === f.kingdom)!.research),

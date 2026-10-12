@@ -126,3 +126,9 @@ Core: `cargo.ts`, `fabrials.ts`, `highstorms.ts`, `planning.ts`, `raids.ts`,
 `resolver.ts`, `types.ts`. Tests: new `integrity.test.ts`. Documentation:
 this report and `lab/README.md` (including stale drag/storm/equipment statements).
 Preexisting AGENTS.md and ROADMAP.md edits are untouched.
+# Follow-up
+
+The three integration blockers identified in this historical readiness pass are
+addressed by the separately gated [backend integration](CONFLICT_BOARD_LIVE_INTEGRATION.md).
+Its rollout status and verification limits are recorded there; this report remains
+the evidence for readiness commit `88b2e94`.

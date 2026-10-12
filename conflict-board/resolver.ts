@@ -597,52 +597,7 @@ export function resolveCycle(input: CycleInput): CycleResult {
   state.board.connections = state.board.connections
     .map(([a, b]) => [a, b].sort() as [string, string])
     .sort((a, b) => compare(JSON.stringify(a), JSON.stringify(b)));
-  const garrison = state.formations.filter(
-    (f) =>
-      f.kingdom === state.originalOwner &&
-      f.position === state.board.objective &&
-      totalUnits(f.units),
-  );
-  const nominatedGarrison =
-    input.mergePreferences?.[`${state.originalOwner}@${state.board.objective}`];
-  const arrivalRecipient =
-    garrison.find((f) => f.id === nominatedGarrison) ??
-    (garrison.length === 1 ? garrison[0] : undefined);
-  const arrivals = sorted(state.arrivals.filter((a) => a.cycle <= input.cycle));
-  if(arrivalRecipient) {
-    const joining=arrivals.filter(a=>a.formation.kingdom===state.originalOwner && state.objective.controller===state.originalOwner);
-    const equipment=mergeEquipment([arrivalRecipient,...joining.map(a=>a.formation)]);
-    if(equipment)arrivalRecipient.equipment=equipment;
-  }
-  for (const a of arrivals) {
-    const position =
-      a.formation.kingdom === state.originalOwner
-        ? state.objective.controller === state.originalOwner
-          ? state.board.objective
-          : state.board.reserve
-        : state.board.approach;
-    events.push({ type: "arrival", formation: a.formation.id, position });
-    if (position === state.board.objective && arrivalRecipient) {
-      if (a.formation.cargo)
-        arrivalRecipient.cargo = combineCargo([arrivalRecipient, a.formation]);
-      arrivalRecipient.units = addUnits(
-        arrivalRecipient.units,
-        a.formation.units,
-      );
-      events.push({
-        type: "merge",
-        position,
-        kingdom: state.originalOwner,
-        sources: [arrivalRecipient.id, a.formation.id].sort(),
-        formation: arrivalRecipient.id,
-        routeSource: arrivalRecipient.id,
-        reason:
-          "Defender arrival joins the unique or nominated garrison before movement; its route/order is retained.",
-      });
-    } else
-      state.formations.push({ ...a.formation, position, history: [position] });
-  }
-  state.arrivals = sorted(state.arrivals.filter((a) => a.cycle > input.cycle));
+  applyArrivals(state,new Set(state.arrivals.filter(a=>a.cycle<=input.cycle).map(a=>a.id)),events,input.mergePreferences);
   let groups: Group[] = sorted(state.formations)
     .filter((f) => totalUnits(f.units))
     .map((f) => {
@@ -718,4 +673,54 @@ export function resolveCycle(input: CycleInput): CycleResult {
     state,
     events,
   };
+}
+
+/** Arrival-only transaction; does not advance a battle cycle. */
+export function applyArrivals(state:ConflictState,arrivalIds:Set<string>,events:Event[],mergePreferences?:Record<string,string>) {
+  const garrison = state.formations.filter(
+    (f) =>
+      f.kingdom === state.originalOwner &&
+      f.position === state.board.objective &&
+      totalUnits(f.units),
+  );
+  const nominatedGarrison =
+    mergePreferences?.[`${state.originalOwner}@${state.board.objective}`];
+  const arrivalRecipient =
+    garrison.find((f) => f.id === nominatedGarrison) ??
+    (garrison.length === 1 ? garrison[0] : undefined);
+  const arrivals = sorted(state.arrivals.filter((a) => arrivalIds.has(a.id)));
+  if(arrivalRecipient) {
+    const joining=arrivals.filter(a=>a.formation.kingdom===state.originalOwner && state.objective.controller===state.originalOwner);
+    const equipment=mergeEquipment([arrivalRecipient,...joining.map(a=>a.formation)]);
+    if(equipment)arrivalRecipient.equipment=equipment;
+  }
+  for (const a of arrivals) {
+    const position =
+      a.formation.kingdom === state.originalOwner
+        ? state.objective.controller === state.originalOwner
+          ? state.board.objective
+          : state.board.reserve
+        : state.board.approach;
+    events.push({ type: "arrival", formation: a.formation.id, position });
+    if (position === state.board.objective && arrivalRecipient) {
+      if (a.formation.cargo)
+        arrivalRecipient.cargo = combineCargo([arrivalRecipient, a.formation]);
+      arrivalRecipient.units = addUnits(
+        arrivalRecipient.units,
+        a.formation.units,
+      );
+      events.push({
+        type: "merge",
+        position,
+        kingdom: state.originalOwner,
+        sources: [arrivalRecipient.id, a.formation.id].sort(),
+        formation: arrivalRecipient.id,
+        routeSource: arrivalRecipient.id,
+        reason:
+          "Defender arrival joins the unique or nominated garrison before movement; its route/order is retained.",
+      });
+    } else
+      state.formations.push({ ...a.formation, position, history: [position] });
+  }
+  state.arrivals = sorted(state.arrivals.filter((a) => !arrivalIds.has(a.id)));
 }

@@ -42,6 +42,42 @@ const plateauType = v.union(
 export default defineSchema({
   ...authTables,
 
+  // Private authoritative snapshots. Only allowlisted viewer projections leave
+  // the backend; commands never accept any of these payloads from clients.
+  boardConflicts: defineTable({
+    plateauId: v.id("plateaus"), ownerId: v.id("players"), initiatorId: v.id("players"),
+    status: v.union(v.literal("active"), v.literal("settled")),
+    createdAt: v.number(), nextCycleAt: v.number(), deadlineAt: v.number(),
+    weatherAt: v.number(), nextWakeAt: v.number(), processedAt: v.number(),
+    revision: v.number(), overtime: v.boolean(), state: v.any(), config: v.any(),
+    escrow: v.number(), settledAt: v.optional(v.number()), winnerId: v.optional(v.id("players")),
+    outcome: v.optional(v.string()),
+  }).index("by_status_and_nextWakeAt", ["status", "nextWakeAt"]),
+  boardParticipants: defineTable({
+    conflictId: v.id("boardConflicts"), playerId: v.id("players"),
+    status: v.union(v.literal("active"), v.literal("returned")),
+    kingdom: v.any(), units: unitCounts, committed: unitCounts,
+    banked: v.number(), returnedSpheres: v.number(), returnedUnits: unitCounts,
+    withdrawing: v.boolean(), seasonId: v.optional(v.id("seasons")), chainPosition: v.optional(v.number()),
+  }).index("by_conflictId_and_playerId", ["conflictId", "playerId"])
+    .index("by_playerId_and_status", ["playerId", "status"]),
+  boardForces: defineTable({
+    conflictId: v.id("boardConflicts"), formationId: v.string(), data: v.any(),
+    arriveAt: v.optional(v.number()),
+  }).index("by_conflictId", ["conflictId"]),
+  boardEquipment: defineTable({
+    conflictId: v.id("boardConflicts"), playerId: v.id("players"),
+    kind: v.union(v.literal("halfShard"), v.literal("soulcaster"), v.literal("painrial")),
+    status: v.union(v.literal("reserved"), v.literal("returned"), v.literal("lost"), v.literal("consumed")),
+    record: v.optional(v.any()),
+  }).index("by_conflictId", ["conflictId"]),
+  boardCommands: defineTable({
+    playerId: v.id("players"), requestId: v.string(), fingerprint: v.string(), result: v.any(),
+  }).index("by_playerId_and_requestId", ["playerId", "requestId"]),
+  boardCycles: defineTable({
+    conflictId: v.id("boardConflicts"), cycle: v.number(), at: v.number(), events: v.any(),
+  }).index("by_conflictId_and_cycle", ["conflictId", "cycle"]),
+
   players: defineTable({
     authUserId: v.optional(v.string()),
     isAdminObserver: v.optional(v.boolean()),
@@ -121,6 +157,7 @@ export default defineSchema({
     lastGemheartAt: v.optional(v.number()),
     nextGemheartAt: v.optional(v.number()),
     activeSiegeId: v.optional(v.id("sieges")),
+    activeConflictBoardId: v.optional(v.id("boardConflicts")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -196,7 +233,8 @@ export default defineSchema({
     lastHighstormExposureId: v.optional(v.string()),
   })
     .index("by_siegeId", ["siegeId"])
-    .index("by_status_and_arriveAt", ["status", "arriveAt"]),
+    .index("by_status_and_arriveAt", ["status", "arriveAt"])
+    .index("by_playerId_and_status", ["playerId", "status"]),
 
   siegeInvestigations: defineTable({
     siegeId: v.id("sieges"),

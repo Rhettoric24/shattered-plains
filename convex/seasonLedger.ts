@@ -140,7 +140,7 @@ async function maybeUnlockVariedOpposition(ctx: MutationCtx, seasonId: Id<"seaso
 }
 
 export async function recordSiegeVictoryScore(ctx: MutationCtx, args: {
-  siegeId: Id<"sieges">; seasonId: Id<"seasons">; attackerId: Id<"players">; defenderId: Id<"players">;
+  siegeId: Id<"sieges"> | Id<"boardConflicts">; seasonId: Id<"seasons">; attackerId: Id<"players">; defenderId: Id<"players">;
   attackerName: string; defenderName: string; plateauName: string; chainPosition: number; now: number;
 }) {
   const multiplier = chainMultiplier(args.chainPosition);
@@ -157,7 +157,7 @@ export async function recordSiegeVictoryScore(ctx: MutationCtx, args: {
 }
 
 export async function recordSiegeDefenseScore(ctx: MutationCtx, args: {
-  siegeId: Id<"sieges">; seasonId: Id<"seasons">; defenderId: Id<"players">; attackerId: Id<"players">;
+  siegeId: Id<"sieges"> | Id<"boardConflicts">; seasonId: Id<"seasons">; defenderId: Id<"players">; attackerId: Id<"players">;
   attackerName: string; plateauName: string; now: number;
 }) {
   const result = await awardSeasonPoints(ctx, {

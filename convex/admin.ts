@@ -25,6 +25,12 @@ import { emptyOperatives } from "./espionageRules";
 
 type AnyCtx = QueryCtx | MutationCtx;
 type GameplayTable =
+  | "boardConflicts"
+  | "boardParticipants"
+  | "boardForces"
+  | "boardEquipment"
+  | "boardCommands"
+  | "boardCycles"
   | "ardentConclaves"
   | "playerResearch"
   | "playerFabrials"
@@ -154,6 +160,12 @@ async function performWorldResetKeepAccounts(ctx: MutationCtx) {
     siegeInvestigations: await deleteGameplayTable(ctx, "siegeInvestigations"),
     siegeReinforcements: await deleteGameplayTable(ctx, "siegeReinforcements"),
     sieges: await deleteGameplayTable(ctx, "sieges"),
+    boardForces: await deleteGameplayTable(ctx, "boardForces"),
+    boardEquipment: await deleteGameplayTable(ctx, "boardEquipment"),
+    boardParticipants: await deleteGameplayTable(ctx, "boardParticipants"),
+    boardCommands: await deleteGameplayTable(ctx, "boardCommands"),
+    boardCycles: await deleteGameplayTable(ctx, "boardCycles"),
+    boardConflicts: await deleteGameplayTable(ctx, "boardConflicts"),
     plateaus: await deleteGameplayTable(ctx, "plateaus"),
     messages: await deleteGameplayTable(ctx, "messages"),
     notifications: await deleteGameplayTable(ctx, "notifications"),
