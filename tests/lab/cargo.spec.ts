@@ -25,7 +25,7 @@ test("raid cargo survives browser save and escape banks it", async ({
     "Owner-agnostic Spheres",
   );
   await page.locator("#split").click();
-  await expect(page.locator("#armyError")).toContainText("carrying Raid cargo");
+  await expect(page.locator("#armyError")).toContainText("Leave troops in both formations");
   await page.locator("#moveArmy").click();
   for (const node of ["A2", "A3", "approach"])
     await page.locator(`[data-route-node="${node}"]`).click();

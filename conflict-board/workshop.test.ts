@@ -22,7 +22,9 @@ it("reinforcements use existing side entry and edit preserves route/history/carg
   const edited=playerWorkshop(s,"blue",f.id,command("edit"),uid).state;
   const g=edited.formations.find(g=>g.id===f.id)!;
   expect(g.history).toEqual(f.history);expect(g.cargo).toBe(7);
-  expect(()=>playerWorkshop(s,"blue",f.id,command("split"),uid)).toThrow("cargo");
+  const split=playerWorkshop(s,"blue",f.id,command("split"),uid);
+  expect(split.state.formations.find(g=>g.id===split.selected)!.cargo).toBe(0);
+  expect(split.state.formations.find(g=>g.id===f.id)!.cargo).toBe(7);
   const queued=playerWorkshop(s,"blue",f.id,command("arrive"),uid).state;
   expect(queued.arrivals[0].cycle).toBe(1);
   const r=resolveCycle({state:queued,cycle:1,config:defaults,seed:"workshop"});

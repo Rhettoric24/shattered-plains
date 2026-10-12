@@ -162,6 +162,29 @@ async function move(
 }
 
 describe("gated authenticated Conflict Board integration", () => {
+  test("cargo split preview requires confirmation, preserves ownership and is retry safe", async () => {
+    const f=await setup(), {conflictId:id}=await open(f,units(0,10,2));
+    await arrive(f,id);
+    let s=await read(f,id);
+    const carrier=s.forces.find(row=>row.data.kingdom===f.blue.id)!;
+    await f.t.run(async ctx=>{
+      await ctx.db.patch(carrier._id,{data:{...carrier.data,cargo:50}});
+      await ctx.db.patch(id,{state:{...s.conflict.state,treasury:s.state.treasury!-50}});
+    });
+    const args={conflictId:id,revision:s.conflict.revision,formationId:carrier.formationId,units:units(0,0,2),equipmentIds:[]};
+    await expect(f.green.client.query(q("previewSplit"),args)).rejects.toThrow();
+    expect(await f.blue.client.query(q("previewSplit"),args)).toEqual({cargo:50,remainingCapacity:10,cargoLost:40});
+    await expect(f.blue.client.mutation(m("split"),{...args,requestId:requestId()})).rejects.toThrow("confirm");
+    expect((await read(f,id)).state.formations.find(row=>row.id===carrier.formationId)!.cargo).toBe(50);
+    const approved={...args,requestId:requestId(),acceptedCargoLoss:40};
+    await f.blue.client.mutation(m("split"),approved);
+    await f.blue.client.mutation(m("split"),approved);
+    s=await read(f,id);
+    expect(s.state.cargoLost).toBe(40);
+    expect(s.state.formations.find(row=>row.id===carrier.formationId)!.cargo).toBe(10);
+    expect(s.state.formations.filter(row=>row.kingdom===f.blue.id).map(row=>row.cargo??0).sort((a,b)=>Number(a)-Number(b))).toEqual([0,10]);
+    await expect(f.blue.client.query(q("previewSplit"),args)).rejects.toThrow("changed");
+  });
   test("normal-game lobby is authenticated, scoped, and remains usable with the gate off", async () => {
     const f = await setup();
     await expect(f.t.query(q("lobby"), {})).rejects.toThrow();

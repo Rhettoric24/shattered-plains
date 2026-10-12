@@ -132,7 +132,10 @@ const conflictBoardUI = createConflictBoardUI({
   root: $("live-conflict-board"),
   query: (name, args) => client.query(name, args),
   mutate: (name, args) => client.mutation(name, args),
-  onSelect: () => { if (rawStateData) ensureReactiveSubscriptions(rawStateData); },
+  onSelect: id => {
+    if (currentRoute.focus !== id) showRoute({ view: "plains", tab: "sieges", focus: id });
+    if (rawStateData) ensureReactiveSubscriptions(rawStateData);
+  },
 });
 
 function syncZoomedOutViewportWidth() {
@@ -1094,6 +1097,7 @@ function showRoute(routeOrLegacy, options = {}) {
   $("view-title").textContent = section.dataset.title || "Dashboard";
   $("view-eyebrow").textContent = section.dataset.eyebrow || "Command";
   renderSpaceSubnav(route);
+  if (state && route.view === "plains" && route.tab === "sieges") renderPlateaus();
   bindRouteControls();
   void refreshRouteDetails(route);
   if (route.view === "testing" && state?.isAdmin) void loadPlaytestReports();

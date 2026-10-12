@@ -42,20 +42,32 @@ it("repeated extraction fills capacity, not banked score; full and empty treasur
   expect(s.treasury).toBe(0);
   expect(run(s).state.treasury).toBe(0);
 });
-it("cargo prevents splitting; escape banks automatically and clears cargo", () => {
+it("cargo stays with the original formation on split; escape banks automatically", () => {
   let s = run(ready()).state;
-  expect(() =>
-    splitFormation(
+  const split = splitFormation(
       s,
       s.formations[0].id,
       { ...emptyUnits(), spearman: 1 },
       "child",
-    ),
-  ).toThrow("carrying Raid cargo");
+    );
+  expect(cargoAmount(split.formations.find(f=>f.id==="child")!)).toBe(0);
+  expect(cargoAmount(split.formations[0])+(split.cargoLost??0)).toBe(cargoAmount(s.formations[0])+(s.cargoLost??0));
   approveRoute(s.board, s.formations[0], ["A2", "A3", "approach"], "continue");
   for (let i = 0; i < 3; i++) s = run(s).state;
   expect(cargoAmount(s.formations[0])).toBe(0);
   expect(s.raidValues?.blue).toBe(100);
+});
+it("split overflow is conserved in unclaimed, never given to the child; cancellation leaves input untouched", () => {
+  const s=ready(), f=s.formations[0];
+  f.units={...emptyUnits(),bridgeman:10,chull:2}; f.cargo=50;
+  const events:Event[]=[];
+  const next=splitFormation(s,f.id,{...emptyUnits(),chull:2},"cargo-child",[],events);
+  expect(cargoAmount(next.formations[0])).toBe(10);
+  expect(cargoAmount(next.formations.find(f=>f.id==="cargo-child")!)).toBe(0);
+  expect(next.cargoLost).toBe(40);
+  expect(f.cargo).toBe(50);
+  expect(f.units.chull).toBe(2);
+  expect(events.some(e=>e.type==="cargo"&&e.action==="lost"&&e.amount===40)).toBe(true);
 });
 it("capacity overflow is unclaimed and legacy provenance is discarded", () => {
   const s = ready(),

@@ -16,7 +16,7 @@ import {
   approveRoute,
   extendRoute,
 } from "../conflict-board/planning";
-import type { CycleResult, Formation } from "../conflict-board/types";
+import type { CycleResult, Formation, ConflictState } from "../conflict-board/types";
 import { defaults, presetNames, scenario } from "./scenarios";
 
 let state = scenario(),
@@ -88,6 +88,10 @@ function renderStormControls() {
  action("stormToggle",toggleStorm);
  action("stormApply",()=>{const next={...config,highstorm:{baseRate:Number(value("stormBase"))/100,surviveCap:value("stormCap").trim()===""?null:Number(value("stormCap")),visionRadius:Number(value("stormVision")),fogPenalty:Number(value("stormFog")),raidMultiplier:Number(value("stormRaid"))}};stormSettings(next);config=next;render()});
 }
+function confirmSplitCargo(next: ConflictState) {
+ const lost=(next.cargoLost??0)-(state.cargoLost??0);
+ return lost<=0 || window.confirm(`Splitting off this much Plunder means ${lost} Spheres cannot be carried by the original army and will be lost to the unclaimed pool. Continue?`);
+}
 function render() {
  const weatherEvents:CycleResult["events"]=[];exposeHighstorm(state,config,weatherEvents);
  if(weatherEvents.length)history.push({id:state.highstorm!.id+":arrivals:"+history.length,state:structuredClone(state),events:weatherEvents});
@@ -100,7 +104,7 @@ function render() {
      setConsumableTest:on=>{config.consumeFabrialPerEngagement=on;render()},
      equipment:(id,command)=>{state=labEquipmentCommand(state,viewingKingdom,id,command,uid);render()},
      select:id=>{selected=id},
-     workshop:(id,command)=>{const result=playerWorkshop(state,viewingKingdom,id,command,uid);state=result.state;selected=result.selected;render()},
+     workshop:(id,command)=>{const result=playerWorkshop(state,viewingKingdom,id,command,uid);if(command.kind==="split"&&!confirmSplitCargo(result.state))return;state=result.state;selected=result.selected;render()},
      nominate:(id,position)=>{const f=state.formations.find(f=>f.id===id&&f.kingdom===viewingKingdom);if(!f)throw Error("Select your own army.");preferences[`${viewingKingdom}@${position}`]=id},
      scientist:()=>{playerMode=false;render()},
      viewer:id=>{viewingKingdom=id;render()},
@@ -303,7 +307,9 @@ function render() {
   });
   action("split", () => {
     const id = uid();
-    state = splitFormation(state, selected, unitInputs(), id);
+    const next = splitFormation(state, selected, unitInputs(), id);
+    if(!confirmSplitCargo(next))return;
+    state = next;
     selected = id;
     render();
   });

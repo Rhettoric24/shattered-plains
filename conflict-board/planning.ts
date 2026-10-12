@@ -1,4 +1,4 @@
-import { cargoAmount } from "./cargo";
+import { limitCargo } from "./cargo";
 import { splitEquipment, validateEquipment } from "./fabrials";
 import {
   normalizeUnits,
@@ -6,7 +6,7 @@ import {
   unitKeys,
   type UnitCounts,
 } from "../convex/rules";
-import type { Board, ConflictState, Formation, Order } from "./types";
+import type { Board, ConflictState, Formation, Order, Event } from "./types";
 
 export const holdOrder = (): Order => ({
   kind: "hold",
@@ -55,6 +55,7 @@ export function splitFormation(
   requested: UnitCounts,
   childId: string,
   childEquipmentIds: string[] = [],
+  events: Event[] = [],
 ): ConflictState {
   if(state.objective.conqueredBy)throw Error("This conflict has completed conquest.");
   validateEquipment(state);
@@ -66,10 +67,6 @@ export function splitFormation(
     next.arrivals.some((a) => a.formation.id === childId)
   )
     throw new Error("Choose an existing formation and a new child identity.");
-  if (cargoAmount(parent))
-    throw Error(
-      "This formation is carrying Raid cargo. Bank or resolve the cargo before splitting.",
-    );
   const units = normalizeUnits(requested);
   for (const key of unitKeys())
     if (
@@ -86,10 +83,12 @@ export function splitFormation(
     id: childId,
     name: `${parent.name} detachment`,
     units,
+    cargo: 0,
   };
   const equipment=splitEquipment(parent.equipment,childEquipmentIds);
   if(equipment.parent)parent.equipment=equipment.parent;
   if(equipment.child)child.equipment=equipment.child;
+  limitCargo(next, parent, events, "Splitting reduced the original formation's Plunder capacity.");
   next.formations.push(child);
   for (const foothold of Object.values(next.raidFootholds ?? {})) {
     if (foothold.occupants.includes(parent.id))

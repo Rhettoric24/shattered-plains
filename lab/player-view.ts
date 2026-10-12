@@ -147,8 +147,8 @@ export function renderPlayerView(
     const ready=!!f && view.raidReady.some(h=>h.position===f.position&&h.ready);
     (el("playerRaid") as HTMLButtonElement).disabled=!ready;
     el("playerRaidHint").textContent=ready?"Raid this flank next resolution if you retain control.":view.raidReady.some(h=>h.position===f?.position)?"Foothold established. Retain this flank to become Raid-ready.":"Reach a flank Raid objective and establish a foothold before raiding. The original defender cannot raid its own logistics.";
-    (el("playerSplit") as HTMLButtonElement).disabled=(own?.cargo??0)>0;
-    el("playerSplit").title=(own?.cargo??0)>0?"Bank or resolve carried cargo before splitting.":"Detach troops from this army";
+    (el("playerSplit") as HTMLButtonElement).disabled=!f;
+    el("playerSplit").title="Cargo stays with the original army. Capacity loss requires confirmation.";
     routeBar.hidden=draft===null;
     el("draftPath").textContent =
       draft && f ? [f.position, ...draft].join(" → ") : "";

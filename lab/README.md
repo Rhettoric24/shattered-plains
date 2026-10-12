@@ -143,11 +143,17 @@ Fog off reveals presence everywhere but preserves the Intel limits on details. H
 
 ### Selected-army Workshop in player view
 
-Tap your army on the board to select it and open its controls below the board. The player Workshop supports naming/editing troop counts, adding entered counts, splitting, creating a local army, removing an army, and queuing fake reinforcements for the next cycle. Existing split conservation/cargo restrictions and resolver-controlled reinforcement entry are reused. Continue/Pause, typed routes and planned merge-source nomination are also available. Edits affect only the selected viewer's armies; enemy disclosure is unchanged. Selection stays with the edited/split army across rerenders.
+Tap your army on the board to select it and open its controls below the board. The player Workshop supports naming/editing troop counts, adding entered counts, splitting, creating a local army, removing an army, and queuing fake reinforcements for the next cycle. Shared split conservation and cargo handling and resolver-controlled reinforcement entry are reused. Continue/Pause, typed routes and planned merge-source nomination are also available. Edits affect only the selected viewer's armies; enemy disclosure is unchanged. Selection stays with the edited/split army across rerenders.
 
 Retreat history in both views uses a single purple hue: the nearest fallback is lighter, with progressively darker older positions. Fallback numbers accompany the colors. Current position, approved route and unconfirmed route retain distinct markers; selecting a different army clears the previous trail.
 
 ### Player popup and drag movement (local playtest)
+
+Cargo carriers may now split. All cargo stays with the original army; the child
+carries none. If the remaining Plunder capacity is too small, both scientist and
+player controls ask for confirmation before placing overflow in the unclaimed
+pool. Cancel leaves units, equipment and cargo unchanged. The gesture helper is
+shared with the normal game in `conflict-board/route-drag.ts`.
 
 Tap your own army to open its stats/orders popup (a bottom sheet on mobile). Summary stats reuse `formationStats` with the current Lab configuration, including normalized specialization ratings, plus cargo/capacity. Move, Hold, Split and Raid sit above the Lab-only unit editor. Split has its own troop selector. Unavailable Raid is dimmed with a flank/foothold explanation. Standing behavior and advanced route/merge controls follow the editor.
 

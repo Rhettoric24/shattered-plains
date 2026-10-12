@@ -9,6 +9,22 @@ Statuses:
 
 # Core
 
+### DECIDED — Cargo-bearing formations may split
+
+Cargo remains on the original formation; the detached formation receives none.
+If the original formation's remaining Research-adjusted Plunder capacity is too
+small, overflow goes to the existing unclaimed pool. The UI must show the amount
+and obtain confirmation before committing a lossy split. Live previews and commits
+use the same authoritative revision; stale confirmations cannot authorize new loss.
+Troop and physical equipment conservation rules remain unchanged.
+
+### TESTING — Dedicated battlefield within the normal game
+
+Sieges is the overview/entry surface. Enter battlefield opens a focused, directly
+linkable view in the same authenticated application with Back to Sieges. Existing
+Lab pointer gestures are shared with live play: mouse drag, touch hold-and-drag,
+explicit connected paths, backtracking, and Confirm/Cancel. No automatic pathfinding.
+
 ### TESTING — Conflict Board live settlement and treasury escrow
 
 Approved for gated V1 integration: withdrawal returns surviving assets before

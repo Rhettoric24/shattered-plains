@@ -33,6 +33,7 @@ import {
 } from "../conflict-board/planning";
 import { requestFabrialSwitch } from "../conflict-board/fabrials";
 import { projectConflict, projectJournal } from "../conflict-board/disclosure";
+import { cargoAmount, cargoCapacity } from "../conflict-board/cargo";
 import type { ConflictState, Formation } from "../conflict-board/types";
 import {
   CYCLE_MS,
@@ -452,25 +453,43 @@ export const order = mutation({
       if (arrival) arrival.formation.order = f.order;
     }),
 });
+export const previewSplit = query({
+  args: { conflictId, revision: v.number(), formationId: v.string(), units: unitCountsValidator, equipmentIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const p = await requireCompetitivePlayer(ctx);
+    const s = await loadBoard(ctx, args.conflictId);
+    if (s.conflict.status !== "active" || s.conflict.revision !== args.revision) throw Error("The battlefield changed. Review the split again.");
+    const f = ownFormation(s, p._id, args.formationId);
+    const next = splitFormation(s.state, f.id, checkedUnits(args.units), `preview:${f.id}`, args.equipmentIds);
+    const parent = next.formations.find(row => row.id === f.id)!;
+    return { cargo: cargoAmount(f), remainingCapacity: cargoCapacity(next, parent), cargoLost: cargoAmount(f) - cargoAmount(parent) };
+  },
+});
 export const split = mutation({
   args: {
     ...commandFields,
     formationId: v.string(),
     units: unitCountsValidator,
     equipmentIds: v.array(v.string()),
+    acceptedCargoLoss: v.optional(v.number()),
   },
   handler: (ctx, args) =>
     command(ctx, args, "split", args, async (s, p) => {
-      ownFormation(s, p._id, args.formationId);
+      const parent = ownFormation(s, p._id, args.formationId);
       const units = checkedUnits(args.units);
       const id = `${p._id}:${args.requestId}`;
-      s.state = splitFormation(
+      const next = splitFormation(
         s.state,
         args.formationId,
         units,
         id,
         args.equipmentIds,
+        s.events,
       );
+      const loss = cargoAmount(parent) - cargoAmount(next.formations.find(f => f.id === parent.id)!);
+      const accepted = args.acceptedCargoLoss ?? 0;
+      if (!Number.isFinite(accepted) || accepted < 0 || loss > accepted) throw Error("Splitting off this much Plunder loses cargo. Review and confirm the cargo loss first.");
+      s.state = next;
       checkBudget(s);
       return id;
     }),

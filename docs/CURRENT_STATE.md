@@ -21,6 +21,11 @@ See [integration evidence and exact boundaries](audits/CONFLICT_BOARD_LIVE_INTEG
 Earlier Lab-only descriptions below refer to the public testing surface; they
 do not supersede this gated backend implementation.
 
+Cargo-bearing splits now keep cargo on the original formation and place overflow
+in unclaimed only after explicit confirmation of the server-calculated loss.
+The live Siege overview opens a focused battlefield with shared mouse/touch drag
+movement, explicit route confirmation, and Back to Sieges. Lab controls remain intact.
+
 ## Technical Shape
 
 -   Convex backend

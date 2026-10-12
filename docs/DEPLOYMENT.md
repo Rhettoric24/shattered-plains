@@ -94,8 +94,10 @@ formation to plan its route. Switch accounts to reinforce/defend. Resolutions us
 real two-hour windows; no browser needs to remain open. Withdrawal happens at the
 next resolution. Check the return summary after settlement. Real backend support
 currently includes Half-Shards; Painrial/Soulcaster and Conclave attachment remain
-Lab-only/unavailable on live Boards. Main-game routes use tap/click plus Confirm;
-the Lab's richer drag controls remain intact.
+Lab-only/unavailable on live Boards. Main-game routes support tap/click and the
+shared Lab mouse-drag/touch-hold gestures, always followed by Confirm. Enter a
+conflict from the overview to open its focused battlefield. Its `focus` URL parameter
+supports direct loading and browser history within the existing Pages application.
 
 Checks: `npm test`, `npm run build`, `npm run build:lab`,
 `npm run test:board:browser`, `npm run test:lab:browser`, `npm run test:lab:static`.

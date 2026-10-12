@@ -136,3 +136,11 @@
 .cb-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: .5rem 0; }
 .cb-route { margin: .8rem 0; padding: .8rem; border: 2px solid #ffd36d; }
 .cb-notice:not(:empty) { padding: .6rem; border: 1px solid #d7bf76; }
+.cb-battlefield-open > :not(#live-conflict-board) { display: none !important; }
+.cb-conflict-list { display: grid; gap: 12px; }
+.cb-conflict-list article { padding: 12px; border: 1px solid #76694e; border-radius: 8px; }
+#live-conflict-board [data-own] { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: grab; }
+#live-conflict-board [data-own].drag-armed { cursor: grabbing; outline: 3px solid #ffd36d; }
+.cb-cell { position: relative; }
+.cb-step:not(:empty) { position: absolute; right: 3px; top: 3px; background: #ffd36d; color: #151b25; border-radius: 50%; padding: 2px 6px; pointer-events: none; }
+.cb-route { position: sticky; bottom: 72px; background: #111d2a; z-index: 3; }
