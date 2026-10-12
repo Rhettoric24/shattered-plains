@@ -42,7 +42,7 @@ export function exposeHighstorm(state:ConflictState,config:ResolverConfig,events
     // remain unapproved; storms never auto-consume a carried Painrial.
     const loss=protectWithEquipment(state,[f],raw,state.cycle,events,false);
     f.units=loss.survivors;
-    events.push({type:"highstorm",formation:f.id,kingdom:f.kingdom,stormId:storm.id,casualties:loss.casualties,survivors:loss.survivors,finalRate:raw.finalCasualtyRate});
+    events.push({type:"highstorm",formation:f.id,formationName:f.name,kingdom:f.kingdom,stormId:storm.id,casualties:loss.casualties,survivors:loss.survivors,finalRate:raw.finalCasualtyRate});
     limitCargo(state,f,events,"Highstorm casualties reduced carrying capacity.");
     if(!totalUnits(f.units))archiveEquipment(state,f,state.cycle,events,"lost","Carrier annihilated by Highstorm; equipment lost.");
   }

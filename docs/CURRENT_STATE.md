@@ -7,6 +7,20 @@ friend-test deployment.
 This document records what is believed to be implemented now.
 Aspirations belong in `IDEA_VAULT.md` or `ROADMAP.md`.
 
+### Conflict Board Spanreed reports — 2026-10-12
+
+Every scheduled resolution boundary sends each participant active at its start
+one paired combat notification and system Spanreed report, including quiet and
+final withdrawal/deadline resolutions. Reports summarize the recipient's own
+movement, battles and troop losses, retreats, raids/cargo, equipment events, and
+public conquest events. Final reports include returned troops/cargo. Hidden enemy
+statistics, cargo, equipment and routes are never copied from the debug journal.
+Highstorm exposure separately sends the affected owner a report naming the army,
+its losses by troop type, and survivors, even if that army is annihilated.
+Paired delivery is atomic and uses the existing notification deduplication key;
+retrying a wake cannot resend it. Reports link back to the Board through Sieges.
+This does not backfill historical cycles or change combat/Highstorm rules.
+
 ### Conflict Board integration update — 2026-10-11
 
 Authenticated backend participation/orders/viewer projection, real troop/Fabrial

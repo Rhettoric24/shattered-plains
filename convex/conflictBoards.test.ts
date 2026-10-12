@@ -162,6 +162,28 @@ async function move(
 }
 
 describe("gated authenticated Conflict Board integration", () => {
+  test("resolution Spanreeds and alerts are private, paired, and retry safe through withdrawal", async () => {
+    const f = await setup(), { conflictId: id } = await open(f);
+    await nextCycle(f, id);
+    const reports = () => f.t.run(async ctx => ({
+      messages: (await ctx.db.query("messages").collect()).filter(m => m.entityId === id && m.subject.includes("resolution report")),
+      alerts: (await ctx.db.query("notifications").collect()).filter(n => n.entityId === id && n.title.includes("resolution report")),
+    }));
+    const first = await reports();
+    expect(first.messages).toHaveLength(2);
+    expect(first.alerts).toHaveLength(2);
+    expect(first.messages.map(m => m.toPlayerId).sort()).toEqual([f.owner.id, f.blue.id].sort());
+    expect(first.messages.find(m => m.toPlayerId === f.owner.id)!.body).not.toContain("arrived");
+    await f.t.mutation(m("wake"), { conflictId: id });
+    expect(await reports()).toEqual(first);
+    await cmd(f, id, f.blue, "withdraw");
+    await nextCycle(f, id);
+    const final = await reports();
+    expect(final.messages).toHaveLength(4);
+    expect(final.messages.filter(m => m.body.includes("Conflict ended:"))).toHaveLength(2);
+    await f.t.mutation(m("wake"), { conflictId: id });
+    expect(await reports()).toEqual(final);
+  });
   test("cargo split preview requires confirmation, preserves ownership and is retry safe", async () => {
     const f=await setup(), {conflictId:id}=await open(f,units(0,10,2));
     await arrive(f,id);
@@ -543,7 +565,14 @@ describe("gated authenticated Conflict Board integration", () => {
     const hit = await read(f, id),
       count = totalUnits(hit.state.formations[0].units);
     expect(count).toBeLessThan(100);
+    const stormReports = () => f.t.run(async ctx => (await ctx.db.query("messages").collect()).filter(m => m.subject.startsWith("Highstorm —")));
+    const stormMessages = await stormReports();
+    expect(stormMessages).toHaveLength(1);
+    expect(stormMessages[0].toPlayerId).toBe(f.blue.id);
+    expect(stormMessages[0].body).toContain(`${100-count} Bridgemen`);
+    expect(stormMessages[0].body).toContain(hit.state.formations[0].name);
     await f.t.mutation(m("wake"), { conflictId: id });
+    expect(await stormReports()).toEqual(stormMessages);
     expect(totalUnits((await read(f, id)).state.formations[0].units)).toBe(
       count,
     );

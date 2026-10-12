@@ -116,7 +116,7 @@ export type BattleForce = {
   survivors: UnitCounts;
 };
 export type Event =
-  | { type:"highstorm"; formation:string; kingdom:string; stormId:string; casualties:UnitCounts; survivors:UnitCounts; finalRate:number }
+  | { type:"highstorm"; formation:string; formationName?:string; kingdom:string; stormId:string; casualties:UnitCounts; survivors:UnitCounts; finalRate:number }
   | {type:"fabrial";formation:string;kingdom:string;item:string;action:string;reason:string;lossChance?:number;roll?:number}
   | {
       type: "cargo";

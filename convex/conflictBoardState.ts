@@ -17,6 +17,7 @@ import {
   recordSiegeVictoryScore,
 } from "./seasonLedger";
 import { createNotification } from "./notificationHelpers";
+import { lossSummary, resolutionReport } from "./conflictBoardReports";
 import { applyArrivals, resolveCycle } from "../conflict-board/resolver";
 import { setHighstorm } from "../conflict-board/highstorms";
 import { cargoAmount, settleUnclaimed } from "../conflict-board/cargo";
@@ -156,18 +157,27 @@ export async function notifyBoard(
   title: string,
   body: string,
   at: number,
+  spanreed = false,
 ) {
-  await createNotification(ctx, {
+  const notification = await createNotification(ctx, {
     playerId,
     category: "combat",
     eventType: "conflict_board",
     title,
-    body,
+    body: spanreed && body.length > 240 ? `${body.slice(0, 237)}…` : body,
     destinationView: "plains",
     destinationTab: "sieges",
     entityId: String(s.conflict._id),
     dedupeKey: `board:${s.conflict._id}:${key}:${playerId}`,
     createdAt: at,
+  });
+  // Both writes commit atomically. The notification's existing indexed key is
+  // also the receipt for the paired Spanreed report, including retried wakes.
+  if (spanreed && notification.created) await ctx.db.insert("messages", {
+    toPlayerId: playerId, kind: "system", subject: title, body,
+    eventType: "conflict_board", entityType: "conflict_board",
+    entityId: String(s.conflict._id), destinationView: "plains",
+    destinationTab: "sieges", createdAt: at,
   });
 }
 
@@ -466,9 +476,10 @@ export async function saveBoard(
           s,
           event.kingdom as Id<"players">,
           `storm:${event.stormId}:${event.formation}`,
-          "Highstorm exposure",
-          `${totalUnits(event.casualties)} troops lost to the Highstorm.`,
+          `Highstorm — ${event.formationName ?? "Army exposure"}`,
+          `${event.formationName ?? event.formation} was caught in the Highstorm.\nTroop losses: ${lossSummary(event.casualties)}.\nSurvivors: ${lossSummary(event.survivors)}.`,
           s.conflict.processedAt,
+          true,
         );
       if (event.type === "holdStarted")
         for (const p of s.participants.filter((p) => p.status === "active"))
@@ -508,6 +519,9 @@ export async function advanceBoard(ctx: MutationCtx, s: Session, now: number) {
     ...s.state.arrivals.map((a) => s.times.get(a.id)!),
   );
   if (at > now) return false;
+  const resolutionDue = s.conflict.nextCycleAt <= at;
+  const before = structuredClone(s.state);
+  const recipients = s.participants.filter(p => p.status === "active").map(p => p.playerId);
   s.conflict.processedAt = at;
   for (const p of s.participants)
     p.kingdom.research = await completedResearch(ctx, p.playerId);
@@ -611,6 +625,17 @@ export async function advanceBoard(ctx: MutationCtx, s: Session, now: number) {
       "all outside forces defeated",
       at,
     );
+  if (resolutionDue) {
+    const plateau = await ctx.db.get(s.conflict.plateauId);
+    for (const playerId of recipients) {
+      const participant = s.participants.find(p => p.playerId === playerId)!;
+      const ending = s.conflict.settledAt !== undefined ? `\nConflict ended: ${s.conflict.outcome}.` : "";
+      const returned = participant.status === "returned" ? `\nYour forces have returned. Units: ${lossSummary(participant.returnedUnits)}. Spheres returned at settlement/withdrawal: ${participant.returnedSpheres}.` : "";
+      await notifyBoard(ctx, s, playerId, `resolution:${at}`,
+        `${plateau?.name ?? "Plateau"} — resolution report`,
+        resolutionReport(before, s.events, playerId) + ending + returned, at, true);
+    }
+  }
   await saveBoard(ctx, s, true);
   return true;
 }
