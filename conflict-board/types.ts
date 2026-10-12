@@ -54,6 +54,8 @@ export type Objective = {
   conqueredBy?: string;
 };
 export type ConflictState = {
+  /** Closed storm identities reject delayed start/retry deliveries. */
+  endedHighstormIds?: string[];
   highstorm?: { id: string; active: boolean; sequence?: number };
   equipmentRecords?: EquipmentRecord[];
   treasury?: number;

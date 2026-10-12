@@ -25,14 +25,14 @@ export function stormSettings(config?: ResolverConfig) {
  * Server adapters must persist state + events together. No wall clock or I/O. */
 export function exposeHighstorm(state:ConflictState,config:ResolverConfig,events:Event[]) {
   const c=stormSettings(config), storm=state.highstorm;
-  if(!storm?.active)return;
+  if(!storm?.active || state.objective.conqueredBy)return;
   validateEquipment(state);
   const occupiedObjective=state.formations.some(f=>f.position===state.board.objective&&f.kingdom===state.objective.controller);
   const forces=[...state.formations,...state.arrivals.map(a=>a.formation)].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
   for(const f of forces) {
     if(!totalUnits(f.units)) {
       archiveEquipment(state,f,state.cycle,events,"unsettled","Empty formation before exposure; equipment awaits settlement.");
-      if("position" in f)limitCargo(state,f,events,"Empty formation has no carrying capacity.");
+      limitCargo(state,f,events,"Empty formation has no carrying capacity.");
       continue;
     }
     if(f.lastHighstormExposureId===storm.id)continue;
@@ -43,7 +43,7 @@ export function exposeHighstorm(state:ConflictState,config:ResolverConfig,events
     const loss=protectWithEquipment(state,[f],raw,state.cycle,events,false);
     f.units=loss.survivors;
     events.push({type:"highstorm",formation:f.id,kingdom:f.kingdom,stormId:storm.id,casualties:loss.casualties,survivors:loss.survivors,finalRate:raw.finalCasualtyRate});
-    if("position" in f)limitCargo(state,f,events,"Highstorm casualties reduced carrying capacity.");
+    limitCargo(state,f,events,"Highstorm casualties reduced carrying capacity.");
     if(!totalUnits(f.units))archiveEquipment(state,f,state.cycle,events,"lost","Carrier annihilated by Highstorm; equipment lost.");
   }
   state.formations=state.formations.filter(f=>totalUnits(f.units)>0);
@@ -61,6 +61,13 @@ export function exposeHighstorm(state:ConflictState,config:ResolverConfig,events
 export function setHighstorm(state:ConflictState,config:ResolverConfig,id:string,active:boolean) {
   if(!id)throw Error("Storm identity required.");
   const next=structuredClone(state),events:Event[]=[];
+  if(state.objective.conqueredBy)return {state:next,events};
+  if(state.endedHighstormIds?.includes(id))return {state:next,events};
+  if(state.highstorm?.id===id && !state.highstorm.active && active)return {state:next,events};
+  const ended=new Set(state.endedHighstormIds??[]);
+  if(state.highstorm && state.highstorm.id!==id)ended.add(state.highstorm.id);
+  if(!active)ended.add(id);
+  if(ended.size)next.endedHighstormIds=[...ended].sort();
   next.highstorm={id,active,sequence:state.highstorm?.id===id ? state.highstorm.sequence : (state.highstorm?.sequence??0)+1};exposeHighstorm(next,config,events);
   return {state:next,events};
 }

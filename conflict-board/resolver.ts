@@ -112,6 +112,7 @@ function validate(input: CycleInput) {
   if (
     !unique(state.board.positions.map((p) => p.id)) ||
     !unique(state.kingdoms.map((k) => k.id)) ||
+    !unique(state.arrivals.map((a) => a.id)) ||
     !unique([
       ...state.formations.map((f) => f.id),
       ...state.arrivals.map((a) => a.formation.id),
@@ -122,6 +123,9 @@ function validate(input: CycleInput) {
     );
   const positions = new Set(state.board.positions.map((p) => p.id)),
     kingdoms = new Set(state.kingdoms.map((k) => k.id));
+  if ((state.objective.controller !== null && !kingdoms.has(state.objective.controller)) ||
+      (state.objective.hold && (!kingdoms.has(state.objective.hold.kingdom) || state.objective.hold.kingdom !== state.objective.controller || !Number.isSafeInteger(state.objective.hold.beganCycle) || state.objective.hold.beganCycle < 0 || state.objective.hold.beganCycle > state.cycle)))
+    throw Error("Invalid objective controller or hold.");
   if (
     !kingdoms.has(state.originalOwner) ||
     ![state.board.objective, state.board.approach, state.board.reserve].every(
@@ -351,7 +355,7 @@ function movementStep(
   const previous = new Map(groups.map((g) => [g.id, g.position]));
   for (const g of sorted(groups)) {
     if (
-      g.fought ||
+      g.fought || g.order.paused ||
       (step === 2 && !g.speed) ||
       g.order.kind !== "move" ||
       !g.order.route.length

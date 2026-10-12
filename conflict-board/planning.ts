@@ -56,6 +56,7 @@ export function splitFormation(
   childId: string,
   childEquipmentIds: string[] = [],
 ): ConflictState {
+  if(state.objective.conqueredBy)throw Error("This conflict has completed conquest.");
   validateEquipment(state);
   const next = structuredClone(state);
   const parent = next.formations.find((f) => f.id === id);

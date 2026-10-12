@@ -14,7 +14,7 @@ Hosted saves remain local to each browser/device and origin. They do not sync wi
 
 ## Playing
 
-Load a preset and click/tap an army. This opens the existing Army Workshop in a dialog scoped to that army, including its Research and debug controls. **Move · draw route** returns to the board: tap connected positions in sequence, then **Confirm route**. Tapping the previous node backtracks one step; Clear empties the draft; Cancel leaves the committed route alone. Invalid jumps are rejected. Drag is deliberately not implemented. Advanced typed routes remain in the Workshop; both interfaces use the same approval function. No automatic pathfinding is used by this interface.
+Load a preset and click/tap an army. This opens the existing Army Workshop in a dialog scoped to that army, including its Research and debug controls. **Move · draw route** returns to the board: tap connected positions in sequence, then **Confirm route**. Tapping the previous node backtracks one step; Clear empties the draft; Cancel leaves the committed route alone. Invalid jumps are rejected. Player view also supports mouse drag and touch hold-and-drag with confirmation. Advanced typed routes remain in the Workshop; both interfaces use the same approval function. No automatic pathfinding is used by this interface.
 
 The selected army and its current position are highlighted. Approved paths have gold outlines, retreat history has purple dashed borders, and unconfirmed proposals have orange backgrounds/outlines. Numbered labels show path order even where histories overlap. Green node-button borders mark valid next taps. Nothing moves until **Resolve Next Cycle**. Routes persist; choose Continue or Pause after defeat. Reaching a destination becomes Hold. Splitting subtracts the entered troop counts from the selected parent.
 
@@ -111,7 +111,7 @@ Pure deterministic replay is not database idempotency: replaying identical input
 
 ## Deliberately deferred
 
-Live sieges, real treasury theft, final Raid balance, deadlines/overtime, withdrawal missions, live Intel integration, storms, equipment, Conclaves, notifications, production scoring and all production migration/integration. Formations are command groups, not permanent equipment or exposure identities; later accounting cohorts can sit beneath them without changing graph/order concepts.
+Live sieges, real treasury theft, final Raid balance, deadlines/overtime, withdrawal missions, live Intel integration, Conclaves, notifications, production scoring and all production migration/integration. Storms and physical equipment are implemented in the shared core and exposed through Lab; their backend integration remains deferred. Formations are command groups, not permanent equipment or exposure identities; later accounting cohorts can sit beneath them without changing graph/order concepts.
 
 Verified unrelated accounting issue: `ownedUnitsIncludingAway` in `convex/provisionHelpers.ts` includes deployed siege troops but omits traveling `siegeReinforcements`. Recruitment uses this for provisions and Gemheart Baron Chull limits. Left unchanged; resolve separately before live integration.
 
@@ -182,3 +182,9 @@ Storm weather uses the current shared casualty engine, independently of Current/
 Active Half-Shard protection applies. Pending equipment does not activate early. Weather does not auto-consume Painrials (repeated-event semantics remain deferred), and nonlethal exposure does not roll defeat-band Fabrial losses. Destroyed formations lose carried equipment; cargo beyond surviving capacity goes to unclaimed. Annihilation breaks their raid foothold/conquest hold, but storm damage alone does not reset surviving control or advance conquest.
 
 Storm raids remain subject to readiness, Raid orders, remaining Plunder capacity and remaining fake treasury. The multiplier changes only extraction per resolution, not the treasury or carrying capacity. Storm reports show all exposure in scientist view and only the viewing kingdom's exposure in player view. No Convex calls.
+
+## Integrity stabilization (2026-10-11)
+
+See [release-readiness evidence](../docs/audits/CONFLICT_BOARD_V1_READINESS.md). The core rejects duplicate arrival IDs, invalid objective references/hold cycles, and physical planning commands after conquest. Paused routes/raids do not act. Weather no longer mutates completed conflicts; ended/superseded storm identities ignore delayed retries. Transit cargo capacity loss, including annihilation, is accounted to unclaimed before removal.
+
+The only implemented terminal result remains conquest; it freezes the tactical state and destroys unclaimed cargo once. Surviving forces, transit armies, carried cargo and equipment remain present for a future settlement adapter, NOT returned to live accounts. Empty/abandoned boards do not currently terminate. No authenticated Board query, durable cycle transaction, withdrawal mission or production settlement exists. The allowlisted disclosure projection is tested directly; it is not a server security certification.

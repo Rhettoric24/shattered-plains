@@ -81,7 +81,7 @@ export function finishRaids(
         kingdom: force.kingdom,
         cycle,
       });
-    if (force.order.kind !== "raid") continue;
+    if (force.order.kind !== "raid" || force.order.paused) continue;
     if (foothold.establishedCycle >= cycle) {
       events.push({
         type: "raidFailed",

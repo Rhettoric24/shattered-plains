@@ -72,6 +72,7 @@ export function validateEquipment(state: ConflictState) {
 
 /** Pure command on an authoritative snapshot; caller supplies authenticated owner. */
 export function requestFabrialSwitch(state:ConflictState, kingdom:string, formationId:string, itemId:string|null) {
+  if(state.objective.conqueredBy)throw Error("This conflict has completed conquest.");
   validateEquipment(state);
   const next=structuredClone(state);
   const f=[...next.formations,...next.arrivals.map(a=>a.formation)].find(f=>f.id===formationId&&f.kingdom===kingdom);

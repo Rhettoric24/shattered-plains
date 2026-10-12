@@ -1,5 +1,6 @@
 import { totalUnits, unitPlunder } from "../convex/rules";
 import type { ConflictState, Formation, Event } from "./types";
+type CargoCarrier = Pick<Formation, "id" | "kingdom" | "units" | "cargo">;
 export const DEFAULT_TREASURY = 50000;
 export const DEFAULT_CARGO_DROP_RATES: [number,number,number,number] = [.25,.5,.75,1];
 export const cargoAmount = (f: Pick<Formation, "cargo">) =>
@@ -15,7 +16,7 @@ export const combineCargo = (rows: Pick<Formation, "cargo">[]) =>
   rows.reduce((n, f) => n + cargoAmount(f), 0);
 export function cargoEvent(
   events: Event[],
-  f: Formation,
+  f: CargoCarrier,
   action: Extract<Event, { type: "cargo" }>["action"],
   reason: string,
   amount = cargoAmount(f),
@@ -34,7 +35,7 @@ export function cargoEvent(
 }
 function unclaimed(
   s: ConflictState,
-  f: Formation,
+  f: CargoCarrier,
   amount: number,
   events: Event[],
   reason: string,
@@ -45,7 +46,7 @@ function unclaimed(
 }
 export function limitCargo(
   s: ConflictState,
-  f: Formation,
+  f: CargoCarrier,
   events: Event[],
   reason: string,
 ) {
