@@ -144,3 +144,50 @@
 .cb-cell { position: relative; }
 .cb-step:not(:empty) { position: absolute; right: 3px; top: 3px; background: #ffd36d; color: #151b25; border-radius: 50%; padding: 2px 6px; pointer-events: none; }
 .cb-route { position: sticky; bottom: 72px; background: #111d2a; z-index: 3; }
+/* Phase 1 battlefield: map first; commands remain in a non-modal sheet. */
+#live-conflict-board [hidden] { display: none !important; }
+#live-conflict-board .cb-heading { margin: .4rem 0; }
+.cb-battlefield-open #live-conflict-board > .cb-heading { display: none; }
+.cb-battlefield-open #live-conflict-board > section > h3 { margin: .4rem 0; font-size: 1rem; }
+.cb-battle-status { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-size: .78rem; color: var(--muted); }
+.cb-map-frame { position: relative; max-width: 850px; margin-inline: auto; }
+#live-conflict-board .cb-grid { margin: .5rem 0; gap: 5px; }
+#live-conflict-board .cb-cell { box-sizing: border-box; border-width: 2px; min-height: 64px; padding: 3px; }
+#live-conflict-board .cb-reserve { min-height: 38px; border-style: dashed; color: var(--muted); }
+.cb-reserve > small { display: none; }
+.cb-objective { border-color: #c3a764; }
+.cb-known-contact { box-shadow: inset 3px 0 #c58a85; }
+.cb-contact { color: #e0aba4; margin: 3px 0; }
+#live-conflict-board [data-own] { border-color: #70b9c7; color: #a9edf0; }
+.cb-inspected { outline: 2px solid #d5c4e8; outline-offset: 1px; }
+.cb-fog:not(.cb-known-contact) { background: #111823; color: #8e9aaa; }
+.cb-inspection { position: absolute; top: 4px; right: 4px; width: min(265px, 85%); max-height: 42dvh; overflow: auto; z-index: 6; padding: 10px; border: 1px solid #a995be; border-radius: 8px; background: #102033; box-shadow: 0 4px 14px #0009; font-size: .8rem; }
+.cb-inspection > button { float: right; }
+.cb-board-hint { display: block; color: var(--muted); font-size: .75rem; }
+.cb-arrivals { display: flex; flex-wrap: wrap; gap: 5px; margin: .4rem 0; }
+#live-conflict-board.cb-has-sheet { padding-bottom: 285px; }
+#live-conflict-board .cb-sheet { position: fixed; z-index: 95; bottom: 12px; right: 18px; width: min(440px, calc(100vw - 36px)); max-height: min(56dvh, 570px); display: flex; flex-direction: column; padding: 8px 12px; box-sizing: border-box; overflow: hidden; border: 1px solid #688b9e; border-radius: 16px 16px 8px 8px; background: #0c1b2bf7; box-shadow: 0 -6px 24px #0007; }
+.cb-sheet-top { display: flex; gap: 8px; justify-content: space-between; flex-shrink: 0; }
+#live-conflict-board .cb-sheet-handle { flex: 1; touch-action: none; cursor: ns-resize; user-select: none; font-size: .76rem; padding: 4px; }
+.cb-sheet-overview { font-size: .85rem; padding: 3px 0; flex-shrink: 0; }
+.cb-sheet-overview small { display: block; font-size: .73rem; line-height: 1.35; }
+.cb-sheet-body { overflow-y: auto; overscroll-behavior-y: contain; min-height: 0; padding-bottom: 8px; }
+#live-conflict-board .cb-primary { display: grid; grid-template-columns: repeat(3, 1fr); flex-shrink: 0; margin: 4px 0; }
+#live-conflict-board .cb-route { position: static; flex-shrink: 0; margin: 4px 0; padding: 6px; font-size: .8rem; max-height: 100px; overflow: auto; }
+#live-conflict-board .cb-route > div { display: flex; flex-wrap: wrap; gap: 4px; }
+.cb-drag-feedback:empty, .cb-notice:empty { display: none; }
+.cb-drag-feedback:not(:empty) { position: absolute; left: 4px; right: 4px; pointer-events: none; top: 0; z-index: 5; background: #102033; padding: 5px; font-size: .78rem; }
+@media (max-width: 720px) {
+  .cb-battlefield-open #live-conflict-board { padding: 8px; }
+  #live-conflict-board .cb-sheet { bottom: calc(68px + env(safe-area-inset-bottom)); left: 4px; right: 4px; width: auto; max-height: 52dvh; padding: 5px 9px; }
+  #live-conflict-board .cb-sheet-expanded { height: 52dvh; }
+  #live-conflict-board .cb-cell { min-height: 62px; }
+  #live-conflict-board .cb-reserve { min-height: 34px; }
+  #live-conflict-board .cb-cell .cb-position { font-size: .7rem; }
+  #live-conflict-board .cb-cell small { font-size: .65rem; }
+  #live-conflict-board .cb-cell [data-own] { font-size: .7rem; }
+  .cb-sheet-overview small { font-size: .7rem; }
+}
+
+.cb-has-sheet > .cb-notice { display: none; }
+.cb-sheet-notice { flex-shrink: 0; max-height: 48px; overflow: auto; margin: 3px 0; font-size: .75rem; color: #e4c890; }

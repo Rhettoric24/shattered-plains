@@ -804,3 +804,45 @@ describe("gated authenticated Conflict Board integration", () => {
     ).toHaveLength(1);
   });
 });
+
+describe('Phase 1 pre-arrival command lifecycle', () => {
+  test('queued route waits for arrival and rejects invalid routes and foreign ownership', async () => {
+    const f=await setup(), {conflictId:id,formationId}=await open(f,units(40));
+    await expect(move(f,id,f.blue,formationId,['post'])).rejects.toThrow();
+    await expect(move(f,id,f.green,formationId,['B3'])).rejects.toThrow();
+    await move(f,id,f.blue,formationId,['B3','B2']);
+    let s=await read(f,id);
+    const at=s.times.get(s.state.arrivals.find(a=>a.formation.id===formationId)!.id)!;
+    await advanceTo(f,id,at-1);
+    s=await read(f,id);
+    expect(s.state.formations.some(a=>a.id===formationId)).toBe(false);
+    expect(s.state.arrivals.find(a=>a.formation.id===formationId)!.formation.order.route).toEqual(['B3','B2']);
+    await advanceTo(f,id,at);
+    await nextCycle(f,id);
+    s=await read(f,id);
+    expect(s.state.arrivals.some(a=>a.formation.id===formationId)).toBe(false);
+    expect(s.state.formations.find(a=>a.id===formationId)!.position).not.toBe('approach');
+    expect(s.state.formations.find(a=>a.id===formationId)!.order.route.length).toBeLessThan(2);
+  });
+  test('Hold cancels a queued traveling route; arrival does not resurrect it', async () => {
+    const f=await setup(), {conflictId:id,formationId}=await open(f,units(40));
+    await move(f,id,f.blue,formationId,['B3','B2']);
+    await cmd(f,id,f.blue,'order',{formationId,kind:'hold',route:[],onDefeat:'pause'});
+    await arrive(f,id);await nextCycle(f,id);
+    const s=await read(f,id), force=s.state.formations.find(a=>a.id===formationId)!;
+    expect(force.position).toBe('approach');expect(force.order.kind).toBe('hold');expect(force.order.route).toEqual([]);
+  });
+  test('withdrawal before arrival removes queued forces and settled commands cannot revive them', async () => {
+    const f=await setup(), {conflictId:id,formationId}=await open(f,units(40));
+    await move(f,id,f.blue,formationId,['B3','B2']);
+    await cmd(f,id,f.blue,'withdraw');
+    await expect(move(f,id,f.blue,formationId,['A3'])).rejects.toThrow();
+    await nextCycle(f,id);
+    const s=await read(f,id);
+    expect(s.conflict.status).toBe('settled');
+    expect(s.state.arrivals).toEqual([]);expect(s.state.formations).toEqual([]);
+    await expect(move(f,id,f.blue,formationId,['B3'])).rejects.toThrow();
+    await f.t.mutation(m('wake'),{conflictId:id});
+    expect((await read(f,id)).state).toEqual(s.state);
+  });
+});

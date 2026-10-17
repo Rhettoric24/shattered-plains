@@ -7,6 +7,18 @@ friend-test deployment.
 This document records what is believed to be implemented now.
 Aspirations belong in `IDEA_VAULT.md` or `ROADMAP.md`.
 
+### Conflict Board UI Phase 1 — 2026-10-17
+
+Plains uses Parshendi | PvP | Plateau Runs; legacy raids/sieges URLs remain valid.
+The live battlefield prioritizes the map and inspects tiles only from the filtered
+viewer projection. Formation controls use a non-modal, draggable peek/expanded
+bottom sheet with Move, Orders, and More. Tap routes and the existing arrived-army
+drag gesture share explicit confirmation and the same server order endpoint.
+Traveling formations can queue or cancel movement through that existing endpoint;
+arrival/cycle timing, defender garrison merge precedence, fog/Intel, combat and
+settlement remain unchanged. Defender Reserve geometry and fallback entry remain
+intact. This requires a frontend publication, with no backend/schema/flag changes.
+
 ### Conflict Board Spanreed reports — 2026-10-12
 
 Every scheduled resolution boundary sends each participant active at its start

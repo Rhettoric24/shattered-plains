@@ -34,10 +34,11 @@ function powerText(p) {
 export function createConflictBoardUI({ root, query, mutate, onSelect, confirm = message => window.confirm(message) }) {
   let context, selected = null, selectedArmy = null, draft = null, draftOrigin = null;
   let signature = "", busy = false, notice = "", values = {}, pendingSubmission = null, handledFocus = null;
-  let dragging = false;
+  let sheetGesture = null, suppressSheetClick = false;
+  let dragging = false, sheetExpanded = false, sheetPanel = "orders", inspectedTile = null;
   const button = (action, label, disabled = false, extra = "") => `<button type="button" data-cb="${action}" ${disabled || busy ? "disabled" : ""} ${extra}>${label}</button>`;
   function select(id) {
-    selected = id || null; selectedArmy = null; draft = null; values = {}; pendingSubmission = null;
+    selected = id || null; selectedArmy = null; draft = null; inspectedTile = null; sheetExpanded = false; values = {}; pendingSubmission = null;
     notice = ""; onSelect(selected); render();
   }
   function inputs(prefix, available) {
@@ -70,56 +71,103 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     await submit("order", { ...commandArgs(), formationId: f.id, kind, route, onDefeat: values.defeat || f.order.onDefeat });
     draft = null;
   }
+  function conflictTools(d) {
+    return `<p>Deadline: ${esc(time(d.deadlineAt))} · Returned: ${esc(unitsText(d.returnedUnits))} · ${num(d.returnedSpheres)} Spheres returned · ${num(d.banked)} extracted.</p>
+      ${d.withdrawing ? "<p>Withdrawal pending for next resolution.</p>" : ""}
+      ${d.status === "active" && context.lobby.enabled && !d.withdrawing ? `<details><summary>Send reinforcements</summary>${commitment("reinforce")}${button("reinforce", "Dispatch reinforcements")}</details>` : ""}
+      ${d.status === "active" && d.participantStatus === "active" ? button("withdraw", "Withdraw all my forces", d.withdrawing) : ""}
+      <details><summary>Your battle reports (${d.journal.length})</summary>${d.journal.map(e => `<p>Cycle ${e.cycle}, ${esc(e.position)}: ${e.won ? "won" : "did not win"}. Lost ${esc(unitsText(e.casualties))}.</p>`).join("") || "No reported battles yet."}</details>`;
+  }
   function armyMarkup(d) {
     const row = selectedForce(d, selectedArmy);
-    if (!row) return "<p>Tap one of your formations to command it. Enemy contacts show only what your Military Intel reveals.</p>";
+    if (!row) return "";
     const f = row.formation, stats = row.stats, locked = d.status !== "active" || d.withdrawing || d.participantStatus !== "active";
     const raid = !row.traveling && d.view.viewer !== d.originalOwner && d.view.board.positions.find(p => p.id === f.position)?.objective === "raid";
     const items = f.equipment?.items || [];
-    return `<section class="cb-army" aria-label="Selected formation"><h3>${esc(f.name)}</h3><p>${esc(unitsText(f.units))}</p>
-      ${stats ? `<p>Power ${num(stats.power)} · Speed ${num(stats.speed)} · Survival ${num(stats.survive)} · Plunder ${num(stats.plunder)}<br>${esc(stats.specialization)} specialization · normalized Speed / Survival / Plunder: ${stats.ratings.map(num).join(" / ")}<br>Cargo ${num(row.cargo)} / ${num(row.capacity)}</p>` : "<p>Traveling force — arrival and entry determine its first available movement.</p>"}
-      <p>Position: ${esc(f.position)} · Standing order: ${esc(f.order.kind)}${f.order.paused ? " (paused)" : ""}</p>
-      <div class="cb-actions">${button("move", "Move", locked)}${button("hold", "Hold", locked)}${button("raid", "Raid", locked || !raid)}</div>
-      <small>${raid ? "A foothold must survive into a later resolution. A Raid order repeats while you retain control." : "Raid requires an outside force at West or East Raid. Move there first."}</small>
-      ${draft !== null ? `<div class="cb-route"><strong>Proposed: ${esc([draftOrigin, ...draft].join(" → "))}</strong><p>Tap connected positions. Tap the preceding position to backtrack.</p>${button("confirm-route", "Confirm route", !draft.length || locked)} ${button("clear-route", "Clear")} ${button("cancel-route", "Cancel")}</div>` : ""}
-      <label>After defeat <select data-cb-value="defeat"><option value="continue" ${(values.defeat || f.order.onDefeat) === "continue" ? "selected" : ""}>Continue toward destination</option><option value="pause" ${(values.defeat || f.order.onDefeat) === "pause" ? "selected" : ""}>Pause movement</option></select></label>${button("standing", "Save standing order", locked)}
-      <details><summary>Route and retreat details</summary><p>Approved: ${esc(f.order.route.join(" → ") || "None")}</p><p>Retreat history: ${esc(f.history.join(" → ") || "Not yet deployed")}</p><label>Preserve this formation's route when merging at <select data-cb-value="merge">${d.view.board.positions.map(p => `<option value="${esc(p.id)}" ${(values.merge || f.position) === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>${button("merge-route", "Choose merge route", locked || row.traveling)}</details>
-      <details><summary>Split formation</summary><p>A new formation receives these troops and the selected equipment. Cargo stays with the original army. You will be warned if its remaining Plunder cannot carry everything.</p>${inputs("split", f.units)}${items.map(item => `<label><input type="checkbox" data-cb-value="equipment:${esc(item.id)}" ${values[`equipment:${item.id}`] ? "checked" : ""}> Give ${esc(item.kind)} to the new formation</label>`).join("")}${button("split", "Split troops", locked || row.traveling)}</details>
-      <details><summary>Carried Fabrials (${items.length})</summary>${items.map(item => `<p>${esc(item.kind)} — ${f.equipment.active === item.id ? "Active" : f.equipment.pending?.id === item.id ? "Activates after next resolution" : "Carried"} ${button("switch", "Select", locked || row.traveling || f.equipment.active === item.id, `data-item="${esc(item.id)}"`)}</p>`).join("") || "No carried equipment."}${f.equipment?.pending ? button("cancel-switch", "Cancel pending change", locked || row.traveling) : ""}</details>
+    const arrival = d.ownArrivalTimes.find(a => a.formationId === f.id)?.arriveAt;
+    const position = d.view.board.positions.find(p => p.id === f.position)?.name || f.position;
+    const next = d.withdrawing ? "Withdraw at next resolution" : row.traveling ? "Arrive, then follow orders when eligible" : f.order.paused ? "Paused after defeat" : f.order.kind === "move" && f.order.route.length ? "Move to " + f.order.route[0] + " when eligible" : f.order.kind === "raid" ? "Raid if foothold is eligible" : "Hold position";
+    return `<section class="cb-sheet ${sheetExpanded ? "cb-sheet-expanded" : "cb-sheet-peek"}" aria-label="Selected formation">
+      <div class="cb-sheet-top">${button("sheet-toggle", sheetExpanded ? "⌄ Collapse formation" : "⌃ Expand formation", false, `class="cb-sheet-handle" aria-expanded="${sheetExpanded}" aria-controls="cb-sheet-body"`)}${button("close-sheet", "Close", false, 'aria-label="Close formation controls"')}</div>
+      <div class="cb-sheet-overview"><strong>${esc(f.name)}</strong> · ${num(Object.values(f.units).reduce((a,b)=>a+b,0))} troops
+      <small>${row.traveling ? "Arrives " + esc(time(arrival)) + " · entry " : "At "}${esc(position)} · ${esc(f.order.kind)}${f.order.paused ? " (paused)" : ""}</small>
+      <small>Next: ${esc(next)}</small>
+      ${stats ? `<small>Power ${num(stats.power)} · Speed ${num(stats.speed)} · Survive ${num(stats.survive)} · Plunder ${num(stats.plunder)}</small>` : ""}</div>
+      <div class="cb-actions cb-primary">${button("move", "Move", locked)}${button("orders", "Orders", locked, `aria-pressed="${sheetExpanded && sheetPanel === "orders"}"`)}${button("more", "More", false, `aria-pressed="${sheetExpanded && sheetPanel === "more"}"`)}</div>
+      ${notice || busy ? `<p class="cb-sheet-notice" role="status">${esc(busy ? "Sending order…" : notice)}</p>` : ""}
+      ${draft !== null ? `<div class="cb-route"><strong>Proposed: ${esc([draftOrigin, ...draft].join(" → "))}</strong><div>${button("confirm-route", "Confirm route", !draft.length || locked)} ${button("clear-route", "Clear")} ${button("cancel-route", "Cancel")}</div></div>` : ""}
+      <div id="cb-sheet-body" class="cb-sheet-body" ${sheetExpanded ? "" : "hidden"}>
+      <p>${esc(unitsText(f.units))}</p>
+      ${stats ? `<p>${esc(stats.specialization)} specialization · Cargo ${num(row.cargo)} / ${num(row.capacity)}</p>` : "<p>Traveling: orders wait for arrival and the next eligible resolution. Defender reinforcements joining a garrison keep the resident garrison's order.</p>"}
+      <div ${sheetPanel === "orders" ? "" : "hidden"}>
+        <div class="cb-actions">${button("hold", "Hold", locked)}${button("raid", "Raid", locked || !raid)}${button("stop-route", "Cancel queued route", locked || f.order.kind !== "move")}</div>
+        <p>Queued route: ${esc(f.order.route.join(" → ") || "None")}</p>
+        <small>Raid requires an outside force at West or East Raid with an eligible foothold.</small>
+        <label>After defeat <select data-cb-value="defeat"><option value="continue" ${(values.defeat || f.order.onDefeat) === "continue" ? "selected" : ""}>Continue toward destination</option><option value="pause" ${(values.defeat || f.order.onDefeat) === "pause" ? "selected" : ""}>Stop on loss</option></select></label>${button("standing", "Save standing order", locked)}
+      </div>
+      <div ${sheetPanel === "more" ? "" : "hidden"}>
+        <details><summary>Route and retreat details</summary><p>Approved: ${esc(f.order.route.join(" → ") || "None")}</p><p>Retreat history: ${esc(f.history.join(" → ") || "Not yet deployed")}</p><label>Preserve this formation's route when merging at <select data-cb-value="merge">${d.view.board.positions.map(p => `<option value="${esc(p.id)}" ${(values.merge || f.position) === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>${button("merge-route", "Choose merge route", locked || row.traveling)}</details>
+        <details><summary>Split formation</summary><p>Cargo stays with the original army. Any capacity loss requires confirmation.</p>${inputs("split", f.units)}${items.map(item => `<label><input type="checkbox" data-cb-value="equipment:${esc(item.id)}" ${values[`equipment:${item.id}`] ? "checked" : ""}> Give ${esc(item.kind)} to the new formation</label>`).join("")}${button("split", "Split troops", locked || row.traveling)}</details>
+        <details><summary>Carried Fabrials (${items.length})</summary>${items.map(item => `<p>${esc(item.kind)} — ${f.equipment.active === item.id ? "Active" : f.equipment.pending?.id === item.id ? "Activates after next resolution" : "Carried"} ${button("switch", "Select", locked || row.traveling || f.equipment.active === item.id, `data-item="${esc(item.id)}"`)}</p>`).join("") || "No carried equipment."}${f.equipment?.pending ? button("cancel-switch", "Cancel pending change", locked || row.traveling) : ""}</details>
+        ${conflictTools(d)}
+      </div></div>
     </section>`;
+  }
+  function tileMarkup(d) {
+    const view = d.view, p = view.board.positions.find(p => p.id === inspectedTile);
+    if (!p) return "";
+    const own = view.own.filter(r => r.formation.position === p.id), contacts = view.contacts.filter(c => c.position === p.id);
+    const role = p.id === view.board.reserve ? "Defender fallback entry when the Command Post is lost. Safe staging; geometry and arrival rules are unchanged." : p.id === view.board.objective ? "Control this post through the next resolution to complete a conquest hold." : p.objective === "raid" ? "Raid objective. An outside army must establish a foothold before raiding." : p.id === view.board.approach ? "Safe entry for outside armies." : "Field position.";
+    return `<aside class="cb-inspection" aria-label="Tile information"><strong>${esc(p.name)}</strong>${button("close-inspection", "Close", false, 'aria-label="Close tile information"')}<p>${role}</p>
+      ${own.map(r => button("army", esc(r.formation.name), false, `data-army="${esc(r.formation.id)}"`)).join("")}
+      ${contacts.map(c => `<p>${esc(view.kingdoms.find(k => k.id === c.kingdom)?.name || "Kingdom")} · ${esc(powerText(c.power))}${c.physicallyVisible ? " · in sight" : " · Intel report"}</p>`).join("")}
+      ${!contacts.length ? `<p>${view.visiblePositions.includes(p.id) ? "No enemy force observed." : "Beyond vision. Enemy presence is unknown."}</p>` : ""}
+      ${p.id === view.board.objective ? `<p>Controller: ${esc(view.kingdoms.find(k => k.id === d.commandPostController)?.name || "Kingdom")}${d.conquestHold ? ` · ${esc(view.kingdoms.find(k => k.id === d.conquestHold.kingdom)?.name || "Kingdom")} holds for conquest at the next resolution if retained.` : ""}</p>` : ""}
+      <small>Inspecting never sends an order.</small></aside>`;
   }
   function boardMarkup(d) {
     const view = d.view, f = selectedForce(d, selectedArmy)?.formation;
     const ys = view.board.positions.map(p => p.y), minY = Math.min(...ys);
     const kingdom = id => view.kingdoms.find(k => k.id === id)?.name || "Kingdom";
     const last = draft?.at(-1) || draftOrigin;
-    return `<p>Cycle ${view.cycle} · ${view.highstorm ? "Highstorm active" : "Clear weather"} · Next resolution: ${esc(time(d.nextCycleAt))}<br>Deadline: ${esc(time(d.deadlineAt))}</p>
-      <p>Command Post: ${esc(kingdom(d.commandPostController))}${d.conquestHold ? ` · ${esc(kingdom(d.conquestHold.kingdom))} will conquer if it keeps control through the next resolution.` : ""}</p>
-      <p class="cb-legend">Drag an army to draw its route; on phones, hold briefly before dragging. Release, review, then confirm.<br>Cyan: current · blue: approved · purple: retreat · gold: proposed</p><p class="cb-drag-feedback" role="status"></p>
+    return `<div class="cb-battle-status"><span>Cycle ${view.cycle} · ${view.highstorm ? "Highstorm" : "Clear"}</span><span>Next: ${esc(time(d.nextCycleAt))}</span></div>
+      <div class="cb-map-frame">${tileMarkup(d)}<p class="cb-drag-feedback" role="status"></p>
       <div class="cb-grid" aria-label="Conflict battlefield">${view.board.positions.map(p => {
         const own = view.own.filter(r => r.formation.position === p.id), contacts = view.contacts.filter(c => c.position === p.id);
         const h = f?.history.indexOf(p.id) ?? -1, forward = f?.order.route.includes(p.id), proposed = draft?.includes(p.id);
         const valid = draft !== null && view.board.connections.some(([a,b]) => a === last && b === p.id || b === last && a === p.id);
         const ready = view.raidReady.find(r => r.position === p.id);
-        return `<div data-player-position="${esc(p.id)}" class="cb-cell ${view.visiblePositions.includes(p.id) ? "" : "cb-fog"} ${f?.position === p.id ? "cb-current" : ""} ${forward ? "cb-forward" : ""} ${proposed ? "cb-proposed" : ""} ${valid ? "cb-next" : ""}" style="grid-column:${p.x + 1};grid-row:${p.y - minY + 1};${h >= 0 ? `background:rgba(126,67,190,${0.18 + 0.42 * (h + 1) / Math.max(1,f.history.length)})` : ""}">
-        <button class="cb-position" type="button" data-cb="position" data-position="${esc(p.id)}" ${busy ? "disabled" : ""}>${esc(p.name)}${proposed ? ` <b>${draft.indexOf(p.id) + 1}</b>` : ""}</button>
-        ${own.map(r => button("army", `${esc(r.formation.name)}<br>${num(Object.values(r.formation.units).reduce((a,b) => a+b,0))} troops`, false, `data-own="${esc(r.formation.id)}" data-army="${esc(r.formation.id)}" aria-pressed="${selectedArmy === r.formation.id}"`)).join("")}
-        ${contacts.map(c => `<p class="cb-contact">${esc(kingdom(c.kingdom))}<br>${esc(powerText(c.power))}</p>`).join("")}
+        return `<div data-player-position="${esc(p.id)}" class="cb-cell ${p.id === view.board.reserve ? "cb-reserve" : ""} ${p.id === view.board.objective || p.objective === "raid" ? "cb-objective" : ""} ${contacts.length ? "cb-known-contact" : ""} ${inspectedTile === p.id ? "cb-inspected" : ""} ${view.visiblePositions.includes(p.id) ? "" : "cb-fog"} ${f?.position === p.id ? "cb-current" : ""} ${forward ? "cb-forward" : ""} ${proposed ? "cb-proposed" : ""} ${valid ? "cb-next" : ""}" style="grid-column:${p.x + 1};grid-row:${p.y - minY + 1};${h >= 0 ? `background:rgba(126,67,190,${0.18 + 0.42 * (h + 1) / Math.max(1,f.history.length)})` : ""}">
+        <button class="cb-position" type="button" data-cb="position" data-position="${esc(p.id)}" aria-pressed="${inspectedTile === p.id}" ${busy ? "disabled" : ""}>${p.id === view.board.objective || p.objective === "raid" ? "◇ " : ""}${esc(p.name)}${proposed ? ` <b>${draft.indexOf(p.id) + 1}</b>` : ""}</button>
+        ${own.map(r => button("army", `● ${esc(r.formation.name)}<br>${num(Object.values(r.formation.units).reduce((a,b) => a+b,0))} troops`, false, `data-own="${esc(r.formation.id)}" data-army="${esc(r.formation.id)}" aria-pressed="${selectedArmy === r.formation.id}"`)).join("")}
+        ${contacts.map(c => `<p class="cb-contact">◆ ${esc(kingdom(c.kingdom))}<br>${esc(powerText(c.power))}</p>`).join("")}
         ${!own.length && !contacts.length ? `<small>${view.visiblePositions.includes(p.id) ? "No observed force" : "Beyond vision"}</small>` : ""}
-        ${ready ? `<small>Foothold — Raid available next resolution if held</small>` : ""}</div>`;
-      }).join("")}</div>${view.ownArrivals.length ? `<h3>Approaching forces</h3>${view.ownArrivals.map(a => button("army", `${esc(a.formation.name)} · arrives ${esc(time(d.ownArrivalTimes.find(t => t.formationId === a.formation.id)?.arriveAt))}`, false, `data-army="${esc(a.formation.id)}"`)).join(" ")}` : ""}
+        ${ready ? `<small>Foothold</small>` : ""}</div>`;
+      }).join("")}</div></div>${view.ownArrivals.length ? `<div class="cb-arrivals" aria-label="Approaching forces">${view.ownArrivals.map(a => button("army", `${esc(a.formation.name)} · arrives ${esc(time(d.ownArrivalTimes.find(t => t.formationId === a.formation.id)?.arriveAt))}`, false, `data-army="${esc(a.formation.id)}"`)).join(" ")}</div>` : ""}
+      <small class="cb-board-hint">Tap a tile to inspect. Select an army to plan; hold and drag an arrived army to draw a route.</small>
       ${armyMarkup(d)}`;
   }
   function render() {
-    if (!context || dragging) return;
+    if (!context || dragging || sheetGesture) return;
     const openDetails = new Set([...root.querySelectorAll("details[open]")].map(el => el.querySelector("summary")?.textContent));
-    const focusedKey = root.contains(document.activeElement) ? document.activeElement.dataset.cbValue : null;
+    const active = root.contains(document.activeElement) ? document.activeElement : null;
+    const focusedKey = active?.dataset.cbValue;
+    const focusSelector = active?.dataset.army ? '[data-army="' + CSS.escape(active.dataset.army) + '"]' : active?.dataset.position ? '[data-position="' + CSS.escape(active.dataset.position) + '"]' : active?.dataset.cb ? '[data-cb="' + CSS.escape(active.dataset.cb) + '"]' : null;
     const lobby = context.lobby, d = data();
     const battlefield = Boolean(context.focus && selected === context.focus);
+    if (d && selectedArmy) {
+      const row = selectedForce(d, selectedArmy);
+      if (!row || d.status !== "active" || d.withdrawing || d.participantStatus !== "active") {
+        selectedArmy = null; draft = null; sheetExpanded = false;
+      } else if (draft !== null && row.formation.position !== draftOrigin) {
+        draft = null; notice = "Your army's entry or position changed. Plan again from its current position.";
+      }
+    }
+    root.classList.toggle("cb-has-sheet", battlefield && Boolean(selectedArmy));
     root.parentElement?.classList.toggle("cb-battlefield-open", battlefield);
     root.hidden = !lobby || (!lobby.enabled && !lobby.conflicts.length);
     if (root.hidden) { root.innerHTML = ""; return; }
-    root.innerHTML = `${battlefield ? button("back", "← Back to PvP") : ""}<h2>${battlefield ? "Battlefield" : "Conflict Board"}</h2>${battlefield ? "" : "<p>Choose a conflict to enter its battlefield. Orders resolve every two hours, even while you are offline.</p>"}
+    root.innerHTML = `${battlefield ? button("back", "← Back to PvP") : ""}<h2 class="cb-heading">${battlefield ? "Battlefield" : "Conflict Board"}</h2>${battlefield ? "" : "<p>Choose a conflict to enter its battlefield. Orders resolve every two hours, even while you are offline.</p>"}
       ${!lobby.enabled ? "<p>New commitments are paused. Existing armies can still receive orders and withdraw.</p>" : ""}
       <p role="status" class="cb-notice">${esc(busy ? "Sending order…" : notice)}</p>
       ${!battlefield ? `<div class="cb-conflict-list">${lobby.conflicts.map(c => `<article><h3>${esc(c.name)}</h3><p>${esc(c.status)}${c.status === "active" ? ` · Next resolution ${esc(time(c.nextCycleAt))}` : ""}</p>${button("enter", c.status === "active" ? "Enter battlefield" : "View result", false, `data-conflict="${esc(c.conflictId)}"`)}</article>`).join("") || "<p>No conflicts yet.</p>"}</div>` : ""}
@@ -127,13 +175,10 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
       ${battlefield && !d ? "<p>Loading authenticated battlefield…</p>" : ""}
       ${battlefield && d ? `<section data-entity-id="${esc(selected)}"><h3>${esc(lobby.conflicts.find(c => c.conflictId === selected)?.name || "Conflict")}</h3>
       ${d.status === "settled" ? `<p>Finished: ${esc(d.outcome)}. Surviving assets have returned.</p>` : boardMarkup(d)}
-      <p>Returned: ${esc(unitsText(d.returnedUnits))} · ${num(d.returnedSpheres)} Spheres returned · ${num(d.banked)} Spheres extracted.</p>
-      ${d.status === "active" ? `<p>${d.withdrawing ? "Withdrawal pending for next resolution." : d.participantStatus === "returned" ? "Your armies have returned. You may recommit while this conflict remains open." : ""}</p>
-      ${lobby.enabled && !d.withdrawing ? `<details><summary>Send reinforcements</summary>${commitment("reinforce")}${button("reinforce", "Dispatch reinforcements")}</details>` : ""}
-      ${d.participantStatus === "active" ? button("withdraw", "Withdraw all my forces", d.withdrawing) : ""}` : ""}
-      <details><summary>Your battle reports (${d.journal.length})</summary>${d.journal.map(e => `<p>Cycle ${e.cycle}, ${esc(e.position)}: ${e.won ? "won" : "did not win"}. Lost ${esc(unitsText(e.casualties))}.</p>`).join("") || "No reported battles yet."}</details></section>` : ""}`;
+      ${!selectedForce(d, selectedArmy) ? `<details><summary>Conflict actions and reports</summary>${conflictTools(d)}</details>` : ""}</section>` : ""}`;
     for (const el of root.querySelectorAll("details")) if (openDetails.has(el.querySelector("summary")?.textContent)) el.open = true;
     if (focusedKey) [...root.querySelectorAll("[data-cb-value]")].find(el => el.dataset.cbValue === focusedKey)?.focus({ preventScroll: true });
+    else if (focusSelector) root.querySelector(focusSelector)?.focus({preventScroll:true});
   }
   root.addEventListener("input", e => {
     const key = e.target.dataset.cbValue;
@@ -145,17 +190,22 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     else if (key) values[key] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
   });
   root.addEventListener("click", async e => {
-    const target = e.target.closest("[data-cb]");
+    const target = e.target.closest("[data-cb]") || e.target.closest("[data-player-position]");
     if (!target || busy || target.disabled) return;
-    const action = target.dataset.cb, d = data(), f = selectedForce(d, selectedArmy)?.formation;
+    const action = target.dataset.cb || "position", d = data(), f = selectedForce(d, selectedArmy)?.formation;
     if (action === "enter") { select(target.dataset.conflict); return; }
     if (action === "back") { select(null); return; }
-    if (action === "army") { selectedArmy = target.dataset.army; draft = null; values.defeat = null; notice = ""; render(); return; }
-    if (action === "move") { draft = []; draftOrigin = f.position; render(); return; }
+    if (action === "army") { selectedArmy = target.dataset.army; draft = null; values.defeat = null; notice = ""; sheetExpanded = false; inspectedTile = null; render(); return; }
+    if (action === "sheet-toggle") { sheetExpanded = !sheetExpanded; render(); root.querySelector('[data-cb="sheet-toggle"]')?.focus({preventScroll:true}); return; }
+    if (action === "close-sheet") { selectedArmy = null; draft = null; sheetExpanded = false; render(); return; }
+    if (action === "close-inspection") { inspectedTile = null; render(); return; }
+    if (action === "orders" || action === "more") { sheetPanel = action; sheetExpanded = true; render(); return; }
+    if (action === "move") { if (!f) return; draft = []; draftOrigin = f.position; sheetExpanded = false; inspectedTile = null; notice = ""; render(); return; }
     if (action === "cancel-route") { draft = null; render(); return; }
     if (action === "clear-route") { draft = []; render(); return; }
     if (action === "position") {
-      if (draft !== null) { const next = routeStep(d.view.board, draftOrigin, draft, target.dataset.position); notice = next === draft ? "Choose a connected position." : ""; draft = next; render(); }
+      if (draft !== null) { const next = routeStep(d.view.board, draftOrigin, draft, target.dataset.position || target.dataset.playerPosition); notice = next === draft ? "Choose a connected position." : ""; draft = next; render(); }
+      else { inspectedTile = target.dataset.position || target.dataset.playerPosition; render(); }
       return;
     }
     try {
@@ -173,7 +223,8 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
       else if (action === "confirm-route") {
         if (f.position !== draftOrigin) throw Error("Your army moved while planning. Cancel and draw its route again.");
         await order("move", draft);
-      } else if (action === "hold" || action === "raid") await order(action);
+      } else if (action === "stop-route") await order("hold");
+      else if (action === "hold" || action === "raid") await order(action);
       else if (action === "standing") await order(f.order.kind, f.order.route);
       else if (action === "split") {
         const args = { ...commandArgs(), formationId: f.id, units: readUnits("split"), equipmentIds: (f.equipment?.items || []).filter(i => values[`equipment:${i.id}`]).map(i => i.id) };
@@ -206,12 +257,42 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     begin: id => {
       const d = data(), row = selectedForce(d, id);
       if (busy || !row || row.traveling || d.status !== "active" || d.withdrawing || d.participantStatus !== "active") return false;
-      dragging = true; selectedArmy = id; draftOrigin = row.formation.position; draft = []; values.defeat = null; paintDrag();
+      root.querySelector(".cb-inspection")?.remove();
+      root.querySelector(".cb-sheet")?.remove();
+      dragging = true; sheetExpanded = false; inspectedTile = null; selectedArmy = id; draftOrigin = row.formation.position; draft = []; values.defeat = null; paintDrag();
     },
     visit: position => { if (!dragging || draft === null) return; draft = routeStep(data().view.board, draftOrigin, draft, position); paintDrag(); },
     cancel: () => { dragging = false; draft = null; render(); },
-    end: () => { dragging = false; render(); root.querySelector(".cb-route")?.scrollIntoView({ block: "nearest" }); },
+    end: () => { dragging = false; render(); },
   });
+  root.addEventListener("pointerdown", e => {
+    const handle = e.target.closest(".cb-sheet-handle");
+    if (!handle || !e.isPrimary || e.button !== 0 || dragging) return;
+    suppressSheetClick = false;
+    sheetGesture = { id:e.pointerId, y:e.clientY, handle };
+    handle.setPointerCapture(e.pointerId);
+  });
+  root.addEventListener("pointermove", e => {
+    if (!sheetGesture || e.pointerId !== sheetGesture.id) return;
+    const delta = e.clientY - sheetGesture.y;
+    const sheet = root.querySelector(".cb-sheet");
+    if (sheet) sheet.style.transform = 'translateY(' + Math.max(-60, Math.min(80, delta)) + 'px)';
+  });
+  const endSheetGesture = (e, cancel = false) => {
+    if (!sheetGesture || e.pointerId !== sheetGesture.id) return;
+    const gesture = sheetGesture, delta = e.clientY - gesture.y;
+    sheetGesture = null;
+    if (gesture.handle.hasPointerCapture(e.pointerId)) gesture.handle.releasePointerCapture(e.pointerId);
+    if (!cancel && Math.abs(delta) > 24) { sheetExpanded = delta < 0; suppressSheetClick = true; }
+    if (cancel || Math.abs(delta) > 24) render();
+    else { const sheet = root.querySelector(".cb-sheet"); if (sheet) sheet.style.transform = ""; }
+  };
+  root.addEventListener("pointerup", e => endSheetGesture(e));
+  root.addEventListener("pointercancel", e => endSheetGesture(e, true));
+  root.addEventListener("lostpointercapture", e => { if (sheetGesture) endSheetGesture(e, true); });
+  root.addEventListener("click", e => {
+    if (suppressSheetClick && e.target.closest(".cb-sheet-handle")) { e.stopImmediatePropagation(); e.preventDefault(); suppressSheetClick = false; }
+  }, true);
   return {
     update(next) {
       context = next;
@@ -224,6 +305,6 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     },
     select,
     get selected() { return selected; },
-    reset() { context = null; selected = null; selectedArmy = null; draft = null; values = {}; signature = ""; pendingSubmission = null; handledFocus = null; root.innerHTML = ""; root.hidden = true; },
+    reset() { root.parentElement?.classList.remove("cb-battlefield-open"); sheetExpanded = false; inspectedTile = null; root.classList.remove("cb-has-sheet"); context = null; selected = null; selectedArmy = null; draft = null; values = {}; signature = ""; pendingSubmission = null; handledFocus = null; root.innerHTML = ""; root.hidden = true; },
   };
 }
