@@ -40,6 +40,7 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
   let dragging = false, sheetExpanded = false, sheetPanel = "orders", inspectedTile = null;
   const button = (action, label, disabled = false, extra = "") => `<button type="button" data-cb="${action}" ${disabled || busy ? "disabled" : ""} ${extra}>${label}</button>`;
   function select(id) {
+    if (selected !== (id || null)) fittedLayout = null;
     selected = id || null; selectedArmy = null; draft = null; inspectedTile = null; sheetExpanded = false; values = {}; pendingSubmission = null;
     notice = "";
     try { onSelect(selected); } catch (error) { console.warn("Conflict Board navigation refresh failed", error); refreshWarning = "Battlefield navigation could not refresh. This is separate from order submission."; }
@@ -124,10 +125,10 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
   function tileMarkup(d) {
     const view = d.view, p = view.board.positions.find(p => p.id === inspectedTile);
     if (!p) return "";
-    const own = view.own.filter(r => r.formation.position === p.id), contacts = view.contacts.filter(c => c.position === p.id);
+    const own = [...view.own, ...view.ownArrivals.map(a => selectedForce(d, a.formation.id))].filter(r => r.formation.position === p.id), contacts = view.contacts.filter(c => c.position === p.id);
     const role = p.id === view.board.reserve ? "Defender fallback entry when the Command Post is lost. Safe staging; geometry and arrival rules are unchanged." : p.id === view.board.objective ? "Control this post through the next resolution to complete a conquest hold." : p.objective === "raid" ? "Raid objective. An outside army must establish a foothold before raiding." : p.id === view.board.approach ? "Safe entry for outside armies." : "Field position.";
     return `<aside class="cb-inspection" aria-label="Tile information"><strong>${esc(p.name)}</strong>${button("close-inspection", "Close", false, 'aria-label="Close tile information"')}<p>${role}</p>
-      ${own.map(r => button("army", esc(r.formation.name), false, `data-army="${esc(r.formation.id)}"`)).join("")}
+      ${own.map(r => button("army", esc(r.formation.name) + (r.traveling ? " · incoming" : ""), false, `data-army="${esc(r.formation.id)}"`)).join("")}
       ${contacts.map(c => `<p>${esc(view.kingdoms.find(k => k.id === c.kingdom)?.name || "Kingdom")} · ${esc(powerText(c.power))}${c.physicallyVisible ? " · in sight" : " · Intel report"}</p>`).join("")}
       ${!contacts.length ? `<p>${view.visiblePositions.includes(p.id) ? "No enemy force observed." : "Beyond vision. Enemy presence is unknown."}</p>` : ""}
       ${p.id === view.board.objective ? `<p>Controller: ${esc(view.kingdoms.find(k => k.id === d.commandPostController)?.name || "Kingdom")}${d.conquestHold ? ` · ${esc(view.kingdoms.find(k => k.id === d.conquestHold.kingdom)?.name || "Kingdom")} holds for conquest at the next resolution if retained.` : ""}</p>` : ""}
@@ -157,17 +158,17 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     return `<div class="cb-battle-status"><span>Cycle ${view.cycle} · ${view.highstorm ? "Highstorm" : "Clear"}</span><span>Next: ${esc(time(d.nextCycleAt))}</span></div>
       <div class="cb-map-frame">${tileMarkup(d)}<p class="cb-drag-feedback" role="status"></p>
       <div class="cb-grid" aria-label="Conflict battlefield">${view.board.positions.map(p => {
-        const own = view.own.filter(r => r.formation.position === p.id), contacts = view.contacts.filter(c => c.position === p.id);
+        const own = [...view.own, ...view.ownArrivals.map(a => selectedForce(d, a.formation.id))].filter(r => r.formation.position === p.id), contacts = view.contacts.filter(c => c.position === p.id);
         const marks = movementMarks(d, p.id);
         const valid = draft !== null && view.board.connections.some(([a,b]) => a === last && b === p.id || b === last && a === p.id);
         const ready = view.raidReady.find(r => r.position === p.id);
         return `<div data-player-position="${esc(p.id)}" class="cb-cell ${p.id === view.board.reserve ? "cb-reserve" : ""} ${p.id === view.board.objective || p.objective === "raid" ? "cb-objective" : ""} ${contacts.length ? "cb-known-contact" : ""} ${inspectedTile === p.id ? "cb-inspected" : ""} ${view.visiblePositions.includes(p.id) ? "" : "cb-fog"} ${f?.position === p.id ? "cb-current" : ""} ${marks.classes} ${valid ? "cb-next" : ""}" style="grid-column:${p.x + 1};grid-row:${p.y - minY + 1};${marks.style}">
         <button class="cb-position" type="button" data-cb="position" data-position="${esc(p.id)}" aria-pressed="${inspectedTile === p.id}" ${busy ? "disabled" : ""}>${p.id === view.board.objective || p.objective === "raid" ? "◇ " : ""}${esc(p.name)}</button>
-        ${own.length ? '<div class="cb-armies">' : ""}${own.map(r => button("army", `<span class="cb-army-name">${esc(r.formation.name)}</span><span>● ${num(Object.values(r.formation.units).reduce((a,b) => a+b,0))}</span>`, false, `aria-label="${esc(r.formation.name)}" data-own="${esc(r.formation.id)}" data-army="${esc(r.formation.id)}" aria-pressed="${selectedArmy === r.formation.id}"`)).join("")}${own.length ? "</div>" : ""}
+        ${own.length ? '<div class="cb-armies">' : ""}${own.map(r => button("army", `<span class="cb-army-name">${esc(r.formation.name)}</span><span>${r.traveling ? "◷" : "●"} ${num(Object.values(r.formation.units).reduce((a,b) => a+b,0))}</span>`, false, `aria-label="${esc(r.formation.name)}${r.traveling ? " (incoming)" : ""}" ${r.traveling ? 'data-incoming="true" title="Incoming formation: drag or tap to plan from its expected entry. Movement waits for arrival."' : ""} data-own="${esc(r.formation.id)}" data-army="${esc(r.formation.id)}" aria-pressed="${selectedArmy === r.formation.id}"`)).join("")}${own.length ? "</div>" : ""}
         ${contacts.map(c => `<p class="cb-contact">◆ ${esc(kingdom(c.kingdom))}<span class="cb-contact-power"> · ${esc(powerText(c.power))}</span></p>`).join("")}
         ${!view.visiblePositions.includes(p.id) ? '<span class="cb-fog-mark" aria-label="Beyond vision; tap to inspect">?</span>' : ""}
         ${ready ? `<small class="cb-foothold">Foothold</small>` : ""}<span class="cb-movement-marks">${marks.markup}</span></div>`;
-      }).join("")}</div></div>${view.ownArrivals.length ? `<div class="cb-arrivals" aria-label="Approaching forces">${view.ownArrivals.map(a => button("army", `${esc(a.formation.name)} · arrives ${esc(time(d.ownArrivalTimes.find(t => t.formationId === a.formation.id)?.arriveAt))}`, false, `data-army="${esc(a.formation.id)}"`)).join(" ")}</div>` : ""}
+      }).join("")}</div></div>
       <small class="cb-board-hint">Gold →1 next, →2+ later (conditional) · purple ↶ fallback · numbered ◇ proposed. Tap tiles for details.</small>
       ${armyMarkup(d)}`;
   }
@@ -286,7 +287,7 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
   attachRouteDrag(root, {
     begin: id => {
       const d = data(), row = selectedForce(d, id);
-      if (busy || !row || row.traveling || d.status !== "active" || d.withdrawing || d.participantStatus !== "active") return false;
+      if (busy || !row || d.status !== "active" || d.withdrawing || d.participantStatus !== "active") return false;
       root.querySelector(".cb-inspection")?.remove();
       root.querySelector(".cb-sheet")?.remove();
       dragging = true; sheetExpanded = false; inspectedTile = null; selectedArmy = id; draftOrigin = row.formation.position; draft = []; values.defeat = null; paintDrag();
@@ -328,22 +329,34 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     for (const detail of e.target.parentElement.children) if (detail !== e.target && detail.tagName === "DETAILS") detail.open = false;
     fitBoard();
   }, true);
+  // Safari toolbar/scroll changes must not resize tactical targets. Reserve the
+  // planning peek even before selection, and cache against width/orientation only.
+  let fittedLayout = null;
   function fitBoard() {
-    if (dragging || sheetGesture) return;
+    if (dragging || sheetGesture || draft !== null) return;
     if (!matchMedia("(max-width: 720px)").matches || !document.body.classList.contains("cb-battlefield-mode")) return;
     const grid = root.querySelector(".cb-grid");
     if (!grid) return;
-    const viewport = window.visualViewport;
-    const bottom = (viewport?.offsetTop || 0) + (viewport?.height || innerHeight);
-    const nav = document.querySelector(".primary-nav")?.getBoundingClientRect();
-    const sheet = root.querySelector(".cb-sheet");
-    const availableBottom = sheet ? sheet.getBoundingClientRect().top : nav && nav.height ? nav.top : bottom - 12;
-    const top = Math.max(grid.getBoundingClientRect().top, document.querySelector(".global-shell")?.getBoundingClientRect().bottom || 0, viewport?.offsetTop || 0);
-    root.style.setProperty("--cb-board-height", Math.max(279, availableBottom - top - 22) + "px");
+    const width = Math.round(root.getBoundingClientRect().width);
+    const orientation = screen.orientation?.angle ?? window.orientation ?? 0;
+    if (fittedLayout?.width === width && fittedLayout.orientation === orientation) return;
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;height:100svh;width:0";
+    root.append(probe);
+    const viewportHeight = probe.getBoundingClientRect().height || innerHeight;
+    probe.remove();
+    const navHeight = document.querySelector(".primary-nav")?.getBoundingClientRect().height || 0;
+    const gridTop = grid.getBoundingClientRect().top + window.scrollY;
+    const height = Math.max(279, viewportHeight - gridTop - Math.max(68, navHeight) - 190 - 22);
+    root.style.setProperty("--cb-board-height", height + "px");
+    fittedLayout = {width, orientation};
   }
+  // ResizeObserver ignores height changes caused by the board/sheet itself.
+  const boardWidthObserver = new ResizeObserver(() => fitBoard());
+  boardWidthObserver.observe(root);
   window.addEventListener("resize", fitBoard);
-  window.visualViewport?.addEventListener("resize", fitBoard);
-  window.visualViewport?.addEventListener("scroll", fitBoard);
+  window.addEventListener("orientationchange", fitBoard);
+  screen.orientation?.addEventListener("change", fitBoard);
   return {
     setRefreshError(key) { refreshWarning = key ? "Battlefield refresh unavailable (" + key + "). Showing the last view; this is not an order failure." : ""; render(); },
     update(next) {
@@ -357,6 +370,6 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     },
     select,
     get selected() { return selected; },
-    reset() { document.body.classList.remove("cb-battlefield-mode"); root.parentElement?.classList.remove("cb-battlefield-open"); sheetExpanded = false; inspectedTile = null; root.classList.remove("cb-has-sheet"); context = null; selected = null; selectedArmy = null; draft = null; values = {}; signature = ""; pendingSubmission = null; handledFocus = null; root.innerHTML = ""; root.hidden = true; },
+    reset() { fittedLayout = null; root.style.removeProperty("--cb-board-height"); document.body.classList.remove("cb-battlefield-mode"); root.parentElement?.classList.remove("cb-battlefield-open"); sheetExpanded = false; inspectedTile = null; root.classList.remove("cb-has-sheet"); context = null; selected = null; selectedArmy = null; draft = null; values = {}; signature = ""; pendingSubmission = null; handledFocus = null; root.innerHTML = ""; root.hidden = true; },
   };
 }

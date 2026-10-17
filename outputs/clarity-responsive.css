@@ -245,3 +245,4 @@
   .cb-arrivals { max-height: 44px; overflow-y: auto; margin: 2px 0; }
   #live-conflict-board .cb-arrivals button { min-height: 40px; padding: 2px 4px; font-size: .7rem; }
 }
+#live-conflict-board [data-own][data-incoming] { border-style: dashed; }

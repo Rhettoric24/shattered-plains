@@ -9,8 +9,12 @@ Aspirations belong in `IDEA_VAULT.md` or `ROADMAP.md`.
 
 ### Conflict Board mobile fit and movement indicators — 2026-10-17
 
-The active mobile battlefield hides the resource strip/Plains subnav and sizes the
-unchanged six-row board to the visual viewport above the compact planning sheet.
+The active mobile battlefield hides the resource strip/Plains subnav and fits the
+unchanged six-row board using stable small-viewport height and a reserved planning
+peek. Fit is cached by container width/orientation: scrolling, Safari toolbar
+changes and sheet state do not rescale it. Meaningful refits wait until active
+route planning ends. Incoming armies have draggable markers at their expected
+entry and share the arrived-army route/confirmation flow; execution waits for arrival.
 Tiny/zoomed/landscape screens retain a scrollable minimum size. Expanded More
 shows one detail category at a time. Fog uses a quiet inspectable question mark.
 Gold markers show conditional resolution groups: Speed specialization permits two

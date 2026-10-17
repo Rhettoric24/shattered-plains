@@ -208,11 +208,17 @@ test('full game shell leaves the battlefield usable with the planning sheet on a
   expect(geometry.sheet).toBeLessThan(geometry.viewport*.57);
   expect(geometry.boardVisible).toBe(true);expect(geometry.overflow).toBe(false);expect(geometry.confirmVisible).toBe(true);
   if (page.viewportSize()!.width === 390) {
+    await page.getByRole('button',{name:'Cancel',exact:true}).click();
     for (const [width,height] of [[320,667],[375,667],[390,844],[430,932]]) {
       await page.setViewportSize({width,height});
       await expect.poll(async()=>page.locator('.cb-grid').evaluate(el=>{const r=el.getBoundingClientRect(), sheet=document.querySelector('.cb-sheet')!.getBoundingClientRect(),header=document.querySelector('.global-shell')!.getBoundingClientRect();return r.top>=header.bottom-1&&r.bottom<=sheet.top-1})).toBe(true);
+      await page.getByRole('button',{name:'Move',exact:true}).click();
+      await page.locator('[data-position="B2"]').click();
       await page.screenshot({path:testInfo.outputPath('fit-'+width+'-'+height+'.png')});
+      await page.getByRole('button',{name:'Cancel',exact:true}).click();
     }
+    await page.getByRole('button',{name:'Move',exact:true}).click();
+    await page.locator('[data-position="B2"]').click();
   }
   await page.screenshot({path:testInfo.outputPath('planning.png')});
   await page.getByRole('button',{name:'Cancel',exact:true}).click();
@@ -308,4 +314,58 @@ test('read and refresh failures stay distinct from order failures and preserve p
   await expect(page.locator('.cb-sheet-notice')).toContainText('may have been received');
   await page.getByRole('button',{name:'Confirm route'}).click();
   const calls=await page.evaluate(()=>(window as any).calls);expect(calls[0].args.requestId).toBe(calls[1].args.requestId);
+});
+
+for (const input of ['mouse','touch'] as const) test(`incoming entry marker uses the shared ${input} drag and confirms a future order`,async({page,context})=>{
+  await page.evaluate(()=>{const w=window as any;w.fixture.conflict.view.ownArrivals=[{id:'incoming',cycle:99,formation:{...w.fixture.conflict.view.own[0].formation,id:'incoming',name:'Incoming force',order:{kind:'hold',route:[],onDefeat:'continue'}}}];w.fixture.conflict.ownArrivalTimes=[{formationId:'incoming',arriveAt:Date.now()+7200000}];w.board.update(w.fixture)});
+  const marker=page.locator('[data-player-position="approach"] [data-own="incoming"]');
+  await expect(marker).toHaveAttribute('data-incoming','true');
+  await marker.scrollIntoViewIfNeeded();
+  const center=async(selector:string)=>{const b=await page.locator(selector).boundingBox();return{x:b!.x+b!.width/2,y:b!.y+b!.height/2}};
+  const a=await center('[data-own="incoming"]'),b=await center('[data-position="B3"]'),c=await center('[data-position="B2"]');
+  if(input==='mouse') {
+    await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:10});await page.mouse.move(c.x,c.y,{steps:10});await page.mouse.up();
+  } else {
+    const cdp=await context.newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...a,id:1}]});await page.waitForTimeout(360);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{...b,id:1}]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{...c,id:1}]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  }
+  await expect(page.locator('.cb-route strong')).toHaveText('Proposed: approach → B3 → B2');
+  expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
+  await expect(page.locator('.cb-sheet')).toContainText('Arrives');
+  await page.getByRole('button',{name:'Confirm route'}).click();
+  expect(await page.evaluate(()=>(window as any).calls[0])).toMatchObject({name:'conflictBoards:order',args:{formationId:'incoming',kind:'move',route:['B3','B2'],onDefeat:'continue'}});
+  await expect(page.locator('.cb-proposed')).toHaveCount(0);
+  expect(await page.evaluate(()=>(window as any).fixture.conflict.view.ownArrivals[0].formation.id)).toBe('incoming');
+});
+
+test('mobile board height survives toolbar height changes, scrolling, sheet changes and route planning', async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await expect.poll(()=>page.locator('#live-conflict-board').evaluate(el=>el.style.getPropertyValue('--cb-board-height'))).not.toBe('');
+  const height=()=>page.locator('.cb-grid').evaluate(el=>el.getBoundingClientRect().height);
+  const initial=await height();
+  // Emulate Safari resize/visualViewport notifications and changed scroll positions.
+  await page.evaluate(()=>{window.scrollTo(0,100);window.visualViewport?.dispatchEvent(new Event('scroll'));window.visualViewport?.dispatchEvent(new Event('resize'))});
+  await page.setViewportSize({width:390,height:744});
+  await expect.poll(height).toBe(initial);
+  await page.locator('[data-own="ours"]').click();await page.getByRole('button',{name:'More',exact:true}).click();
+  expect(await height()).toBe(initial);
+  await page.getByRole('button',{name:'Move',exact:true}).click();await page.locator('[data-position="B2"]').click();
+  await page.setViewportSize({width:390,height:844});
+  await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));window.visualViewport?.dispatchEvent(new Event('scroll'))});
+  expect(await height()).toBe(initial);
+  await expect(page.locator('.cb-route strong')).toHaveText('Proposed: B3 → B2');
+  // A real width change is deferred while the player is planning.
+  await page.setViewportSize({width:430,height:932});expect(await height()).toBe(initial);
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();
+  await expect.poll(height).not.toBe(initial);
+  const wider=await height();
+  await page.evaluate(()=>{window.visualViewport?.dispatchEvent(new Event('resize'));window.scrollTo(0,0)});
+  expect(await height()).toBe(wider);
+  await page.setViewportSize({width:430,height:700});
+  expect(await height()).toBe(wider);
+  await page.evaluate(()=>{Object.defineProperty(screen.orientation,'angle',{configurable:true,value:90});screen.orientation.dispatchEvent(new Event('change'))});
+  await expect.poll(height).not.toBe(wider);
 });
