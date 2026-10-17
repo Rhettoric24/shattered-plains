@@ -7,6 +7,22 @@ friend-test deployment.
 This document records what is believed to be implemented now.
 Aspirations belong in `IDEA_VAULT.md` or `ROADMAP.md`.
 
+### Conflict Board mobile fit and movement indicators — 2026-10-17
+
+The active mobile battlefield hides the resource strip/Plains subnav and sizes the
+unchanged six-row board to the visual viewport above the compact planning sheet.
+Tiny/zoomed/landscape screens retain a scrollable minimum size. Expanded More
+shows one detail category at a time. Fog uses a quiet inspectable question mark.
+Gold markers show conditional resolution groups: Speed specialization permits two
+steps, other formations one; arrival timing offsets traveling groups. Combat,
+merges, Research changes, withdrawal and settlement can interrupt those estimates.
+The viewer DTO adds own-arrival stats and the server resolution interval only.
+Purple corner markers reuse the Lab's retreatShade helper and stored friendly
+history, excluding the current tile; extended fallback history is optional.
+Preview reads, subscription refresh warnings and uncertain order submissions have
+separate messages. The specific mobile recording's network failure was not
+reproduced. No movement, retreat, combat, schema or settlement rules changed.
+
 ### Conflict Board UI Phase 1 — 2026-10-17
 
 Plains uses Parshendi | PvP | Plateau Runs; legacy raids/sieges URLs remain valid.

@@ -498,7 +498,10 @@ function ensureReactiveSubscriptions(data) {
   const expectedSessionGeneration = authSessionGeneration;
   subscriptionLifecycle.start(sessionKey, fetchSubscriptionAuthToken, {
     onBatch: (batch) => applyReactiveBatch(batch, expectedSessionGeneration),
-    onError: (error, key) => console.warn(`Convex subscription ${key} failed; the safety reconciliation remains active.`, error),
+    onError: (error, key) => {
+      console.warn(`Convex subscription ${key} failed; the safety reconciliation remains active.`, error);
+      if (key === "conflictLobby" || key === `board:${conflictBoardUI.selected}`) conflictBoardUI.setRefreshError(key === "conflictLobby" ? "conflict list" : "conflictBoards:get");
+    },
   });
   subscriptionLifecycle.sync(subscriptionSpecs(data));
 }
@@ -508,6 +511,7 @@ function applyReactiveBatch(batch, expectedSessionGeneration) {
     if (!authToken || !rawStateData || expectedSessionGeneration !== authSessionGeneration) return;
     const accountingInputsBefore = playerAccountingInputKey(rawStateData);
     for (const [key, value] of batch) rawStateData[key] = value;
+    if (batch.has(`board:${conflictBoardUI.selected}`)) conflictBoardUI.setRefreshError(null);
     rawStateData.plateaus = composePlateauState(rawStateData.plateauSummary, rawStateData.plateauBoard);
     if (!rawStateData.playerSummary?.player || !rawStateData.plateaus) return;
     if (playerAccountingInputKey(rawStateData) !== accountingInputsBefore) {
@@ -1084,6 +1088,7 @@ function showRoute(routeOrLegacy, options = {}) {
   if (!section) return;
   const previousRoute = currentRoute;
   currentRoute = route;
+  if (route.view !== "plains" || route.tab !== "sieges" || !route.focus) document.body.classList.remove("cb-battlefield-mode");
   localStorage.setItem("sp-current-view", route.view);
   if (route.tab && route.tab !== "teaser") localStorage.setItem("sp-current-tab", route.tab);
   const url = new URL(location.href);

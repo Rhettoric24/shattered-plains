@@ -565,6 +565,7 @@ export const get = query({
       plateauId: s.conflict.plateauId,
       originalOwner: s.state.originalOwner,
       nextCycleAt: s.conflict.nextCycleAt,
+      resolutionIntervalMs: CYCLE_MS,
       deadlineAt: s.conflict.deadlineAt,
       winnerId: s.conflict.winnerId,
       outcome: s.conflict.outcome,

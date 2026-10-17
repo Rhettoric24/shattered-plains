@@ -22,8 +22,8 @@ test.beforeEach(async ({ page }) => {
     const w = window as any;
     w.calls = []; w.fixture = fixture;
     w.board = module.createConflictBoardUI({ root: document.getElementById("live-conflict-board"),
-      query: async (name: string) => name === "conflictBoards:atPlateau" ? null : (w.preview || { cargo:0, remainingCapacity:100, cargoLost:0 }),
-      mutate: async (name: string, args: unknown) => { w.calls.push({ name, args }); return { revision: 4 }; }, onSelect: (id:string) => {w.fixture.focus=id;w.board.update(w.fixture)}, confirm: (message:string) => {w.confirmMessage=message;return w.confirmReply!==false} });
+      query: async (name: string) => { if (w.failRead) throw new TypeError("Load failed"); return name === "conflictBoards:atPlateau" ? null : (w.preview || { cargo:0, remainingCapacity:100, cargoLost:0 }); },
+      mutate: async (name: string, args: unknown) => { w.calls.push({ name, args }); if (w.failOrder) throw new TypeError("Load failed"); return { revision: 4 }; }, onSelect: (id:string) => {w.fixture.focus=id;w.board.update(w.fixture)}, confirm: (message:string) => {w.confirmMessage=message;return w.confirmReply!==false} });
     w.board.update(fixture);
   }, context);
 });
@@ -207,6 +207,13 @@ test('full game shell leaves the battlefield usable with the planning sheet on a
   const geometry=await page.locator('.cb-sheet').evaluate(el=>{const sheet=el.getBoundingClientRect(),map=document.querySelector('.cb-grid')!.getBoundingClientRect();return {sheet:sheet.height,viewport:innerHeight,boardVisible:map.top<sheet.top&&map.bottom>0,overflow:document.documentElement.scrollWidth>innerWidth,confirmVisible:(document.querySelector('[data-cb="confirm-route"]')!.getBoundingClientRect().bottom<=sheet.bottom)}});
   expect(geometry.sheet).toBeLessThan(geometry.viewport*.57);
   expect(geometry.boardVisible).toBe(true);expect(geometry.overflow).toBe(false);expect(geometry.confirmVisible).toBe(true);
+  if (page.viewportSize()!.width === 390) {
+    for (const [width,height] of [[320,667],[375,667],[390,844],[430,932]]) {
+      await page.setViewportSize({width,height});
+      await expect.poll(async()=>page.locator('.cb-grid').evaluate(el=>{const r=el.getBoundingClientRect(), sheet=document.querySelector('.cb-sheet')!.getBoundingClientRect(),header=document.querySelector('.global-shell')!.getBoundingClientRect();return r.top>=header.bottom-1&&r.bottom<=sheet.top-1})).toBe(true);
+      await page.screenshot({path:testInfo.outputPath('fit-'+width+'-'+height+'.png')});
+    }
+  }
   await page.screenshot({path:testInfo.outputPath('planning.png')});
   await page.getByRole('button',{name:'Cancel',exact:true}).click();
   await page.getByRole('button',{name:'More',exact:true}).click();
@@ -263,4 +270,42 @@ test('army dragging clears inspection overlays and restores only the planning pe
   await expect(page.locator('.cb-sheet')).toHaveClass(/cb-sheet-peek/);
   await expect(page.locator('.cb-route strong')).toHaveText('Proposed: B3 → B2');
   expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
+});
+
+test('queued gold groups Speed steps, proposed numbers clear, purple uses stored friendly history', async ({page}) => {
+  await page.evaluate(()=>{const w=window as any,f=w.fixture.conflict.view.own[0];f.stats.specialization='Speed';f.formation.history=['approach','B3'];f.formation.order.route=['B2','B1','C1','C2'];w.board.update(w.fixture)});
+  await page.locator('[data-own="ours"]').click();
+  await expect(page.locator('[data-player-position="B2"]')).toHaveClass(/cb-queued-next/);
+  await expect(page.locator('[data-player-position="B1"]')).toHaveClass(/cb-queued-next/);
+  await expect(page.locator('[data-player-position="C1"] .cb-queue-mark')).toHaveText('→2');
+  await expect(page.locator('[data-player-position="approach"] .cb-retreat-mark')).toHaveText('↶1');
+  await expect(page.locator('[data-player-position="B3"] .cb-retreat-mark')).toHaveCount(0);
+  await page.getByRole('button',{name:'Move',exact:true}).click();
+  await page.locator('[data-position="B2"]').click();
+  await expect(page.locator('.cb-step')).toHaveText('1');
+  await page.getByRole('button',{name:'Confirm route'}).click();
+  await expect(page.locator('.cb-step')).toHaveCount(0);await expect(page.locator('.cb-proposed')).toHaveCount(0);
+  await page.getByRole('button',{name:'Move',exact:true}).click();await page.locator('[data-position="B2"]').click();
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();await expect(page.locator('.cb-step')).toHaveCount(0);
+  await page.evaluate(()=>{const w=window as any,f=w.fixture.conflict.view.own[0];f.formation.position='B2';f.formation.history=['approach','B3','B2'];w.fixture.conflict.revision++;w.board.update(w.fixture)});
+  await expect(page.locator('[data-player-position="B3"] .cb-retreat-mark')).toHaveText('↶1');
+  await expect(page.locator('[data-player-position="approach"] .cb-retreat-mark')).toHaveCount(0);
+  await page.getByRole('button',{name:'More',exact:true}).click();await page.getByText('Route and retreat details',{exact:true}).click();await page.getByRole('button',{name:'Show extended history'}).click();
+  await expect(page.locator('[data-player-position="approach"] .cb-retreat-mark')).toHaveText('↶2');
+});
+
+test('read and refresh failures stay distinct from order failures and preserve planning', async ({page}) => {
+  await page.locator('[data-own="ours"]').click();await page.getByRole('button',{name:'Move',exact:true}).click();await page.locator('[data-position="B2"]').click();
+  await page.evaluate(()=>(window as any).board.setRefreshError('conflictBoards:get'));
+  await expect(page.locator('.cb-refresh-warning')).toContainText('not an order failure');
+  await expect(page.locator('.cb-route strong')).toHaveText('Proposed: B3 → B2');expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
+  await page.evaluate(()=>(window as any).board.setRefreshError(null));
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();await page.getByRole('button',{name:'More',exact:true}).click();await page.getByText('Split formation',{exact:true}).click();
+  await page.evaluate(()=>{(window as any).failRead=true});await page.getByRole('button',{name:'Split troops'}).click();
+  await expect(page.locator('.cb-sheet-notice')).toContainText('Split preview could not load. No order was sent.');expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
+  await page.evaluate(()=>{const w=window as any;w.failRead=false;w.failOrder=true});
+  await page.getByRole('button',{name:'Move',exact:true}).click();await page.locator('[data-position="B2"]').click();await page.getByRole('button',{name:'Confirm route'}).click();
+  await expect(page.locator('.cb-sheet-notice')).toContainText('may have been received');
+  await page.getByRole('button',{name:'Confirm route'}).click();
+  const calls=await page.evaluate(()=>(window as any).calls);expect(calls[0].args.requestId).toBe(calls[1].args.requestId);
 });

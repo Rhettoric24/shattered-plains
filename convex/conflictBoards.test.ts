@@ -846,3 +846,13 @@ describe('Phase 1 pre-arrival command lifecycle', () => {
     expect((await read(f,id)).state).toEqual(s.state);
   });
 });
+
+test('live timing projection exposes specialization only for the viewers traveling army', async()=>{
+  const f=await setup(), {conflictId:id}=await open(f,units(0,100));
+  const blue=await f.blue.client.query(q('get'),{conflictId:id});
+  expect(blue.resolutionIntervalMs).toBe(CYCLE_MS);
+  expect(blue.view.ownArrivals).toHaveLength(1);
+  expect(blue.view.ownArrivals[0].stats.specialization).toBe('Speed');
+  const red=await f.owner.client.query(q('get'),{conflictId:id});
+  expect(red.view.ownArrivals).toHaveLength(0);
+});

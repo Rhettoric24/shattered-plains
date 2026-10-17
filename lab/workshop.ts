@@ -52,9 +52,4 @@ export function playerWorkshop(state: ConflictState, viewer: string, id: string,
   return {state: next, selected: command.kind === "create" ? newArmy.id : id};
 }
 
-/** Current square excluded: 1 is the first fallback, larger numbers are older. */
-export function retreatShade(f: Pick<Formation, "history" | "position">, position: string) {
-  const route = f.history.filter(p => p !== f.position).slice().reverse();
-  const index = route.indexOf(position);
-  return index < 0 ? null : {depth: index + 1, color: `hsl(270 40% ${44 - 26 * index / Math.max(1, route.length - 1)}%)`};
-}
+export { retreatShade } from "../conflict-board/movement-presentation";

@@ -1,5 +1,6 @@
 // Normal-game transport UI. Receives only the authenticated server projection;
 // never imports a resolver, Lab snapshot, or hidden enemy state.
+import { retreatShade, queuedRouteHints } from "../conflict-board/movement-presentation";
 import { attachRouteDrag } from "../conflict-board/route-drag";
 const troopKeys = ["bridgeman", "spearman", "chull", "shardbearer"];
 const names = { bridgeman: "Bridgemen", spearman: "Spearmen", chull: "Chulls", shardbearer: "Shardbearers" };
@@ -22,7 +23,7 @@ export function selectedForce(data, id) {
   const own = data?.view.own.find(row => row.formation.id === id);
   if (own) return own;
   const a = data?.view.ownArrivals.find(a => a.formation.id === id);
-  return a ? { formation: { ...a.formation, position: arrivalPosition(data), history: [] }, traveling: true } : null;
+  return a ? { formation: { ...a.formation, position: arrivalPosition(data), history: [] }, stats: a.stats, traveling: true } : null;
 }
 function powerText(p) {
   if (!p) return "Unknown Power";
@@ -35,11 +36,14 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
   let context, selected = null, selectedArmy = null, draft = null, draftOrigin = null;
   let signature = "", busy = false, notice = "", values = {}, pendingSubmission = null, handledFocus = null;
   let sheetGesture = null, suppressSheetClick = false;
+  let showHistory = false, refreshWarning = "";
   let dragging = false, sheetExpanded = false, sheetPanel = "orders", inspectedTile = null;
   const button = (action, label, disabled = false, extra = "") => `<button type="button" data-cb="${action}" ${disabled || busy ? "disabled" : ""} ${extra}>${label}</button>`;
   function select(id) {
     selected = id || null; selectedArmy = null; draft = null; inspectedTile = null; sheetExpanded = false; values = {}; pendingSubmission = null;
-    notice = ""; onSelect(selected); render();
+    notice = "";
+    try { onSelect(selected); } catch (error) { console.warn("Conflict Board navigation refresh failed", error); refreshWarning = "Battlefield navigation could not refresh. This is separate from order submission."; }
+    render();
   }
   function inputs(prefix, available) {
     return `<div class="cb-units">${troopKeys.map(k => `<label>${names[k]} <small>${num(available?.[k])} available</small><input data-cb-value="${prefix}-${k}" aria-label="${prefix} ${names[k]}" type="number" min="0" max="${available?.[k] || 0}" step="1" value="${esc(values[`${prefix}-${k}`] || 0)}"></label>`).join("")}</div>`;
@@ -51,6 +55,10 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     if (!Number.isSafeInteger(count) || count < 0 || count > 128) throw Error("Choose 0–128 available Half-Shards.");
     return Array(count).fill("halfShard");
   };
+  async function readCommand(name, args) {
+    try { return await query(name, args); }
+    catch (error) { console.warn("Conflict Board read failed: " + name, error); throw Error((name.endsWith("previewSplit") ? "Split preview" : "Rival holding") + " could not load. No order was sent. Retry when connected."); }
+  }
   async function submit(name, args) {
     const payloadKey = JSON.stringify([name, args]);
     // Repeating a submission after an uncertain network failure reuses its receipt.
@@ -89,10 +97,10 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     const next = d.withdrawing ? "Withdraw at next resolution" : row.traveling ? "Arrive, then follow orders when eligible" : f.order.paused ? "Paused after defeat" : f.order.kind === "move" && f.order.route.length ? "Move to " + f.order.route[0] + " when eligible" : f.order.kind === "raid" ? "Raid if foothold is eligible" : "Hold position";
     return `<section class="cb-sheet ${sheetExpanded ? "cb-sheet-expanded" : "cb-sheet-peek"}" aria-label="Selected formation">
       <div class="cb-sheet-top">${button("sheet-toggle", sheetExpanded ? "⌄ Collapse formation" : "⌃ Expand formation", false, `class="cb-sheet-handle" aria-expanded="${sheetExpanded}" aria-controls="cb-sheet-body"`)}${button("close-sheet", "Close", false, 'aria-label="Close formation controls"')}</div>
-      <div class="cb-sheet-overview"><strong>${esc(f.name)}</strong> · ${num(Object.values(f.units).reduce((a,b)=>a+b,0))} troops
+      <div class="cb-sheet-overview"><strong>${esc(f.name)}</strong><span class="cb-expanded-only"> · ${num(Object.values(f.units).reduce((a,b)=>a+b,0))} troops</span>
       <small>${row.traveling ? "Arrives " + esc(time(arrival)) + " · entry " : "At "}${esc(position)} · ${esc(f.order.kind)}${f.order.paused ? " (paused)" : ""}</small>
       <small>Next: ${esc(next)}</small>
-      ${stats ? `<small>Power ${num(stats.power)} · Speed ${num(stats.speed)} · Survive ${num(stats.survive)} · Plunder ${num(stats.plunder)}</small>` : ""}</div>
+      ${stats ? `<small class="cb-expanded-only">Power ${num(stats.power)} · Speed ${num(stats.speed)} · Survive ${num(stats.survive)} · Plunder ${num(stats.plunder)}</small>` : ""}</div>
       <div class="cb-actions cb-primary">${button("move", "Move", locked)}${button("orders", "Orders", locked, `aria-pressed="${sheetExpanded && sheetPanel === "orders"}"`)}${button("more", "More", false, `aria-pressed="${sheetExpanded && sheetPanel === "more"}"`)}</div>
       ${notice || busy ? `<p class="cb-sheet-notice" role="status">${esc(busy ? "Sending order…" : notice)}</p>` : ""}
       ${draft !== null ? `<div class="cb-route"><strong>Proposed: ${esc([draftOrigin, ...draft].join(" → "))}</strong><div>${button("confirm-route", "Confirm route", !draft.length || locked)} ${button("clear-route", "Clear")} ${button("cancel-route", "Cancel")}</div></div>` : ""}
@@ -105,8 +113,8 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
         <small>Raid requires an outside force at West or East Raid with an eligible foothold.</small>
         <label>After defeat <select data-cb-value="defeat"><option value="continue" ${(values.defeat || f.order.onDefeat) === "continue" ? "selected" : ""}>Continue toward destination</option><option value="pause" ${(values.defeat || f.order.onDefeat) === "pause" ? "selected" : ""}>Stop on loss</option></select></label>${button("standing", "Save standing order", locked)}
       </div>
-      <div ${sheetPanel === "more" ? "" : "hidden"}>
-        <details><summary>Route and retreat details</summary><p>Approved: ${esc(f.order.route.join(" → ") || "None")}</p><p>Retreat history: ${esc(f.history.join(" → ") || "Not yet deployed")}</p><label>Preserve this formation's route when merging at <select data-cb-value="merge">${d.view.board.positions.map(p => `<option value="${esc(p.id)}" ${(values.merge || f.position) === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>${button("merge-route", "Choose merge route", locked || row.traveling)}</details>
+      <div class="cb-more-panel" ${sheetPanel === "more" ? "" : "hidden"}>
+        <details><summary>Route and retreat details</summary>${button("history", showHistory ? "Hide extended history" : "Show extended history", false, `aria-pressed="${showHistory}"`)}<p>Approved: ${esc(f.order.route.join(" → ") || "None")}</p><p>Retreat history: ${esc(f.history.join(" → ") || "Not yet deployed")}</p><label>Preserve this formation's route when merging at <select data-cb-value="merge">${d.view.board.positions.map(p => `<option value="${esc(p.id)}" ${(values.merge || f.position) === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>${button("merge-route", "Choose merge route", locked || row.traveling)}</details>
         <details><summary>Split formation</summary><p>Cargo stays with the original army. Any capacity loss requires confirmation.</p>${inputs("split", f.units)}${items.map(item => `<label><input type="checkbox" data-cb-value="equipment:${esc(item.id)}" ${values[`equipment:${item.id}`] ? "checked" : ""}> Give ${esc(item.kind)} to the new formation</label>`).join("")}${button("split", "Split troops", locked || row.traveling)}</details>
         <details><summary>Carried Fabrials (${items.length})</summary>${items.map(item => `<p>${esc(item.kind)} — ${f.equipment.active === item.id ? "Active" : f.equipment.pending?.id === item.id ? "Activates after next resolution" : "Carried"} ${button("switch", "Select", locked || row.traveling || f.equipment.active === item.id, `data-item="${esc(item.id)}"`)}</p>`).join("") || "No carried equipment."}${f.equipment?.pending ? button("cancel-switch", "Cancel pending change", locked || row.traveling) : ""}</details>
         ${conflictTools(d)}
@@ -125,6 +133,22 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
       ${p.id === view.board.objective ? `<p>Controller: ${esc(view.kingdoms.find(k => k.id === d.commandPostController)?.name || "Kingdom")}${d.conquestHold ? ` · ${esc(view.kingdoms.find(k => k.id === d.conquestHold.kingdom)?.name || "Kingdom")} holds for conquest at the next resolution if retained.` : ""}</p>` : ""}
       <small>Inspecting never sends an order.</small></aside>`;
   }
+  function movementMarks(d, position) {
+    const row = selectedForce(d, selectedArmy), f = row?.formation;
+    if (!f) return {classes:"", style:"", markup:""};
+    const shade = retreatShade(f, position), history = shade && (showHistory || shade.depth === 1);
+    const hints = queuedRouteHints(row, { nextCycleAt:d.nextCycleAt, resolutionIntervalMs:d.resolutionIntervalMs,
+      arriveAt:d.ownArrivalTimes.find(a => a.formationId === f.id)?.arriveAt }).filter(h => h.position === position);
+    const resolution = hints.length ? Math.min(...hints.map(h => h.resolution ?? Infinity)) : Infinity;
+    const proposed = draft?.flatMap((id,i) => id === position ? [i+1] : []) || [];
+    return {
+      classes: (hints.length ? " cb-queued" : "") + (resolution === 1 ? " cb-queued-next" : hints.length ? " cb-queued-later" : "") + (history ? " cb-retreat" : "") + (proposed.length ? " cb-proposed" : ""),
+      style: '--queue-opacity:' + (resolution === 1 ? 1 : Number.isFinite(resolution) ? Math.max(.18, .6 / (resolution-1)) : .25) + ';--retreat-color:' + (shade?.color || "transparent"),
+      markup: (history ? `<span class="cb-retreat-mark" title="Stored fallback ${shade.depth}; availability depends on occupation">↶${shade.depth}</span>` : "") +
+        (hints.length ? `<span class="cb-queue-mark" title="Conditional queued steps ${hints.map(h => h.step).join(", ")}; ${Number.isFinite(resolution) ? "earliest resolution +" + resolution : "timing paused or unavailable"}. Combat, arrival, merging or settlement can interrupt movement.">→${Number.isFinite(resolution) ? resolution : "?"}</span>` : "") +
+        (proposed.length ? `<span class="cb-step" aria-label="Proposed waypoint ${proposed.join(", ")}">${proposed.join(",")}</span>` : ""),
+    };
+  }
   function boardMarkup(d) {
     const view = d.view, f = selectedForce(d, selectedArmy)?.formation;
     const ys = view.board.positions.map(p => p.y), minY = Math.min(...ys);
@@ -134,17 +158,17 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
       <div class="cb-map-frame">${tileMarkup(d)}<p class="cb-drag-feedback" role="status"></p>
       <div class="cb-grid" aria-label="Conflict battlefield">${view.board.positions.map(p => {
         const own = view.own.filter(r => r.formation.position === p.id), contacts = view.contacts.filter(c => c.position === p.id);
-        const h = f?.history.indexOf(p.id) ?? -1, forward = f?.order.route.includes(p.id), proposed = draft?.includes(p.id);
+        const marks = movementMarks(d, p.id);
         const valid = draft !== null && view.board.connections.some(([a,b]) => a === last && b === p.id || b === last && a === p.id);
         const ready = view.raidReady.find(r => r.position === p.id);
-        return `<div data-player-position="${esc(p.id)}" class="cb-cell ${p.id === view.board.reserve ? "cb-reserve" : ""} ${p.id === view.board.objective || p.objective === "raid" ? "cb-objective" : ""} ${contacts.length ? "cb-known-contact" : ""} ${inspectedTile === p.id ? "cb-inspected" : ""} ${view.visiblePositions.includes(p.id) ? "" : "cb-fog"} ${f?.position === p.id ? "cb-current" : ""} ${forward ? "cb-forward" : ""} ${proposed ? "cb-proposed" : ""} ${valid ? "cb-next" : ""}" style="grid-column:${p.x + 1};grid-row:${p.y - minY + 1};${h >= 0 ? `background:rgba(126,67,190,${0.18 + 0.42 * (h + 1) / Math.max(1,f.history.length)})` : ""}">
-        <button class="cb-position" type="button" data-cb="position" data-position="${esc(p.id)}" aria-pressed="${inspectedTile === p.id}" ${busy ? "disabled" : ""}>${p.id === view.board.objective || p.objective === "raid" ? "◇ " : ""}${esc(p.name)}${proposed ? ` <b>${draft.indexOf(p.id) + 1}</b>` : ""}</button>
-        ${own.map(r => button("army", `● ${esc(r.formation.name)}<br>${num(Object.values(r.formation.units).reduce((a,b) => a+b,0))} troops`, false, `data-own="${esc(r.formation.id)}" data-army="${esc(r.formation.id)}" aria-pressed="${selectedArmy === r.formation.id}"`)).join("")}
-        ${contacts.map(c => `<p class="cb-contact">◆ ${esc(kingdom(c.kingdom))}<br>${esc(powerText(c.power))}</p>`).join("")}
-        ${!own.length && !contacts.length ? `<small>${view.visiblePositions.includes(p.id) ? "No observed force" : "Beyond vision"}</small>` : ""}
-        ${ready ? `<small>Foothold</small>` : ""}</div>`;
+        return `<div data-player-position="${esc(p.id)}" class="cb-cell ${p.id === view.board.reserve ? "cb-reserve" : ""} ${p.id === view.board.objective || p.objective === "raid" ? "cb-objective" : ""} ${contacts.length ? "cb-known-contact" : ""} ${inspectedTile === p.id ? "cb-inspected" : ""} ${view.visiblePositions.includes(p.id) ? "" : "cb-fog"} ${f?.position === p.id ? "cb-current" : ""} ${marks.classes} ${valid ? "cb-next" : ""}" style="grid-column:${p.x + 1};grid-row:${p.y - minY + 1};${marks.style}">
+        <button class="cb-position" type="button" data-cb="position" data-position="${esc(p.id)}" aria-pressed="${inspectedTile === p.id}" ${busy ? "disabled" : ""}>${p.id === view.board.objective || p.objective === "raid" ? "◇ " : ""}${esc(p.name)}</button>
+        ${own.length ? '<div class="cb-armies">' : ""}${own.map(r => button("army", `<span class="cb-army-name">${esc(r.formation.name)}</span><span>● ${num(Object.values(r.formation.units).reduce((a,b) => a+b,0))}</span>`, false, `aria-label="${esc(r.formation.name)}" data-own="${esc(r.formation.id)}" data-army="${esc(r.formation.id)}" aria-pressed="${selectedArmy === r.formation.id}"`)).join("")}${own.length ? "</div>" : ""}
+        ${contacts.map(c => `<p class="cb-contact">◆ ${esc(kingdom(c.kingdom))}<span class="cb-contact-power"> · ${esc(powerText(c.power))}</span></p>`).join("")}
+        ${!view.visiblePositions.includes(p.id) ? '<span class="cb-fog-mark" aria-label="Beyond vision; tap to inspect">?</span>' : ""}
+        ${ready ? `<small class="cb-foothold">Foothold</small>` : ""}<span class="cb-movement-marks">${marks.markup}</span></div>`;
       }).join("")}</div></div>${view.ownArrivals.length ? `<div class="cb-arrivals" aria-label="Approaching forces">${view.ownArrivals.map(a => button("army", `${esc(a.formation.name)} · arrives ${esc(time(d.ownArrivalTimes.find(t => t.formationId === a.formation.id)?.arriveAt))}`, false, `data-army="${esc(a.formation.id)}"`)).join(" ")}</div>` : ""}
-      <small class="cb-board-hint">Tap a tile to inspect. Select an army to plan; hold and drag an arrived army to draw a route.</small>
+      <small class="cb-board-hint">Gold →1 next, →2+ later (conditional) · purple ↶ fallback · numbered ◇ proposed. Tap tiles for details.</small>
       ${armyMarkup(d)}`;
   }
   function render() {
@@ -163,12 +187,16 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
         draft = null; notice = "Your army's entry or position changed. Plan again from its current position.";
       }
     }
+    const wasBattlefield = document.body.classList.contains("cb-battlefield-mode");
+    document.body.classList.toggle("cb-battlefield-mode", battlefield && d?.status === "active");
+    if (!wasBattlefield && document.body.classList.contains("cb-battlefield-mode") && matchMedia("(max-width: 720px)").matches) window.scrollTo({top:0});
     root.classList.toggle("cb-has-sheet", battlefield && Boolean(selectedArmy));
     root.parentElement?.classList.toggle("cb-battlefield-open", battlefield);
     root.hidden = !lobby || (!lobby.enabled && !lobby.conflicts.length);
     if (root.hidden) { root.innerHTML = ""; return; }
     root.innerHTML = `${battlefield ? button("back", "← Back to PvP") : ""}<h2 class="cb-heading">${battlefield ? "Battlefield" : "Conflict Board"}</h2>${battlefield ? "" : "<p>Choose a conflict to enter its battlefield. Orders resolve every two hours, even while you are offline.</p>"}
       ${!lobby.enabled ? "<p>New commitments are paused. Existing armies can still receive orders and withdraw.</p>" : ""}
+      ${refreshWarning ? `<p class="cb-refresh-warning" role="status">${esc(refreshWarning)}</p>` : ""}
       <p role="status" class="cb-notice">${esc(busy ? "Sending order…" : notice)}</p>
       ${!battlefield ? `<div class="cb-conflict-list">${lobby.conflicts.map(c => `<article><h3>${esc(c.name)}</h3><p>${esc(c.status)}${c.status === "active" ? ` · Next resolution ${esc(time(c.nextCycleAt))}` : ""}</p>${button("enter", c.status === "active" ? "Enter battlefield" : "View result", false, `data-conflict="${esc(c.conflictId)}"`)}</article>`).join("") || "<p>No conflicts yet.</p>"}</div>` : ""}
       ${lobby.enabled && !battlefield ? `<details><summary>Open or join a rival conflict</summary><label>Rival holding<select data-cb-value="target"><option value="">Choose a holding</option>${context.targets.map(p => `<option value="${esc(p._id)}" ${values.target === p._id ? "selected" : ""}>${esc(p.name)} · ${esc(p.ownerName)}</option>`).join("")}</select></label>${commitment("commit")}${button("open", "Commit army / join conflict")}<p>Arrival takes roughly two hours, modified by travel Speed. Other kingdoms may join. The defender's vulnerable treasury pool is 10% at declaration.</p></details>` : ""}
@@ -179,6 +207,7 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     for (const el of root.querySelectorAll("details")) if (openDetails.has(el.querySelector("summary")?.textContent)) el.open = true;
     if (focusedKey) [...root.querySelectorAll("[data-cb-value]")].find(el => el.dataset.cbValue === focusedKey)?.focus({ preventScroll: true });
     else if (focusSelector) root.querySelector(focusSelector)?.focus({preventScroll:true});
+    fitBoard();
   }
   root.addEventListener("input", e => {
     const key = e.target.dataset.cbValue;
@@ -195,6 +224,7 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     const action = target.dataset.cb || "position", d = data(), f = selectedForce(d, selectedArmy)?.formation;
     if (action === "enter") { select(target.dataset.conflict); return; }
     if (action === "back") { select(null); return; }
+    if (action === "history") { showHistory = !showHistory; render(); return; }
     if (action === "army") { selectedArmy = target.dataset.army; draft = null; values.defeat = null; notice = ""; sheetExpanded = false; inspectedTile = null; render(); return; }
     if (action === "sheet-toggle") { sheetExpanded = !sheetExpanded; render(); root.querySelector('[data-cb="sheet-toggle"]')?.focus({preventScroll:true}); return; }
     if (action === "close-sheet") { selectedArmy = null; draft = null; sheetExpanded = false; render(); return; }
@@ -214,7 +244,7 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
       if (["open", "reinforce"].includes(action) && !await confirm("Commit these real troops and equipment? They leave your home army now and travel to the conflict.")) return;
       busy = true; notice = ""; render();
       if (action === "open") {
-        const plateauId = values.target, c = await query("conflictBoards:atPlateau", { plateauId });
+        const plateauId = values.target, c = await readCommand("conflictBoards:atPlateau", { plateauId });
         const payload = { units: readUnits("commit"), fabrials: fabrials("commit") };
         const result = c ? await submit("reinforce", { ...payload, conflictId: c.conflictId, revision: c.revision }) : await submit("open", { ...payload, plateauId });
         select(c?.conflictId || result.conflictId);
@@ -228,14 +258,14 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
       else if (action === "standing") await order(f.order.kind, f.order.route);
       else if (action === "split") {
         const args = { ...commandArgs(), formationId: f.id, units: readUnits("split"), equipmentIds: (f.equipment?.items || []).filter(i => values[`equipment:${i.id}`]).map(i => i.id) };
-        const preview = await query("conflictBoards:previewSplit", args);
+        const preview = await readCommand("conflictBoards:previewSplit", args);
         if (preview.cargoLost > 0 && !await confirm(`Splitting off this much Plunder leaves capacity for ${num(preview.remainingCapacity)} of your ${num(preview.cargo)} Spheres. ${num(preview.cargoLost)} Spheres will be lost to the unclaimed pool. Split anyway?`)) { notice = "Split cancelled. Your army and cargo are unchanged."; return; }
         await submit("split", { ...args, acceptedCargoLoss: preview.cargoLost });
       }
       else if (action === "switch" || action === "cancel-switch") await submit("switchFabrial", { ...commandArgs(), formationId: f.id, itemId: action === "switch" ? target.dataset.item : null });
       else if (action === "merge-route") await submit("chooseMergeRoute", { ...commandArgs(), formationId: f.id, position: values.merge || f.position });
       notice = "Order accepted. The battlefield updates automatically.";
-    } catch (error) { notice = error.message || "Unable to send order."; }
+    } catch (error) { notice = /load failed|failed to fetch|networkerror/i.test(error.message || "") ? "Order confirmation unavailable. It may have been received. Retry the same command when connected; its receipt prevents duplicates." : error.message || "Unable to send order."; }
     finally { busy = false; render(); }
   });
   const paintDrag = () => {
@@ -244,11 +274,11 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     for (const cell of root.querySelectorAll("[data-player-position]")) {
       const id = cell.dataset.playerPosition;
       cell.classList.toggle("cb-current", f?.position === id);
-      cell.classList.toggle("cb-proposed", !!draft?.includes(id));
+      const marks = movementMarks(data(), id);
+      for (const cls of ["cb-proposed", "cb-queued", "cb-queued-next", "cb-queued-later", "cb-retreat"]) cell.classList.toggle(cls, marks.classes.split(" ").includes(cls));
+      cell.querySelector(".cb-movement-marks").innerHTML = marks.markup;
+      for (const part of marks.style.split(";")) { const [key,value] = part.split(":"); if (key && value) cell.style.setProperty(key,value); }
       cell.classList.toggle("cb-next", draft !== null && data().view.board.connections.some(([a,b]) => a === last && b === id || b === last && a === id));
-      let badge = cell.querySelector(".cb-step");
-      if (!badge) { badge = document.createElement("span"); badge.className = "cb-step"; cell.append(badge); }
-      badge.textContent = draft?.includes(id) ? String(draft.indexOf(id) + 1) : "";
     }
     const feedback = root.querySelector(".cb-drag-feedback");
     if (feedback) feedback.textContent = draft === null ? "" : `${[draftOrigin, ...draft].join(" → ")} — release, then Confirm.`;
@@ -293,7 +323,29 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
   root.addEventListener("click", e => {
     if (suppressSheetClick && e.target.closest(".cb-sheet-handle")) { e.stopImmediatePropagation(); e.preventDefault(); suppressSheetClick = false; }
   }, true);
+  root.addEventListener("toggle", e => {
+    if (!e.target.matches?.(".cb-more-panel > details") || !e.target.open) return;
+    for (const detail of e.target.parentElement.children) if (detail !== e.target && detail.tagName === "DETAILS") detail.open = false;
+    fitBoard();
+  }, true);
+  function fitBoard() {
+    if (dragging || sheetGesture) return;
+    if (!matchMedia("(max-width: 720px)").matches || !document.body.classList.contains("cb-battlefield-mode")) return;
+    const grid = root.querySelector(".cb-grid");
+    if (!grid) return;
+    const viewport = window.visualViewport;
+    const bottom = (viewport?.offsetTop || 0) + (viewport?.height || innerHeight);
+    const nav = document.querySelector(".primary-nav")?.getBoundingClientRect();
+    const sheet = root.querySelector(".cb-sheet");
+    const availableBottom = sheet ? sheet.getBoundingClientRect().top : nav && nav.height ? nav.top : bottom - 12;
+    const top = Math.max(grid.getBoundingClientRect().top, document.querySelector(".global-shell")?.getBoundingClientRect().bottom || 0, viewport?.offsetTop || 0);
+    root.style.setProperty("--cb-board-height", Math.max(279, availableBottom - top - 22) + "px");
+  }
+  window.addEventListener("resize", fitBoard);
+  window.visualViewport?.addEventListener("resize", fitBoard);
+  window.visualViewport?.addEventListener("scroll", fitBoard);
   return {
+    setRefreshError(key) { refreshWarning = key ? "Battlefield refresh unavailable (" + key + "). Showing the last view; this is not an order failure." : ""; render(); },
     update(next) {
       context = next;
       const nextSignature = JSON.stringify(next);
@@ -305,6 +357,6 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     },
     select,
     get selected() { return selected; },
-    reset() { root.parentElement?.classList.remove("cb-battlefield-open"); sheetExpanded = false; inspectedTile = null; root.classList.remove("cb-has-sheet"); context = null; selected = null; selectedArmy = null; draft = null; values = {}; signature = ""; pendingSubmission = null; handledFocus = null; root.innerHTML = ""; root.hidden = true; },
+    reset() { document.body.classList.remove("cb-battlefield-mode"); root.parentElement?.classList.remove("cb-battlefield-open"); sheetExpanded = false; inspectedTile = null; root.classList.remove("cb-has-sheet"); context = null; selected = null; selectedArmy = null; draft = null; values = {}; signature = ""; pendingSubmission = null; handledFocus = null; root.innerHTML = ""; root.hidden = true; },
   };
 }

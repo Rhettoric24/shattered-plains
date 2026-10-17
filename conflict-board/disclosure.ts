@@ -101,7 +101,9 @@ export function projectConflict(
     contacts,
     ownArrivals: state.arrivals
       .filter((a) => a.formation.kingdom === viewer)
-      .map((a) => structuredClone(a)),
+      .map((a) => ({ ...structuredClone(a),
+        stats: config ? formationStats(a.formation.units, state.kingdoms.find(k => k.id === viewer)!.research, config) : undefined,
+      })),
     ownEquipmentRecords:(state.equipmentRecords??[]).filter(r=>r.item.owner===viewer).map(r=>structuredClone(r)),
     raidReady: Object.entries(state.raidFootholds ?? {})
       .filter(([, h]) => h.kingdom === viewer && viewer !== state.originalOwner)
