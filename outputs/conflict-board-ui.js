@@ -119,7 +119,7 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     root.parentElement?.classList.toggle("cb-battlefield-open", battlefield);
     root.hidden = !lobby || (!lobby.enabled && !lobby.conflicts.length);
     if (root.hidden) { root.innerHTML = ""; return; }
-    root.innerHTML = `${battlefield ? button("back", "← Back to Sieges") : ""}<h2>${battlefield ? "Battlefield" : "Conflict Board"}</h2>${battlefield ? "" : "<p>Choose a conflict to enter its battlefield. Orders resolve every two hours, even while you are offline.</p>"}
+    root.innerHTML = `${battlefield ? button("back", "← Back to PvP") : ""}<h2>${battlefield ? "Battlefield" : "Conflict Board"}</h2>${battlefield ? "" : "<p>Choose a conflict to enter its battlefield. Orders resolve every two hours, even while you are offline.</p>"}
       ${!lobby.enabled ? "<p>New commitments are paused. Existing armies can still receive orders and withdraw.</p>" : ""}
       <p role="status" class="cb-notice">${esc(busy ? "Sending order…" : notice)}</p>
       ${!battlefield ? `<div class="cb-conflict-list">${lobby.conflicts.map(c => `<article><h3>${esc(c.name)}</h3><p>${esc(c.status)}${c.status === "active" ? ` · Next resolution ${esc(time(c.nextCycleAt))}` : ""}</p>${button("enter", c.status === "active" ? "Enter battlefield" : "View result", false, `data-conflict="${esc(c.conflictId)}"`)}</article>`).join("") || "<p>No conflicts yet.</p>"}</div>` : ""}

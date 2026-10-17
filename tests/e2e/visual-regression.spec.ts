@@ -42,16 +42,16 @@ const destinations: Destination[] = [
     name: "plains-raids",
     open: async (page) => page.getByRole("button", { name: /^Plains/ }).click(),
     visible: "#view-raids",
-    sections: ["#outgoing-queue", "#world-queue", "#sphere-form", "#deep-plains-form"],
+    sections: ["#outgoing-queue", "#world-queue", "#sphere-form", "#deep-plains-form", "#neutral-siege-form", "#retaliation-warning-panel"],
   },
   {
     name: "plains-sieges",
     open: async (page) => {
       await page.getByRole("button", { name: /^Plains/ }).click();
-      await page.locator("#space-subnav").getByRole("button", { name: "Sieges", exact: true }).click();
+      await page.locator("#space-subnav").getByRole("button", { name: "PvP", exact: true }).click();
     },
     visible: "#view-plateaus",
-    sections: ["#retaliation-warning-panel", "#urgent-sieges-panel", "#auto-defense-form", "#neutral-siege-form", "#active-sieges"],
+    sections: ["#urgent-sieges-panel", "#auto-defense-form", "#player-siege-form", "#active-sieges"],
   },
   {
     name: "intelligence",
@@ -469,7 +469,6 @@ test("earned Watchtower intelligence is visible in military decision surfaces", 
   await page.getByRole("button", { name: /^Plains/ }).click();
   await expect(page.locator("#sphere-raid-preview")).toContainText(/Possible enemy Power:\s*\d[\d,]*–\d[\d,]*/);
 
-  await page.locator("#space-subnav").getByRole("button", { name: "Sieges", exact: true }).click();
   const neutralOptions = page.locator("#neutral-plateau-target option");
   const hasNeutralTarget = await page.locator("#neutral-plateau-target").evaluate((select: HTMLSelectElement) => Boolean(select.value));
   if (hasNeutralTarget) {
@@ -484,6 +483,7 @@ test("earned Watchtower intelligence is visible in military decision surfaces", 
     await expect(page.locator("#neutral-siege-preview")).toContainText("Choose a neutral plateau");
   }
 
+  await page.locator("#space-subnav").getByRole("button", { name: "PvP", exact: true }).click();
   const rivalOptions = page.locator("#player-plateau-target option");
   await expect(page.locator("#player-plateau-target")).toBeEnabled();
   await expect(rivalOptions.first()).toHaveText(/.+ — .+/);

@@ -50,7 +50,7 @@ let state = null;
 let rawStateData = null;
 const SPACE_TABS = {
   warcamp: [{ key: "buildings", label: "Buildings" }, { key: "recruitment", label: "Recruitment" }],
-  plains: [{ key: "raids", label: "Raids" }, { key: "sieges", label: "Sieges" }, { key: "plateau-runs", label: "Plateau Runs" }],
+  plains: [{ key: "raids", label: "Parshendi" }, { key: "sieges", label: "PvP" }, { key: "plateau-runs", label: "Plateau Runs" }],
   intelligence: [{ key: "ledger", label: "Ledger" }, { key: "operations", label: "Operations" }, { key: "territory", label: "Territory" }],
   research: [{ key: "current", label: "Current" }, { key: "libraries", label: "Libraries" }, { key: "ardents", label: "Ardents" }, { key: "fabrials", label: "???" }],
 };
@@ -1005,6 +1005,11 @@ function normalizeRoute(routeOrLegacy) {
       return intel.network ? { view: "intelligence", tab: "ledger" } : { view: "home", tab: null };
     }
   }
+  // Old siege reports can point at a neutral expedition that now lives in Parshendi.
+  if (route.view === "plains" && route.tab === "sieges" && route.focus) {
+    const expedition = state?.plateaus?.sieges?.find((siege) => siege.id === route.focus);
+    if (expedition && expedition.targetType !== "player") route.tab = "raids";
+  }
   const sectionKey = route.tab ? route.view + ":" + route.tab : route.view;
   if (!ROUTE_SECTIONS[sectionKey]) return { view: "home", tab: null };
   return route;
@@ -1022,6 +1027,7 @@ function renderSpaceSubnav(route) {
     ? tabs.filter((tab) => tab.key !== "operations")
     : tabs;
   nav.classList.toggle("hidden", visibleTabs.length < 1 || route.tab === "teaser");
+  nav.classList.toggle("plains-subnav", route.view === "plains");
   nav.innerHTML = visibleTabs.map((tab) => {
     const locked = route.view === "intelligence" && ((tab.key === "ledger" || tab.key === "operations") ? !intel.network : tab.key === "territory" ? !intel.watchtower : false);
     const requirement = tab.key === "territory" ? "Watchtower" : "Ghostblood Network";
@@ -1241,7 +1247,7 @@ function renderUnits() {
   const hasNeutralHolding = state.plateaus.mine.some((plateau) => plateau.origin === "neutral");
   if (hasNeutralHolding) localStorage.setItem(expeditionHintKey, "complete");
   const showExpeditionHint = localStorage.getItem(expeditionHintKey) !== "complete";
-  const expeditionHint = showExpeditionHint ? '<aside class="fresh-player-dispatch"><div><span>Orders from the warcamp</span><strong>The Plains wait beyond the warcamp.</strong><p>Recruit a force suited to the crossing, then send it to survey an unclaimed plateau. Strength may win the ground, but Speed, Plunder, and Survive shape what returns.</p></div><button type="button" data-route-view="plains" data-route-tab="sieges">Survey the Plains</button></aside>' : '';
+  const expeditionHint = showExpeditionHint ? '<aside class="fresh-player-dispatch"><div><span>Orders from the warcamp</span><strong>The Plains wait beyond the warcamp.</strong><p>Recruit a force suited to the crossing, then send it to survey an unclaimed plateau. Strength may win the ground, but Speed, Plunder, and Survive shape what returns.</p></div><button type="button" data-route-view="plains" data-route-tab="raids">Survey the Plains</button></aside>' : '';
   const ardentRecruitment = monasteryLevel > 0
     ? group("ardents", "Ardents", countSummary(ardentia.ready, ardentia.owned), conclaveCard, "building-grid")
     : "";
@@ -1972,7 +1978,7 @@ function renderRaids() {
 function renderPlateaus() {
   if (!$("owned-plateaus")) return;
   const boardEnabled = rawStateData?.conflictLobby?.enabled === true;
-  $("player-siege-form").hidden = boardEnabled;
+  $("player-siege-form").closest("section").classList.toggle("hidden", boardEnabled);
   if (currentRoute.view === "plains" && currentRoute.tab === "sieges") conflictBoardUI.update({
     lobby: rawStateData?.conflictLobby,
     conflict: rawStateData?.[`board:${conflictBoardUI.selected}`],
@@ -1983,8 +1989,11 @@ function renderPlateaus() {
   renderPlateauBonusSummary();
   renderGroupedHoldings();
   renderRaidPreviews();
-  const urgent = state.plateaus.sieges.filter((siege) => siege.defenderId === state.me.id || (siege.targetType === "player" && siege.attackerId === state.me.id));
-  const routine = state.plateaus.sieges.filter((siege) => !urgent.includes(siege));
+  const rivalSieges = state.plateaus.sieges.filter((siege) => siege.targetType === "player");
+  const neutralExpeditions = state.plateaus.sieges.filter((siege) => siege.targetType !== "player");
+  $("active-neutral-expeditions").innerHTML = neutralExpeditions.length ? neutralExpeditions.map(siegeCard).join("") : '<div class="empty">No neutral expeditions underway.</div>';
+  const urgent = rivalSieges.filter((siege) => siege.defenderId === state.me.id || (siege.targetType === "player" && siege.attackerId === state.me.id));
+  const routine = rivalSieges.filter((siege) => !urgent.includes(siege));
   const urgentHeading = $("urgent-sieges-panel")?.querySelector("h2");
   if (urgentHeading) urgentHeading.textContent = "⚔ Your active sieges";
   $("active-sieges").innerHTML = routine.length ? routine.map(siegeCard).join("") : '<div class="empty">No other active plateau sieges.</div>';
@@ -2487,7 +2496,8 @@ function routeForMessage(message) {
   }
   const subject = String(message.subject || "").toLowerCase();
   if (subject.includes("plateau run") || subject.includes("gemheart claimed")) return { view: "plains", tab: "plateau-runs" };
-  if (subject.includes("siege") || subject.includes("plateau lost") || subject.includes("retaliation")) return { view: "plains", tab: "sieges" };
+  if (subject.includes("retaliation")) return { view: "plains", tab: "raids" };
+  if (subject.includes("siege") || subject.includes("plateau lost")) return { view: "plains", tab: "sieges" };
   if (subject.includes("raid")) return { view: "plains", tab: "raids" };
   if (subject.includes("investigation") || subject.includes("espionage")) return { view: "intelligence", tab: "operations" };
   if (subject.includes("research") || subject.includes("ardent")) return { view: "research", tab: "current" };
@@ -2755,7 +2765,7 @@ function renderOverview() {
   const operations = [];
   if (state.research?.active) operations.push({ label: "Active Research", detail: state.research.active.kind === "project" ? (state.research.rules?.projects?.[state.research.active.project]?.name || "Research") : (state.research.doctrines?.[state.research.active.doctrine]?.name || "Doctrine"), at: state.research.active.projectedCompletionAt || Date.now(), view: "research" });
   state.raids.filter((raid) => raid.attackerId === state.me.id).forEach((raid) => operations.push({ label: "Sphere raid", detail: raid.targetName, at: raid.arrivalAt, view: "raids" }));
-  state.plateaus.sieges.filter((siege) => siege.attackerId === state.me.id || siege.defenderId === state.me.id).forEach((siege) => operations.push({ label: siege.defenderId === state.me.id ? "Defending siege" : "Plateau siege", detail: state.plateaus.byId[siege.plateauId]?.name || siege.plateauName || "Plateau", at: siege.resolveAt, view: "plateaus" }));
+  state.plateaus.sieges.filter((siege) => siege.attackerId === state.me.id || siege.defenderId === state.me.id).forEach((siege) => operations.push({ label: siege.defenderId === state.me.id ? "Defending siege" : "Plateau siege", detail: state.plateaus.byId[siege.plateauId]?.name || siege.plateauName || "Plateau", at: siege.resolveAt, view: siege.targetType === "player" ? "plateaus" : "raids" }));
   (state.espionage?.missions || []).filter((mission) => mission.status === "pending").forEach((mission) => operations.push({ label: mission.operation === "sphere_heist" ? "Sphere Heist" : "Espionage investigation", detail: mission.targetName + " · " + mission.category, at: mission.resolveAt, view: "intelligence" }));
   if (state.plateauRun?.participants.some((entry) => entry.playerId === state.me.id)) operations.push({ label: "Plateau Run", detail: "Warcamp committed", at: state.plateauRun.joinUntil, view: "plateau" });
   operations.sort((a, b) => a.at - b.at);
@@ -4017,10 +4027,6 @@ $("install-app").addEventListener("click", async () => {
   $("install-app").classList.add("hidden");
 });
 $("toggle-holdings").addEventListener("click", () => { holdingsExpanded = !holdingsExpanded; renderGroupedHoldings(); });
-document.querySelectorAll("[data-expedition-mode]").forEach((button) => button.addEventListener("click", () => {
-  document.querySelectorAll("[data-expedition-mode]").forEach((entry) => entry.classList.toggle("active", entry === button));
-  document.querySelectorAll("[data-expedition-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.expeditionPanel === button.dataset.expeditionMode));
-}));
 $("finish-raids").addEventListener("click", () => {
   action(async () => {
     const result = await client.mutation(refs.forceResolveAllRaids, {});

@@ -285,3 +285,6 @@ button, input, select, textarea, summary, [role="button"] { touch-action: manipu
 .saved-research-card { border-color: rgba(255,216,138,.46); box-shadow: 0 0 20px rgba(255,216,138,.08); }
 .research-switch-note { margin-top: 4px; }
 .siege-defense-grid { grid-template-columns: 1fr; }
+
+/* Keep the three Plains destinations visible together on narrow screens. */
+.space-subnav.plains-subnav .subnav-button { flex: 1 1 0; width: auto; min-width: 0; padding-inline: 6px; }

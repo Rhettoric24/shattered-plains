@@ -158,7 +158,7 @@
             </section>
           </section>
 
-          <section class="view" id="view-raids" data-title="Raid planning" data-eyebrow="Raids">
+          <section class="view" id="view-raids" data-title="Parshendi" data-eyebrow="Plains">
             <section class="panel full-panel"><p class="eyebrow">Active raids</p><div class="raid-queue-grid two-column"><div><h3>My Raids</h3><div id="outgoing-queue" class="list"></div></div><div><h3>World Raids</h3><div id="world-queue" class="list"></div></div></div></section>
             <section class="panel full-panel">
               <p class="eyebrow">Parshendi</p>
@@ -187,12 +187,33 @@
                 <button id="launch-deep-plains-raid" data-mission-launch type="button">Launch Deep Plains Raid</button>
               </form>
             </section>
+            <section id="retaliation-warning-panel" class="panel full-panel hidden"><p class="eyebrow">Parshendi activity</p><h2>World retaliation warning</h2><div id="retaliation-warning" class="mission-summary"></div></section>
+            <section class="panel full-panel"><p class="eyebrow">Parshendi territory</p><h2>Explore neutral plateaus</h2>
+              <form id="neutral-siege-form" class="attack-planner" data-attack-planner="neutral">
+                <div class="mission-summary form-wide"><strong>Explore the neutral plateau pool</strong><span>Army Speed and Bridged Plateaus reduce this expedition's total duration. Plateau identity remains hidden until capture.</span></div>
+                <div class="target-selector form-wide"><label for="neutral-plateau-target">Target Plateau</label><select id="neutral-plateau-target"></select><div id="neutral-plateau-selection" class="target-selection-details"></div></div>
+                <div class="form-wide">
+                  <label>Select Units</label>
+                  <div id="neutral-siege-units" class="unit-input-grid"></div>
+                </div>
+                <div id="neutral-siege-preview" class="attack-outlook form-wide"></div>
+                <label class="form-wide conclave-deployment">Scout Conclave<select id="neutral-conclave-select"></select><small data-conclave-tradeoff></small></label>
+                <label class="form-wide fabrial-deployment">Fabrial<select id="neutral-fabrial"></select><small>Sphere-recovery Fabrials are not applicable to territorial expeditions.</small></label>
+                <button id="launch-neutral-siege" data-mission-launch type="button">Initiate expedition</button>
+              </form>
+            </section>
+            <section class="panel full-panel"><h2>Active neutral expeditions</h2><div id="active-neutral-expeditions" class="list"></div></section>
           </section>
 
-          <section class="view" id="view-plateaus" data-title="Plateau control" data-eyebrow="Land">
+          <section class="view" id="view-plateaus" data-title="PvP" data-eyebrow="Plains">
             <section id="live-conflict-board" class="panel full-panel" hidden></section>
-            <section id="retaliation-warning-panel" class="panel full-panel hidden"><p class="eyebrow">Parshendi activity</p><h2>World retaliation warning</h2><div id="retaliation-warning" class="mission-summary"></div></section>
+
             <section id="urgent-sieges-panel" class="panel full-panel hidden"><p class="eyebrow">Highest priority</p><h2>⚔ Active defensive sieges</h2><div id="urgent-sieges" class="list"></div></section>
+            <section class="panel full-panel">
+              <p class="eyebrow">Sieges</p>
+              <h2>All active sieges</h2>
+              <div id="active-sieges" class="list"></div>
+            </section>
             <section class="panel full-panel">
               <p class="eyebrow">Standing orders</p>
               <h2>Automatic siege defense</h2>
@@ -212,21 +233,9 @@
               </form>
             </section>
             <section class="panel full-panel">
-              <p class="eyebrow">Expeditions</p>
-              <div class="mode-switcher expedition-switcher"><button type="button" class="mode-button active" data-expedition-mode="neutral">Explore Neutral</button><button type="button" class="mode-button" data-expedition-mode="rival">Siege Rival</button></div>
-              <form id="neutral-siege-form" class="attack-planner expedition-panel active" data-expedition-panel="neutral" data-attack-planner="neutral">
-                <div class="mission-summary form-wide"><strong>Explore the neutral plateau pool</strong><span>Army Speed and Bridged Plateaus reduce this expedition's total duration. Plateau identity remains hidden until capture.</span></div>
-                <div class="target-selector form-wide"><label for="neutral-plateau-target">Target Plateau</label><select id="neutral-plateau-target"></select><div id="neutral-plateau-selection" class="target-selection-details"></div></div>
-                <div class="form-wide">
-                  <label>Select Units</label>
-                  <div id="neutral-siege-units" class="unit-input-grid"></div>
-                </div>
-                <div id="neutral-siege-preview" class="attack-outlook form-wide"></div>
-                <label class="form-wide conclave-deployment">Scout Conclave<select id="neutral-conclave-select"></select><small data-conclave-tradeoff></small></label>
-                <label class="form-wide fabrial-deployment">Fabrial<select id="neutral-fabrial"></select><small>Sphere-recovery Fabrials are not applicable to territorial expeditions.</small></label>
-                <button id="launch-neutral-siege" data-mission-launch type="button">Initiate expedition</button>
-              </form>
-              <form id="player-siege-form" class="attack-planner expedition-panel" data-expedition-panel="rival" data-attack-planner="rival">
+              <p class="eyebrow">PvP</p>
+              <h2>Challenge a rival holding</h2>
+              <form id="player-siege-form" class="attack-planner" data-attack-planner="rival">
                 <div class="mission-summary form-wide"><strong>Challenge a rival holding</strong><span>Initial deployment begins a one-hour Encirclement. Both sides may dispatch reinforcements immediately; battle remains locked until Encirclement ends. Unresolved sieges are forced to battle at the 24-hour deadline.</span><details><summary>Resolution rules</summary><small>The attacker must exceed the defender. Ties favor the defender. A deadline battle grants the defender +10% Power.</small></details></div>
                 <div class="target-selector form-wide"><label for="player-plateau-target">Target Plateau</label><select id="player-plateau-target"></select><div id="player-plateau-selection" class="target-selection-details"></div></div>
                 <div class="form-wide">
@@ -239,11 +248,7 @@
                 <button id="launch-player-siege" data-mission-launch type="button">Initiate siege</button>
               </form>
             </section>
-            <section class="panel full-panel">
-              <p class="eyebrow">Sieges</p>
-              <h2>All active sieges</h2>
-              <div id="active-sieges" class="list"></div>
-            </section>
+
           </section>
 
           <section class="view" id="view-plateau" data-title="Plateau runs" data-eyebrow="Gemhearts">

@@ -22,7 +22,7 @@ test.beforeEach(async ({ page }) => {
     const w = window as any;
     w.calls = []; w.fixture = fixture;
     w.board = module.createConflictBoardUI({ root: document.getElementById("live-conflict-board"),
-      query: async () => (w.preview || { cargo:0, remainingCapacity:100, cargoLost:0 }),
+      query: async (name: string) => name === "conflictBoards:atPlateau" ? null : (w.preview || { cargo:0, remainingCapacity:100, cargoLost:0 }),
       mutate: async (name: string, args: unknown) => { w.calls.push({ name, args }); return { revision: 4 }; }, onSelect: (id:string) => {w.fixture.focus=id;w.board.update(w.fixture)}, confirm: (message:string) => {w.confirmMessage=message;return w.confirmReply!==false} });
     w.board.update(fixture);
   }, context);
@@ -61,7 +61,7 @@ test("cargo warning cancels without a mutation, then confirms the exact server-c
   expect(await page.evaluate(()=>(window as any).calls[0].args.acceptedCargoLoss)).toBe(50);
 });
 test("overview and battlefield are separate; mouse drag backtracks and requires confirmation",async({page})=>{
-  await page.getByRole("button",{name:"← Back to Sieges"}).click();
+  await page.getByRole("button",{name:"← Back to PvP"}).click();
   await expect(page.locator(".cb-grid")).toHaveCount(0);
   await expect(page.getByText("Open or join a rival conflict",{exact:true})).toBeVisible();
   await page.getByRole("button",{name:"Enter battlefield"}).click();
@@ -103,4 +103,14 @@ test("split and reinforcement controls submit only selected real units; disabled
   await expect(page.getByText("Open or join a rival conflict", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Withdraw all my forces" }).click();
   expect(await page.evaluate(() => (window as any).calls[2].name)).toBe("conflictBoards:withdraw");
+});
+
+test("start a rival conflict from overview with the selected holding and army", async ({page}) => {
+  await page.getByRole('button',{name:'← Back to PvP'}).click();
+  await page.evaluate(()=>{ (window as any).preview=null; });
+  await page.getByText('Open or join a rival conflict',{exact:true}).click();
+  await page.getByRole('combobox',{name:'Rival holding',exact:true}).selectOption('plateau-two');
+  await page.getByLabel('commit Spearmen',{exact:true}).fill('7');
+  await page.getByRole('button',{name:'Commit army / join conflict'}).click();
+  expect(await page.evaluate(()=>(window as any).calls[0])).toMatchObject({name:'conflictBoards:open',args:{plateauId:'plateau-two',units:{spearman:7,bridgeman:0},fabrials:[]}});
 });
