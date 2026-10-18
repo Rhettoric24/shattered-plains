@@ -19,7 +19,7 @@ const renderGroupedHoldings = () => {};
 const renderRaidPreviews = () => {};
 const siegeCard = siege => '<article data-entity-id="'+siege.id+'">'+siege.id+'</article>';
 ${fn('renderPlateaus').split('  document.querySelectorAll("[data-commit-siege-defenders]")')[0]} }
-window.renderFixture = (data, enabled) => { state=data; rawStateData={conflictLobby:{enabled}}; renderPlateaus(); };
+window.renderFixture = (data, enabled) => { state={config:{unlockedUnits:{}},...data}; rawStateData={conflictLobby:{enabled}}; renderPlateaus(); };
 const refreshRouteDetails = async () => {};
 const ensureReactiveSubscriptions = () => {};
 const shouldResetRouteScroll = () => true;

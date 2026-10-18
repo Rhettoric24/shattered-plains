@@ -129,7 +129,10 @@ let reactiveRenderPromise = Promise.resolve();
 
 const $ = (id) => document.getElementById(id);
 const conflictBoardUI = createConflictBoardUI({
+  quantityControlMarkup,
+  bindQuantityControls,
   root: $("live-conflict-board"),
+  historyRoot: $("pvp-conflict-history"),
   query: (name, args) => client.query(name, args),
   mutate: (name, args) => client.mutation(name, args),
   onSelect: id => {
@@ -1989,6 +1992,9 @@ function renderPlateaus() {
     conflict: rawStateData?.[`board:${conflictBoardUI.selected}`],
     targets: rawStateData?.plateauBoard?.rivals || [],
     ready: state.me.availableUnits,
+    unitConfig: state.config.unlockedUnits,
+    research: state.me.completedResearch,
+    plateauCounts: state.plateaus.counts,
     focus: currentRoute.focus,
   });
   renderPlateauBonusSummary();

@@ -284,6 +284,15 @@ Shardbearers. Do not solve only with absurd pricing.
 
 # Intelligence
 
+### DECIDED — 2026-10-18 — Rival plateau names are always visible
+
+Territory Intel 0–24 includes rival plateau names and owners. Type and
+Highground/Large traits still require 25; exact Gemheart timing and neutral
+reclamation details still require 75. Ledger score disclosure is unchanged.
+The PvP launcher mirrors the neutral expedition planner, with grouped rival
+holdings, an Intel-filtered plateau briefing, and army composition preview.
+Active conflicts appear first; closed conflict history appears at the page bottom.
+
 ### DECIDED --- Rival Intel is persistent and category-specific
 
 Each viewer/rival pair has four independent 0--100 pools: Military,

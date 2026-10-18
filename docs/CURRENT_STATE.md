@@ -410,7 +410,9 @@ raise Hostility or reset peaceful decay.
 
 Plateaus have deterministic human-readable names. Watchtower/Territory
 Intelligence controls disclosure precision; owned plateaus are fully
-known.
+known. Rival plateau names and owners are visible at every Territory Intel
+band. At 25 Intel, type and Highground/Large traits are revealed; at 75,
+exact Gemheart timing and neutral reclamation details are revealed.
 
 Plateau Runs are Chasmfiend boss encounters. Their Power begins at
 `max(600, 250 + 125 × active players)`, rises linearly to `11/3` of that
@@ -467,7 +469,7 @@ a recipient notification. This is not a marketplace or negotiated trade.
 
 Watchtower Intel covers Parshendi and neutral-world activity. Rival Ledger
 Intel covers PvP kingdoms in four categories. Territory Intel also gates
-rival plateau identity and exact holding details. Economy Intel enables
+rival plateau types, traits, and exact holding details; names are always visible. Economy Intel enables
 Sphere Heists, and Military Intel enables active PvP siege investigations.
 
 # Season Ledger

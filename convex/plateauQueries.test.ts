@@ -118,7 +118,7 @@ describe("scoped plateau queries", () => {
     expect(board.neutral[0]).not.toHaveProperty("type");
     expect(board.neutral[0].resistance).not.toBe(287);
     expect(board.rivals[0]).not.toHaveProperty("type");
-    expect(board.rivals[0].name).toBe("Rival holding");
+    expect(board.rivals[0].name).toBe("Secret Rival");
   });
 
   test("rival plateau details follow the persistent Territory Intel thresholds", async () => {
@@ -140,8 +140,13 @@ describe("scoped plateau queries", () => {
     const player = t.withIdentity({ subject });
 
     let rival = (await player.query(api.plateaus.getSiegeBoard, {})).rivals[0];
-    expect(rival).toMatchObject({ name: "Rival holding", intelligenceLevel: 0 });
+    expect(rival).toMatchObject({ name: "Secret Rival", intelligenceLevel: 0 });
     expect(rival).not.toHaveProperty("type");
+    expect(rival).not.toHaveProperty("highground");
+    expect(rival).not.toHaveProperty("large");
+    expect(rival).not.toHaveProperty("gemheartProgress");
+    expect(rival).not.toHaveProperty("baseNeutralDefense");
+    expect(rival).not.toHaveProperty("parshendiReclamationCount");
 
     await t.run(async (ctx) => {
       const resource = await ctx.db.query("kingdomIntelResources")

@@ -539,7 +539,7 @@ export const getSiegeBoard = query({
             : "Neutral";
           return {
             _id: plateau._id,
-            name: intelligenceLevel >= 1 ? plateau.name : `${ownerName} holding`,
+            name: plateau.name,
             status: plateau.status,
             ownerPlayerId: plateau.ownerPlayerId,
             ownerName,

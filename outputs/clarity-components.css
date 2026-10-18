@@ -145,6 +145,10 @@
 .target-selector select { width: 100%; font-size: 1rem; }
 .target-selection-details { display: grid; grid-column: 2; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 7px; }
 .target-selection-details:empty { display: none; }
+.cb-launcher { margin-top: 24px; }
+.cb-launcher .target-selector select { min-width: 0; text-overflow: ellipsis; }
+.cb-launcher .target-selection-details strong { overflow-wrap: anywhere; }
+.cb-history { margin-top: 24px; }
 .target-selection-details span { display: grid; gap: 3px; border-left: 2px solid rgba(127, 183, 255, .34); padding: 5px 8px; color: var(--muted); font-size: .68rem; line-height: 1.25; }
 .target-selection-details strong { color: var(--text); font-size: .78rem; overflow-wrap: normal; word-break: normal; }
 .plateau-group h3 { display: flex; justify-content: space-between; color: var(--text); }

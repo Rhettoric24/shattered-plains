@@ -2,6 +2,7 @@
 // never imports a resolver, Lab snapshot, or hidden enemy state.
 import { retreatShade, queuedRouteHints } from "../conflict-board/movement-presentation";
 import { attachRouteDrag } from "../conflict-board/route-drag";
+import { effectivePower, effectiveSurvivability, unitPlunder, missionMsForBase } from "../convex/rules";
 const troopKeys = ["bridgeman", "spearman", "chull", "shardbearer"];
 const names = { bridgeman: "Bridgemen", spearman: "Spearmen", chull: "Chulls", shardbearer: "Shardbearers" };
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -32,7 +33,7 @@ function powerText(p) {
   return p.label;
 }
 
-export function createConflictBoardUI({ root, query, mutate, onSelect, confirm = message => window.confirm(message) }) {
+export function createConflictBoardUI({ root, historyRoot, query, mutate, onSelect, quantityControlMarkup, bindQuantityControls, confirm = message => window.confirm(message) }) {
   let context, selected = null, selectedArmy = null, draft = null, draftOrigin = null;
   let signature = "", busy = false, notice = "", values = {}, pendingSubmission = null, handledFocus = null;
   let sheetGesture = null, suppressSheetClick = false;
@@ -51,6 +52,42 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
   }
   const readUnits = prefix => ({ scout: 0, heavy: 0, ...Object.fromEntries(troopKeys.map(k => [k, Number(values[`${prefix}-${k}`] || 0)])) });
   const commitment = prefix => `${inputs(prefix, context.ready)}<label>Half-Shards to carry <input data-cb-value="${prefix}-fabrials" type="number" min="0" max="128" value="${esc(values[`${prefix}-fabrials`] || 0)}"></label><small>Uses your real inventory. Painrial, Soulcaster and Conclave attachment remain unavailable on live Boards.</small>`;
+  const shortName = name => Array.from(String(name || "Unknown")).length > 28 ? Array.from(String(name)).slice(0, 27).join("") + "…" : String(name || "Unknown");
+  function targetOptions() {
+    const groups = new Map();
+    for (const p of context.targets) {
+      const key = p.ownerPlayerId || p.ownerName;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    }
+    return [...groups.values()].map(rows => `<optgroup label="${esc(shortName(rows[0].ownerName))}">${rows.map(p => `<option value="${esc(p._id)}" ${values.target === p._id ? "selected" : ""}>　${esc(shortName(p.name))}</option>`).join("")}</optgroup>`).join("");
+  }
+  function plateauInfo() {
+    const p = context.targets.find(p => p._id === values.target);
+    if (!p) return "";
+    const fact = (label, value) => `<span>${esc(label)}<strong>${esc(value)}</strong></span>`;
+    const typeNames = { sphere: "Sphere", bridged: "Bridged", ancient: "Ancient", gemheart: "Gemheart" };
+    return fact("Held by", p.ownerName) + fact("Plateau", p.name) + fact("Type", typeNames[p.type] || "Unknown · requires 25 Territory Intel") +
+      fact("Traits", p.type ? [p.highground ? "Highground" : "", p.large ? "Large" : ""].filter(Boolean).join(" · ") || "None" : "Unknown · requires 25 Territory Intel") +
+      (p.type === "gemheart" ? fact("Next Gemheart", p.gemheartProgress ? time(p.gemheartProgress.nextGemheartAt) : "Requires 75 Territory Intel") : "") +
+      (p.intelligenceLevel >= 2 ? fact("Parshendi reclamations", num(p.parshendiReclamationCount)) + fact("Base neutral defense", num(p.baseNeutralDefense)) : "");
+  }
+  function launcherUnits() {
+    return `<div class="unit-input-grid">${troopKeys.filter(k => !context.unitConfig || context.unitConfig[k]).map(k => {
+      const u = context.unitConfig?.[k], available = context.ready?.[k] || 0;
+      const attrs = `data-cb-value="commit-${k}" aria-label="commit ${names[k]}"`;
+      return `<div class="unit-input mission-unit-input"><div class="mission-unit-heading"><strong>${esc(u?.name || names[k])}</strong><small>Available ${num(available)}${u ? ` · Power ${num(u.power)} · Speed ${num(u.speed)} · Plunder ${num(u.plunder)} · Survive ${num(u.survivability)}` : ""}</small></div>${quantityControlMarkup ? quantityControlMarkup(attrs, values[`commit-${k}`] || 0, available, { half: true, max: true }) : `<input ${attrs} type="number" min="0" max="${available}" value="${esc(values[`commit-${k}`] || 0)}">`}</div>`;
+    }).join("")}</div>`;
+  }
+  function armyOutlook() {
+    const units = readUnits("commit"), research = context.research || {};
+    const ms = missionMsForBase(7200000, units, context.plateauCounts, research);
+    const cell = (label, value) => `<div class="outlook-cell"><span>${label}</span><strong>${esc(value)}</strong></div>`;
+    return `<div class="outlook-heading"><span>Army composition</span><strong>${esc(unitsText(units))}</strong></div><div class="outlook-grid">${cell("Power", num(effectivePower(units, research)))}${cell("Survive", num(effectiveSurvivability(units, research)))}${cell("Travel time", `${Math.ceil(ms / 60000)} min`)}${cell("Carry", `${num(Math.max(0, unitPlunder(units, research)))} Spheres`)}</div>`;
+  }
+  function conflictList(rows, history = false) {
+    return `<section class="${history ? "cb-history" : "cb-active-conflicts"}"><h3>${history ? "Conflict history" : "Active conflicts"}</h3><div class="cb-conflict-list">${rows.map(c => `<article><h3>${esc(c.name)}</h3><p>${esc(c.status)}${c.status === "active" ? ` · Next resolution ${esc(time(c.nextCycleAt))}` : ""}</p>${button("enter", c.status === "active" ? "Enter battlefield" : "View result", false, `data-conflict="${esc(c.conflictId)}"`)}</article>`).join("") || `<p>${history ? "No closed conflicts yet." : "No active conflicts."}</p>`}</div></section>`;
+  }
   const fabrials = prefix => {
     const count = Number(values[`${prefix}-fabrials`] || 0);
     if (!Number.isSafeInteger(count) || count < 0 || count > 128) throw Error("Choose 0–128 available Half-Shards.");
@@ -194,13 +231,14 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     root.classList.toggle("cb-has-sheet", battlefield && Boolean(selectedArmy));
     root.parentElement?.classList.toggle("cb-battlefield-open", battlefield);
     root.hidden = !lobby || (!lobby.enabled && !lobby.conflicts.length);
-    if (root.hidden) { root.innerHTML = ""; return; }
+    if (root.hidden) { root.innerHTML = ""; if (historyRoot) { historyRoot.hidden = true; historyRoot.innerHTML = ""; } return; }
     root.innerHTML = `${battlefield ? button("back", "← Back to PvP") : ""}<h2 class="cb-heading">${battlefield ? "Battlefield" : "Conflict Board"}</h2>${battlefield ? "" : "<p>Choose a conflict to enter its battlefield. Orders resolve every two hours, even while you are offline.</p>"}
       ${!lobby.enabled ? "<p>New commitments are paused. Existing armies can still receive orders and withdraw.</p>" : ""}
       ${refreshWarning ? `<p class="cb-refresh-warning" role="status">${esc(refreshWarning)}</p>` : ""}
       <p role="status" class="cb-notice">${esc(busy ? "Sending order…" : notice)}</p>
-      ${!battlefield ? `<div class="cb-conflict-list">${lobby.conflicts.map(c => `<article><h3>${esc(c.name)}</h3><p>${esc(c.status)}${c.status === "active" ? ` · Next resolution ${esc(time(c.nextCycleAt))}` : ""}</p>${button("enter", c.status === "active" ? "Enter battlefield" : "View result", false, `data-conflict="${esc(c.conflictId)}"`)}</article>`).join("") || "<p>No conflicts yet.</p>"}</div>` : ""}
-      ${lobby.enabled && !battlefield ? `<details><summary>Open or join a rival conflict</summary><label>Rival holding<select data-cb-value="target"><option value="">Choose a holding</option>${context.targets.map(p => `<option value="${esc(p._id)}" ${values.target === p._id ? "selected" : ""}>${esc(p.name)} · ${esc(p.ownerName)}</option>`).join("")}</select></label>${commitment("commit")}${button("open", "Commit army / join conflict")}<p>Arrival takes roughly two hours, modified by travel Speed. Other kingdoms may join. The defender's vulnerable treasury pool is 10% at declaration.</p></details>` : ""}
+      ${!battlefield ? conflictList(lobby.conflicts.filter(c => c.status === "active")) : ""}
+      ${lobby.enabled && !battlefield ? `<section class="cb-launcher"><h3>Open or join a rival conflict</h3><div class="attack-planner"><div class="mission-summary form-wide"><strong>March on a rival plateau</strong><span>Other kingdoms may join. The defender's vulnerable treasury pool is 10% at declaration.</span></div><div class="target-selector form-wide"><label for="cb-plateau-target">Target Plateau</label><select id="cb-plateau-target" data-cb-value="target"><option value="">Choose a holding</option>${targetOptions()}</select><div class="target-selection-details" data-cb-plateau-info>${plateauInfo()}</div></div><div class="form-wide"><label>Select Units</label>${launcherUnits()}</div><div class="attack-outlook form-wide" data-cb-army-outlook>${armyOutlook()}</div><label class="form-wide">Half-Shards to carry<input data-cb-value="commit-fabrials" type="number" min="0" max="128" value="${esc(values["commit-fabrials"] || 0)}"></label>${button("open", "Commit army / join conflict", !values.target)}<p class="hint form-wide">Arrival takes roughly two hours before army Speed and Bridged Plateau reductions.</p></div></section>` : ""}
+      ${!battlefield && !historyRoot ? conflictList(lobby.conflicts.filter(c => c.status !== "active"), true) : ""}
       ${battlefield && !d ? "<p>Loading authenticated battlefield…</p>" : ""}
       ${battlefield && d ? `<section data-entity-id="${esc(selected)}"><h3>${esc(lobby.conflicts.find(c => c.conflictId === selected)?.name || "Conflict")}</h3>
       ${d.status === "settled" ? `<p>Finished: ${esc(d.outcome)}. Surviving assets have returned.</p>` : boardMarkup(d)}
@@ -208,16 +246,23 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     for (const el of root.querySelectorAll("details")) if (openDetails.has(el.querySelector("summary")?.textContent)) el.open = true;
     if (focusedKey) [...root.querySelectorAll("[data-cb-value]")].find(el => el.dataset.cbValue === focusedKey)?.focus({ preventScroll: true });
     else if (focusSelector) root.querySelector(focusSelector)?.focus({preventScroll:true});
+    if (historyRoot) {
+      historyRoot.hidden = battlefield;
+      historyRoot.innerHTML = battlefield ? "" : conflictList(lobby.conflicts.filter(c => c.status !== "active"), true);
+    }
+    bindQuantityControls?.(root);
     fitBoard();
   }
   root.addEventListener("input", e => {
     const key = e.target.dataset.cbValue;
     if (key) values[key] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    if (key?.startsWith("commit-")) { const card = root.querySelector("[data-cb-army-outlook]"); if (card) card.innerHTML = armyOutlook(); }
   });
   root.addEventListener("change", e => {
     const key = e.target.dataset.cbValue;
     if (key === "conflict") select(e.target.value);
     else if (key) values[key] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    if (key === "target") render();
   });
   root.addEventListener("click", async e => {
     const target = e.target.closest("[data-cb]") || e.target.closest("[data-player-position]");
@@ -268,6 +313,10 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
       notice = "Order accepted. The battlefield updates automatically.";
     } catch (error) { notice = /load failed|failed to fetch|networkerror/i.test(error.message || "") ? "Order confirmation unavailable. It may have been received. Retry the same command when connected; its receipt prevents duplicates." : error.message || "Unable to send order."; }
     finally { busy = false; render(); }
+  });
+  historyRoot?.addEventListener("click", e => {
+    const entry = e.target.closest('[data-cb="enter"]');
+    if (entry && !busy) select(entry.dataset.conflict);
   });
   const paintDrag = () => {
     const f = selectedForce(data(), selectedArmy)?.formation;
@@ -370,6 +419,6 @@ export function createConflictBoardUI({ root, query, mutate, onSelect, confirm =
     },
     select,
     get selected() { return selected; },
-    reset() { fittedLayout = null; root.style.removeProperty("--cb-board-height"); document.body.classList.remove("cb-battlefield-mode"); root.parentElement?.classList.remove("cb-battlefield-open"); sheetExpanded = false; inspectedTile = null; root.classList.remove("cb-has-sheet"); context = null; selected = null; selectedArmy = null; draft = null; values = {}; signature = ""; pendingSubmission = null; handledFocus = null; root.innerHTML = ""; root.hidden = true; },
+    reset() { fittedLayout = null; root.style.removeProperty("--cb-board-height"); document.body.classList.remove("cb-battlefield-mode"); root.parentElement?.classList.remove("cb-battlefield-open"); sheetExpanded = false; inspectedTile = null; root.classList.remove("cb-has-sheet"); context = null; selected = null; selectedArmy = null; draft = null; values = {}; signature = ""; pendingSubmission = null; handledFocus = null; root.innerHTML = ""; root.hidden = true; if (historyRoot) { historyRoot.innerHTML = ""; historyRoot.hidden = true; } },
   };
 }

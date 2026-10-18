@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { buildSync } from "esbuild";
+import fs from "node:fs";
+const clientSource = fs.readFileSync("outputs/convex-client.js", "utf8");
+const quantityHelpers = ["quantityControlMarkup", "bindQuantityControls"].map(name => { const start = clientSource.indexOf(`function ${name}(`); return clientSource.slice(start, clientSource.indexOf("\nfunction ", start + 1)); }).join("\n");
 import { createBoard } from "../../conflict-board/board";
 const units = { bridgeman: 10, spearman: 20, chull: 0, shardbearer: 0 };
 const formation = { id: "ours", name: "Our formation", kingdom: "blue", units, position: "B3", history: ["approach", "B3"], order: { kind: "move", route: ["B2"], onDefeat: "continue" } };
@@ -112,7 +115,7 @@ test("start a rival conflict from overview with the selected holding and army", 
   await page.getByRole('button',{name:'← Back to PvP'}).click();
   await page.evaluate(()=>{ (window as any).preview=null; });
   await page.getByText('Open or join a rival conflict',{exact:true}).click();
-  await page.getByRole('combobox',{name:'Rival holding',exact:true}).selectOption('plateau-two');
+  await page.getByRole('combobox',{name:'Target Plateau',exact:true}).selectOption('plateau-two');
   await page.getByLabel('commit Spearmen',{exact:true}).fill('7');
   await page.getByRole('button',{name:'Commit army / join conflict'}).click();
   expect(await page.evaluate(()=>(window as any).calls[0])).toMatchObject({name:'conflictBoards:open',args:{plateauId:'plateau-two',units:{spearman:7,bridgeman:0},fabrials:[]}});
@@ -369,3 +372,45 @@ test('mobile board height survives toolbar height changes, scrolling, sheet chan
   await page.evaluate(()=>{Object.defineProperty(screen.orientation,'angle',{configurable:true,value:90});screen.orientation.dispatchEvent(new Event('change'))});
   await expect.poll(height).not.toBe(wider);
 });
+
+ test("launcher preserves Intel gates, live army controls and bottom history", async ({ page }) => {
+  await page.getByRole('button', {name:'← Back to PvP'}).click();
+  await page.evaluate(async helpers => {
+    const w=window as any;
+    w.board.reset();
+    const module=await import('/board-ui.js');
+    const quantity=new Function('let quantityIncrement=1;'+helpers+';return {quantityControlMarkup,bindQuantityControls}')();
+    document.body.innerHTML='<link rel="stylesheet" href="/shattered-plains/shattered-plains-styles.css"><link rel="stylesheet" href="/shattered-plains/clarity-components.css"><link rel="stylesheet" href="/shattered-plains/clarity-responsive.css"><div id="live-conflict-board" class="panel"></div><div id="other-content">Other PvP controls</div><div id="history" class="panel"></div>';
+    w.fixture.focus=null;
+    w.fixture.targets=[{_id:'low',ownerPlayerId:'red',ownerName:'A very long rival kingdom name that should be shortened',name:'The Very Long Plateau Name Beyond The Limit',intelligenceLevel:0},{_id:'known',ownerPlayerId:'red',ownerName:'A very long rival kingdom name that should be shortened',name:'Known Gemheart',intelligenceLevel:1,type:'gemheart',highground:true,large:true}];
+    w.fixture.lobby.conflicts.push({conflictId:'old',name:'Old conflict',status:'settled'});
+    w.board=module.createConflictBoardUI({root:document.getElementById('live-conflict-board'),historyRoot:document.getElementById('history'),...quantity,query:async()=>null,mutate:async()=>({}),onSelect:(id:string)=>{w.fixture.focus=id;w.board.update(w.fixture)}});
+    w.board.update(w.fixture);
+  }, quantityHelpers);
+  const select=page.getByRole('combobox',{name:'Target Plateau'});
+  await select.selectOption('low');
+  await expect(page.locator('[data-cb-plateau-info]')).toContainText('The Very Long Plateau Name Beyond The Limit');
+  await expect(page.locator('[data-cb-plateau-info]')).toContainText('requires 25 Territory Intel');
+  expect(await select.locator('optgroup').evaluateAll(els=>els.every(el=>Array.from((el as HTMLOptGroupElement).label).length<=28))).toBe(true);
+  expect(await select.locator('option').evaluateAll(els=>els.every(el=>Array.from(el.textContent!.trim()).length<=28))).toBe(true);
+  await page.getByLabel('commit Spearmen',{exact:true}).fill('7');
+  const outlook=page.locator('[data-cb-army-outlook]');
+  await expect(outlook).toContainText('7 Spearmen');
+  const before=await outlook.textContent();
+  await page.getByLabel('commit Spearmen',{exact:true}).locator('..').getByRole('button',{name:'Max',exact:true}).click();
+  await expect(outlook).toContainText('20 Spearmen');
+  expect(await outlook.textContent()).not.toBe(before);
+  await select.selectOption('known');
+  await expect(page.locator('[data-cb-plateau-info]')).toContainText('Highground · Large');
+  await expect(page.locator('[data-cb-plateau-info]')).toContainText('Requires 75 Territory Intel');
+  await expect(page.getByLabel('commit Spearmen',{exact:true})).toHaveValue('20');
+  await expect(page.locator('.cb-active-conflicts')).toContainText('Stonefield');
+  await expect(page.locator('.cb-active-conflicts')).not.toContainText('Old conflict');
+  await expect(page.locator('#history')).toContainText('Old conflict');
+  expect(await page.locator('#history').evaluate(el=>Boolean(el.compareDocumentPosition(document.getElementById('other-content')!) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:'test-results/pvp-launcher-'+page.viewportSize()!.width+'.png',fullPage:true});
+  await page.getByRole('button',{name:'View result',exact:true}).click();
+  await expect(page.locator('#history')).toBeHidden();
+  expect(await page.evaluate(()=>(window as any).board.selected)).toBe('old');
+ });
