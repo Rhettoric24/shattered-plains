@@ -1,4 +1,4 @@
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Event } from "../conflict-board/types";
 import { totalUnits } from "./rules";
@@ -11,6 +11,12 @@ export async function ensureRelations(ctx: MutationCtx, playerId: Id<"players">)
   if (existing) return existing;
   const id = await ctx.db.insert("parshendiRelations", { playerId, favor: 0, tributeCount: 0, tributeWindowAt: Date.now() });
   return (await ctx.db.get(id))!;
+}
+export function donationWindow(rel: Doc<"parshendiRelations"> | null, now: number) {
+  if (!rel || now - rel.tributeWindowAt >= DIPLOMACY.tributeWindowMs) return { spheres: 0, gemhearts: 0 };
+  // Already-rewarded V1 contracts affect diminishing returns, never new Favor credit.
+  return { spheres: rel.windowSpheres ?? rel.tributeCount * DIPLOMACY.tributeSpheres,
+    gemhearts: rel.windowGemhearts ?? rel.tributeCount * DIPLOMACY.tributeGemhearts };
 }
 /** Only real battle results enter this ledger. No client-submitted result or grant API. */
 export async function recordDiplomacyVictories(ctx: MutationCtx, conflictId: Id<"boardConflicts">, events: Event[], at: number) {

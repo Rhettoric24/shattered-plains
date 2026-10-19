@@ -45,6 +45,8 @@ export default defineSchema({
   parshendiRelations: defineTable({
     playerId: v.id("players"), favor: v.number(),
     tributeWindowAt: v.number(), tributeCount: v.number(),
+    sphereCredit: v.optional(v.number()), gemheartCredit: v.optional(v.number()),
+    windowSpheres: v.optional(v.number()), windowGemhearts: v.optional(v.number()),
     activeConflictId: v.optional(v.id("boardConflicts")), activeFormationId: v.optional(v.string()),
   }).index("by_playerId", ["playerId"]),
   parshendiReserve: defineTable({ key: v.string(), gemhearts: v.number() }).index("by_key", ["key"]),
@@ -62,7 +64,10 @@ export default defineSchema({
     key: v.string(), winnerId: v.id("players"), targetIds: v.array(v.id("players")), at: v.number(),
     petitionId: v.optional(v.id("parshendiPetitions")),
   }).index("by_key", ["key"]).index("by_winnerId_and_at", ["winnerId", "at"]),
-  parshendiTributes: defineTable({ playerId: v.id("players"), requestId: v.string(), at: v.number() })
+  parshendiTributes: defineTable({ playerId: v.id("players"), requestId: v.string(), at: v.number(),
+    fingerprint: v.optional(v.string()),
+    result: v.optional(v.object({ favorGranted: v.number(), sphereCredit: v.number(), gemheartCredit: v.number(), hostilityReduction: v.number() })),
+  })
     .index("by_playerId_and_requestId", ["playerId", "requestId"]),
 
   // Private authoritative snapshots. Only allowlisted viewer projections leave

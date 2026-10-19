@@ -12,8 +12,12 @@ Statuses:
 ### TESTING — Parshendi Diplomacy V1
 
 User-approved V1 separates Hostility from a capped 0–5 Favor resource. Shared
-first-come-first-served petitions and full Sphere/Gemheart tribute earn Favor;
-one standalone allied formation can be called into a kingdom's active PvP conflict.
+first-come-first-served world petitions and personal Sphere/Gemheart donations earn
+Favor. Donations can be paid separately; two progress bars require accumulated
+10,000 Spheres AND one Gemheart for each Favor, with excess retained. No payment
+petitions appear in the rotation. Cumulative 24-hour donation totals determine
+diminishing Hostility reduction; splitting payments cannot improve the rate.
+One standalone allied formation can be called into a kingdom's active PvP conflict.
 Allies never merge, move one square per resolution, disperse after defeat, and
 withdraw at conflict end. Numerical balance remains provisional. This reopens
 only this narrow diplomacy scope; broader treaties and exchange systems remain

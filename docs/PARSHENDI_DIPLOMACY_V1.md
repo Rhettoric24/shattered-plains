@@ -14,19 +14,37 @@ All values live in `convex/diplomacyRules.ts`.
 
 | Contract | Payment | Reward | Hostility reduction |
 | --- | --- | --- | --- |
-| Standing tribute | 10,000 Spheres AND 1 Gemheart | 1 Favor | 12, then floor(12 / (1 + prior tributes)), minimum 1 |
+| Standing tribute | Separate Sphere or Gemheart donations; accumulated 10,000 Spheres AND 1 Gemheart per Favor | 1 Favor per completed pair | First 10,000 Spheres: 8; first Gemheart: 4; cumulative logarithmic diminishing returns |
 | Donate Plateau | Relinquish the requested neutral-origin plateau | 1 Favor | 15 |
 | Challenge the Aggressor | Qualifying authoritative PvP battle victory | 1 Favor | 15 |
-| Fallback supply petitions | 2,500 / 4,000 / 6,000 Spheres by board slot | 1 Favor | 15 |
 
-Tribute repetition resets 24 hours after the first tribute of the current window.
-Favor's payment price never escalates. Hostility stops at zero. Every donated
-Gemheart enters the shared authoritative reserve; no exchange exists yet.
+Personal donation progress has two bars, one for Spheres and one for Gemhearts.
+Each completed pair consumes exactly 10,000 Sphere credit and one Gemheart credit
+and grants a Favor. Excess stays saved toward subsequent Favor; progress does not
+expire. Payments are independent and choose a whole amount with a slider or exact
+input. The preview shows the actual whole-point Hostility reduction and Favor gain.
+
+For total donations S and G within the kingdom's current 24-hour window, define:
+
+`D(S,G) = floor(8 × log2(1 + S/10000) + 4 × log2(1 + G))`.
+
+A donation reduces Hostility by the difference between D after and before payment,
+never below zero. This makes splitting payments equivalent to a single payment,
+including whole-point rounding. Diminishing returns reset 24 hours after the window's
+first donation; Favor progress stays saved. The first 10,000 Spheres removes eight
+Hostility, and the first Gemheart removes four. Later equal donations remove less.
+A small donation can show zero whole-point reduction while still advancing Favor.
+Per-payment limits are 1,000,000 Spheres or 1,000 Gemhearts, subject to affordability.
+
+At five Favor, donations are blocked before any charge. A donation that would award
+more Favor than the remaining room is rejected in full, with its progress preserved.
+Petition rewards remain blocked at the cap. No reward is silently consumed.
+Every donated Gemheart enters the shared authoritative reserve; no exchange exists.
 
 The economy currently starts a kingdom at 1,200 Spheres and one Gemheart.
 Research costs several thousand Spheres, while a Half-Shard costs 15,000 Spheres
-and two Gemhearts. Tribute is therefore an expensive repeatable option; petitions
-cost fewer resources and reduce more Hostility. These are explicit initial values,
+and two Gemhearts. A completed donation pair is therefore an expensive repeatable option; petitions
+require world actions and reduce more Hostility. These are explicit initial values,
 not a conclusion about live-player affordability.
 
 | Favor cost | Formation | Fixed Power |
@@ -44,12 +62,16 @@ general Power range. No ordinary unit balance was changed.
 
 ## Shared petition lifecycle and eligibility
 
-An internal hourly mutation maintains three slots, each lasting 24 hours. The
-first slot prefers a recently captured plateau, the second a kingdom with
-effective Hostility of at least 68, and missing candidates use supply petitions.
-Available petitions keep their original expiration. Fulfilled petitions leave
-the board immediately; the next hourly evaluation fills empty slots. No personal
-acceptance, quest journal, progress meter, or completion step exists.
+An internal hourly mutation maintains up to three shared slots, each lasting
+24 hours. It selects recently captured plateaus and kingdoms with effective
+Hostility of at least 68, preferring a mix where possible. Available petitions
+keep their original expiration. Fulfilled petitions leave immediately; hourly
+evaluation fills empty slots only when another suitable world objective exists.
+There are no rotating Sphere or Gemheart payments, including fallback offers.
+Old unfulfilled supply petitions are hidden/rejected immediately and marked inactive
+by the next refresh. Their historical rows remain intact. An empty board explains
+that there are no suitable world events yet; it never invents a payment objective.
+No personal acceptance, quest journal, or separate quest progress system exists.
 
 Generation reads the most recent 200 captured owned plateaus and the highest
 200 stored Hostility rows, using indexes and effective peaceful decay. It avoids
@@ -74,7 +96,7 @@ One receipt lists all qualifying defeated targets and can be spent on only one
 petition, including in a multi-kingdom battle. Replayed resolutions cannot duplicate it.
 
 Fulfillment, costs, reward, receipt consumption and shared completion are one
-Convex transaction. Tribute also has a per-player request receipt for safe retries.
+Convex transaction. Donations also have a per-player receipt bound to the resource and amount for safe retries.
 Favor is an integer from zero to five. A reward exceeding the cap rejects before
 any economic settlement, donation, victory consumption or territory change.
 
@@ -122,13 +144,16 @@ deployment, the global active limit, movement, merges/arrivals, small and large
 combat, Chasmfiend defeat, storms, objectives, Intel and conflict-end withdrawal.
 Browser tests cover mobile/desktop purchase controls and donation confirmation.
 
-Release checks: 483 Vitest tests; 48 live Board/Diplomacy browser tests at
+Release checks for the separate-donation update: 493 Vitest tests; 48 live Board/Diplomacy browser tests at
 390/1440 widths; 45 Lab browser tests at 390/700/1440; two static Pages-prefix
 tests. Both static frontend and isolated Lab builds pass. The existing Plateau
 Run tests can log scheduled push teardown warnings while still passing.
 
 Schema changes add Diplomacy tables and indexes; no reset, destructive migration,
-resource grant endpoint or backfill is needed. Existing kingdoms read as zero
+resource grant endpoint or backfill is needed. New progress and window totals are optional fields.
+Already-rewarded full V1 contracts never become new Favor credit: legacy tribute
+counts only initialize the current diminishing-returns history. Old cached clients
+receive an explicit refresh message instead of being charged for the former contract. Existing kingdoms read as zero
 Favor until their first Diplomacy transaction. Initialize petitions with the
 idempotent internal `diplomacy:refreshPetitions` after deployment; hourly refresh
 then maintains the board. Preserve `CONFLICT_BOARD_V1_ENABLED` and existing auth.

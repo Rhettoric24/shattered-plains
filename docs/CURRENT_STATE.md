@@ -9,8 +9,10 @@ Aspirations belong in `IDEA_VAULT.md` or `ROADMAP.md`.
 
 ### Parshendi Diplomacy V1 — 2026-10-18
 
-Warcamp → Diplomacy adds shared button-driven petitions and atomic Sphere plus
-Gemheart tribute, earning Favor capped at five. Favor purchases one standalone
+Warcamp → Diplomacy adds shared button-driven world petitions and independent Sphere or Gemheart
+donations with personal progress bars. Every accumulated 10,000 Spheres plus one
+Gemheart grants a Favor, capped at five. Donations use diminishing returns based
+on 24-hour totals. The rotation contains no resource payments. Favor purchases one standalone
 Parshendi ally globally per kingdom inside an active PvP Conflict Board. Allies
 have fixed Power, move one square per resolution, never merge, disperse after
 defeat and withdraw when their conflict ends. Hostility and Deep Plains rules

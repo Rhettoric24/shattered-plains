@@ -7,12 +7,19 @@ test("shared petitions render on mobile and plateau donation requires confirmati
   await page.goto('/diplomacy-fixture');
   await page.evaluate(async () => {
     const m = await import('/diplomacy-fixture.js'), w = window as any;
-    const d = { favor:0,cap:5,hostility:75,reserveGemhearts:0,tribute:{spheres:10000,gemhearts:1,hostilityReduction:12},tiers:[{cost:5,power:1000,name:'Chasmfiend'}],petitions:[{id:'plateau',kind:'plateau',title:'Return Stormwatch',objective:'Relinquish Stormwatch immediately.',favor:1,hostilityReduction:15,expiresAt:Date.now()+86400000,missing:null},{id:'supplies',kind:'supplies',title:'Supply the scouts',objective:'Deliver 2500 Spheres',favor:1,hostilityReduction:15,expiresAt:Date.now()+86400000,missing:'Need 2500 more Spheres.'}] };
+    const d = { favor:0,cap:5,hostility:75,reserveGemhearts:0,tribute:{spheres:10000,gemhearts:1,sphereCredit:5000,gemheartCredit:0,window:{spheres:0,gemhearts:0}},tiers:[{cost:5,power:1000,name:'Chasmfiend'}],petitions:[{id:'plateau',kind:'plateau',title:'Return Stormwatch',objective:'Relinquish Stormwatch immediately.',favor:1,hostilityReduction:15,expiresAt:Date.now()+86400000,missing:null}] };
     w.calls=[];w.allow=false;
-    w.ui=m.createDiplomacyUI({root:document.getElementById('diplomacy'),mutate:async (name:string,args:any)=>w.calls.push({name,args}),refresh:async()=>({...d,favor:1,petitions:[]}),confirm:()=>w.allow});
+    w.ui=m.createDiplomacyUI({root:document.getElementById('diplomacy'),mutate:async (name:string,args:any)=>{w.calls.push({name,args});return {favorGranted:0}},refresh:async()=>({...d,favor:1,petitions:[]}),confirm:()=>w.allow});
     w.ui.update(d,{spheres:10000,gemhearts:1});
   });
-  await expect(page.getByRole('button',{name:'Deliver Spheres'})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Deliver Spheres'})).toHaveCount(0);
+  await expect(page.getByRole('progressbar')).toHaveCount(2);
+  await page.getByRole('spinbutton',{name:'Exact donation amount'}).fill('5000');
+  await expect(page.locator('[data-donation-preview]')).toContainText('Hostility −4');
+  await page.getByRole('button',{name:'Gemhearts',exact:true}).click();
+  await expect(page.getByRole('spinbutton',{name:'Exact donation amount'})).toHaveValue('1');
+  await page.getByRole('button',{name:'Spheres',exact:true}).click();
+  await expect(page.getByRole('spinbutton',{name:'Exact donation amount'})).toHaveValue('5000');
   await page.getByRole('button',{name:'Donate Plateau'}).click();
   expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -21,4 +28,10 @@ test("shared petitions render on mobile and plateau donation requires confirmati
   await page.getByRole('button',{name:'Donate Plateau'}).click();
   await expect(page.getByText('Fulfilled. Favor received.')).toBeVisible();
   expect(await page.evaluate(()=>(window as any).calls)).toEqual([{name:'diplomacy:fulfill',args:{petitionId:'plateau'}}]);
+  await page.getByRole('button',{name:'Donate 5,000 Spheres',exact:true}).click();
+  await expect(page.getByText('Donation sent. +0 Favor; remaining progress saved.')).toBeVisible();
+  expect(await page.evaluate(()=>(window as any).calls[1])).toMatchObject({name:'diplomacy:tribute',args:{resource:'spheres',amount:5000}});
+  await page.getByRole('button',{name:'Gemhearts',exact:true}).click();
+  await page.getByRole('button',{name:'Donate 1 Gemheart',exact:true}).click();
+  expect(await page.evaluate(()=>(window as any).calls[2])).toMatchObject({name:'diplomacy:tribute',args:{resource:'gemhearts',amount:1}});
 });
