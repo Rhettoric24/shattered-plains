@@ -292,3 +292,8 @@ button, input, select, textarea, summary, [role="button"] { touch-action: manipu
 
 /* Keep the three Plains destinations visible together on narrow screens. */
 .space-subnav.plains-subnav .subnav-button { flex: 1 1 0; width: auto; min-width: 0; padding-inline: 6px; }
+#diplomacy-content { display: grid; gap: 12px; }
+#diplomacy-content > p { margin: 0; }
+#diplomacy-content > h3 { margin: 16px 0 0; }
+.cb-assistance { margin: 8px 0; }
+.cb-assistance[open] > button { display: block; width: 100%; margin: 8px 0; min-height: 44px; }

@@ -7,6 +7,15 @@ friend-test deployment.
 This document records what is believed to be implemented now.
 Aspirations belong in `IDEA_VAULT.md` or `ROADMAP.md`.
 
+### Parshendi Diplomacy V1 — 2026-10-18
+
+Warcamp → Diplomacy adds shared button-driven petitions and atomic Sphere plus
+Gemheart tribute, earning Favor capped at five. Favor purchases one standalone
+Parshendi ally globally per kingdom inside an active PvP Conflict Board. Allies
+have fixed Power, move one square per resolution, never merge, disperse after
+defeat and withdraw when their conflict ends. Hostility and Deep Plains rules
+remain intact. [Rules, balance, safeguards and limitations](PARSHENDI_DIPLOMACY_V1.md).
+
 ### Conflict Board mobile fit and movement indicators — 2026-10-17
 
 The active mobile battlefield hides the resource strip/Plains subnav and fits the

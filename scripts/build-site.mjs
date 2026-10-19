@@ -67,6 +67,9 @@ await esbuild.build({
     {
       name: "local-convex-browser",
       setup(build) {
+        build.onResolve({ filter: /^\.\/diplomacy-ui\.js$/ }, () => ({
+          path: path.join(root, "outputs", "diplomacy-ui.js"),
+        }));
         build.onResolve({ filter: /^\.\/conflict-board-ui\.js$/ }, () => ({
           path: path.join(root, "outputs", "conflict-board-ui.js"),
         }));

@@ -1,3 +1,4 @@
+import { present } from "./allies";
 import { applySurvivalLosses, totalUnits } from "../convex/rules";
 import { HIGHSTORM_RULES } from "../convex/highstormRules";
 import { archiveEquipment, protectWithEquipment, validateEquipment } from "./fabrials";
@@ -30,6 +31,7 @@ export function exposeHighstorm(state:ConflictState,config:ResolverConfig,events
   const occupiedObjective=state.formations.some(f=>f.position===state.board.objective&&f.kingdom===state.objective.controller);
   const forces=[...state.formations,...state.arrivals.map(a=>a.formation)].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
   for(const f of forces) {
+    if(f.allied)continue;
     if(!totalUnits(f.units)) {
       archiveEquipment(state,f,state.cycle,events,"unsettled","Empty formation before exposure; equipment awaits settlement.");
       limitCargo(state,f,events,"Empty formation has no carrying capacity.");
@@ -46,8 +48,8 @@ export function exposeHighstorm(state:ConflictState,config:ResolverConfig,events
     limitCargo(state,f,events,"Highstorm casualties reduced carrying capacity.");
     if(!totalUnits(f.units))archiveEquipment(state,f,state.cycle,events,"lost","Carrier annihilated by Highstorm; equipment lost.");
   }
-  state.formations=state.formations.filter(f=>totalUnits(f.units)>0);
-  state.arrivals=state.arrivals.filter(a=>totalUnits(a.formation.units)>0);
+  state.formations=state.formations.filter(f=>present(f));
+  state.arrivals=state.arrivals.filter(a=>present(a.formation));
   for(const [position,h] of Object.entries(state.raidFootholds??{})) {
     h.occupants=h.occupants.filter(id=>state.formations.some(f=>f.id===id&&f.position===position));
     if(!h.occupants.length){delete state.raidFootholds![position];events.push({type:"raidBroken",position,kingdom:h.kingdom,cycle:state.cycle});}

@@ -29,6 +29,8 @@ export type Order = {
   paused?: boolean;
 };
 export type Formation = {
+  /** An indivisible allied piece. Empty units are an accounting container only. */
+  allied?: { tier: number; power: number; dispersed?: boolean };
   lastHighstormExposureId?: string;
   equipment?: FormationEquipment;
   /** Legacy source maps are accepted on load; new cargo is owner-agnostic. */
@@ -116,6 +118,7 @@ export type BattleForce = {
   survivors: UnitCounts;
 };
 export type Event =
+  | { type: "allyDispersed"; formation: string; kingdom: string; position: string }
   | { type:"highstorm"; formation:string; formationName?:string; kingdom:string; stormId:string; casualties:UnitCounts; survivors:UnitCounts; finalRate:number }
   | {type:"fabrial";formation:string;kingdom:string;item:string;action:string;reason:string;lossChance?:number;roll?:number}
   | {

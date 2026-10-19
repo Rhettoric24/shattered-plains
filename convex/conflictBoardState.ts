@@ -1,5 +1,7 @@
 /** Transactional adapter for the shared resolver. Never imported by the Lab. */
 import { makeFunctionReference } from "convex/server";
+import { present } from "../conflict-board/allies";
+import { relations, recordDiplomacyVictories } from "./diplomacyHelpers";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { addUnits, emptyUnits, totalUnits, type UnitCounts } from "./rules";
@@ -394,6 +396,13 @@ export async function saveBoard(
   validateEquipment(s.state);
   await bankExtractions(ctx, s);
   const desired = new Map<string, { data: unknown; arriveAt?: number }>();
+  // The same transaction clears the global reservation on defeat, withdrawal or closure.
+  for (const p of s.participants) {
+    const rel = await relations(ctx, p.playerId);
+    if (rel?.activeConflictId === s.conflict._id && !allForces(s).some(f => f.id === rel.activeFormationId && present(f)))
+      await ctx.db.patch(rel._id, { activeConflictId: undefined, activeFormationId: undefined });
+  }
+  await recordDiplomacyVictories(ctx, s.conflict._id, s.events, s.conflict.processedAt);
   for (const f of s.state.formations) desired.set(f.id, { data: f });
   for (const a of s.state.arrivals) {
     const arriveAt = s.times.get(a.id);
@@ -540,7 +549,7 @@ export async function advanceBoard(ctx: MutationCtx, s: Session, now: number) {
       await returnParticipant(ctx, s, p, at);
     if (
       !allForces(s).some(
-        (f) => f.kingdom !== s.state.originalOwner && totalUnits(f.units) > 0,
+        (f) => f.kingdom !== s.state.originalOwner && present(f),
       )
     ) {
       await finishBoard(
@@ -597,7 +606,7 @@ export async function advanceBoard(ctx: MutationCtx, s: Session, now: number) {
         else if (
           !allForces(s).some(
             (f) =>
-              f.kingdom !== s.state.originalOwner && totalUnits(f.units) > 0,
+              f.kingdom !== s.state.originalOwner && present(f),
           )
         )
           await finishBoard(
@@ -615,7 +624,7 @@ export async function advanceBoard(ctx: MutationCtx, s: Session, now: number) {
   if (
     s.conflict.status === "active" &&
     !allForces(s).some(
-      (f) => f.kingdom !== s.state.originalOwner && totalUnits(f.units) > 0,
+      (f) => f.kingdom !== s.state.originalOwner && present(f),
     )
   )
     await finishBoard(

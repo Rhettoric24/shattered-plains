@@ -1,3 +1,4 @@
+import { createDiplomacyUI } from "./diplomacy-ui.js";
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
 import { espionageMissionAvailability, sphereHeistAvailability, syncEspionageControlLock } from "./espionage-ui-state.js";
 import { intelligenceDisclosureState, normalizeRosterUnits, orderedActiveUnits, researchDisclosureState, shouldBlockMissionKey, shouldResetRouteScroll } from "./ui-overhaul-state.js";
@@ -49,7 +50,7 @@ let authSessionGeneration = authToken ? 1 : 0;
 let state = null;
 let rawStateData = null;
 const SPACE_TABS = {
-  warcamp: [{ key: "buildings", label: "Buildings" }, { key: "recruitment", label: "Recruitment" }],
+  warcamp: [{ key: "buildings", label: "Buildings" }, { key: "recruitment", label: "Recruitment" }, { key: "diplomacy", label: "Diplomacy" }],
   plains: [{ key: "raids", label: "Parshendi" }, { key: "sieges", label: "PvP" }, { key: "plateau-runs", label: "Plateau Runs" }],
   intelligence: [{ key: "ledger", label: "Ledger" }, { key: "operations", label: "Operations" }, { key: "territory", label: "Territory" }],
   research: [{ key: "current", label: "Current" }, { key: "libraries", label: "Libraries" }, { key: "ardents", label: "Ardents" }, { key: "fabrials", label: "???" }],
@@ -58,6 +59,7 @@ const ROUTE_SECTIONS = {
   home: "overview",
   "warcamp:buildings": "buildings",
   "warcamp:recruitment": "army",
+  "warcamp:diplomacy": "diplomacy",
   "plains:raids": "raids",
   "plains:sieges": "plateaus",
   "plains:plateau-runs": "plateau",
@@ -141,6 +143,7 @@ const conflictBoardUI = createConflictBoardUI({
   },
 });
 
+const diplomacyUI = createDiplomacyUI({ root: $("diplomacy-content"), mutate: (name,args) => client.mutation(name,args), refresh: async () => { const d = await client.query("diplomacy:get", {}); if (rawStateData) rawStateData.diplomacy = d; return d; } });
 function syncZoomedOutViewportWidth() {
   const viewport = window.visualViewport;
   if (viewport && viewport.scale < 0.999) {
@@ -454,6 +457,7 @@ function subscriptionSpecs(data) {
   const network = Number(data.playerSummary?.player?.buildings?.espionageNetwork || 0);
   return [
     playerStateSubscription(refs),
+    ...(currentRoute.view === "warcamp" && currentRoute.tab === "diplomacy" ? [{ key: "diplomacy", query: "diplomacy:get" }] : []),
     { key: "players", query: refs.listPlayers },
     { key: "raids", query: refs.listVisibleRaids },
     { key: "plateauSummary", query: refs.getMyPlateauState },
@@ -614,7 +618,7 @@ async function load(options = {}) {
 
     rawStateData = {
       ...(rawStateData?.playerSummary?.player?._id === playerSummary.player._id
-        ? Object.fromEntries(Object.entries(rawStateData).filter(([key]) => key === "conflictLobby" || key.startsWith("board:"))) : {}),
+        ? Object.fromEntries(Object.entries(rawStateData).filter(([key]) => key === "diplomacy" || key === "conflictLobby" || key.startsWith("board:"))) : {}),
       config,
       playerSummary,
       playerAccounting,
@@ -808,6 +812,7 @@ function render() {
   if ($("mission-confirmations")) $("mission-confirmations").checked = state.playerSettings?.confirmConsequentialMissions !== false;
   if ($("resource-transfer-available")) $("resource-transfer-available").innerHTML = '<strong>Available now</strong><span>' + number(Math.floor(me.spheres)) + ' Spheres · ' + number(me.gemhearts || 0) + ' Gemhearts</span>';
   renderHostility();
+  if (currentRoute.view === "warcamp" && currentRoute.tab === "diplomacy") diplomacyUI.update(rawStateData?.diplomacy, { spheres: me.spheres, gemhearts: me.gemhearts, observer: me.isAdminObserver });
   renderTopProvisions();
   renderBuildings();
   renderUnits();

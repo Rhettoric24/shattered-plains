@@ -23,6 +23,7 @@ export function resolutionReport(before: ConflictState, events: Event[], player:
     }
     const army = "formation" in e ? armies.get(e.formation) : undefined;
     const own = army?.kingdom === player;
+    if (e.type === "allyDispersed" && own) lines.push(`${army.name}: dispersed after defeat at ${position(e.position)}.`);
     if (e.type === "move" && own) lines.push(`${army.name}: moved from ${position(e.from)} to ${position(e.to)}.`);
     if (e.type === "arrival" && own) lines.push(`${army.name}: arrived at ${position(e.position)}.`);
     if (e.type === "retreat" && own) lines.push(`${army.name}: retreated to ${position(e.to)}.`);

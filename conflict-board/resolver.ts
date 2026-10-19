@@ -1,3 +1,4 @@
+import { present, piecePower } from "./allies";
 import { exposeHighstorm, stormSettings } from "./highstorms";
 import {
   battleCargo,
@@ -139,7 +140,8 @@ function validate(input: CycleInput) {
     )
   )
     throw new Error("Invalid board connection.");
-  const counts = (f: Pick<Formation, "units" | "kingdom">) => {
+  const counts = (f: Pick<Formation, "units" | "kingdom" | "allied" | "equipment" | "cargo" | "order">) => {
+    if (f.allied && (!Number.isInteger(f.allied.tier) || f.allied.tier < 1 || f.allied.tier > 5 || !Number.isFinite(f.allied.power) || f.allied.power <= 0 || totalUnits(f.units) || f.equipment || cargoAmount(f) || f.order.kind === "raid")) throw Error("Invalid allied formation.");
     if (!kingdoms.has(f.kingdom)) throw new Error("Unknown formation kingdom.");
     for (const key of unitKeys())
       if (!Number.isSafeInteger(f.units[key]) || f.units[key] < 0)
@@ -224,13 +226,13 @@ function updateControl(
       (g) =>
         g.position === state.board.objective &&
         !g.retreatPath &&
-        totalUnits(g.units),
+        present(g),
     )?.kingdom ??
     (groups.some(
       (g) =>
         g.position === state.board.objective &&
         g.kingdom === state.objective.controller &&
-        (g.retreatPath || !totalUnits(g.units)),
+        (g.retreatPath || !present(g)),
     )
       ? null
       : state.objective.controller);
@@ -253,12 +255,12 @@ function resolveRetreats(
   step: number,
   events: Event[],
 ) {
-  let pending = groups.filter((g) => g.retreatPath && totalUnits(g.units));
+  let pending = groups.filter((g) => g.retreatPath && present(g));
   const occupied = new Map(
     groups
       .filter(
         (g) =>
-          !g.retreatPath && totalUnits(g.units) && !safe(state, g.position),
+          !g.retreatPath && present(g) && !safe(state, g.position),
       )
       .map((g) => [g.position, g.kingdom]),
   );
@@ -368,7 +370,7 @@ function movementStep(
   }
   const retreating = new Set<string>();
   for (const [position, local] of by(
-    groups.filter((g) => totalUnits(g.units)),
+    groups.filter((g) => present(g)),
     (g) => g.position,
   )) {
     const kingdoms = by(local, (g) => g.kingdom);
@@ -376,10 +378,7 @@ function movementStep(
     const powers = kingdoms.map(([kingdom, rows]) => ({
       kingdom,
       rows,
-      power: effectivePower(
-        combined(rows),
-        state.kingdoms.find((k) => k.id === kingdom)!.research,
-      ),
+      power: effectivePower(combined(rows.filter(f => !f.allied)), state.kingdoms.find(k => k.id === kingdom)!.research) + rows.filter(f => f.allied).reduce((n,f) => n + piecePower(f, {}), 0),
     }));
     const top = Math.max(...powers.map((p) => p.power));
     const leaders = powers.filter((p) => p.power === top);
@@ -388,6 +387,7 @@ function movementStep(
     const forces: BattleForce[] = [];
     for (const p of powers) {
       const research = state.kingdoms.find((k) => k.id === p.kingdom)!.research;
+      const troops = p.rows.filter(f => !f.allied);
       const experimental = input.config.combatModel === "experimental-survival";
       const c = experimental
           ? {
@@ -416,20 +416,20 @@ function movementStep(
         p.kingdom,
       ]);
       const rawResult = experimental
-        ? experimentalSurvivalLosses(combined(p.rows), baseRate, seed, research)
+        ? experimentalSurvivalLosses(combined(troops), baseRate, seed, research)
         : applySurvivalLosses(
-            combined(p.rows),
+            combined(troops),
             baseRate,
             seed,
             research,
             false,
             c.surviveCap ?? undefined,
           );
-      const protectedResult=protectWithEquipment(state,p.rows,rawResult,input.cycle,events,input.config.consumeFabrialPerEngagement===true);
+      const protectedResult=protectWithEquipment(state,troops,rawResult,input.cycle,events,input.config.consumeFabrialPerEngagement===true);
       const result={...rawResult,...protectedResult};
-      distributeCasualties(p.rows, result.casualties, seed + ":allocation");
-      retainPooledEquipment(p.rows);
-      resolveFabrialLosses(state,p.rows,{cycle:input.cycle,step,position,seed:input.seed,winnerPower:top,ownPower:p.power,defeated:winner!==null&&p.kingdom!==winner,rates:input.config.fabrialLossRates},events);
+      distributeCasualties(troops, result.casualties, seed + ":allocation");
+      retainPooledEquipment(troops);
+      resolveFabrialLosses(state,troops,{cycle:input.cycle,step,position,seed:input.seed,winnerPower:top,ownPower:p.power,defeated:winner!==null&&p.kingdom!==winner,rates:input.config.fabrialLossRates},events);
       forces.push({
         kingdom: p.kingdom,
         power: p.power,
@@ -442,6 +442,11 @@ function movementStep(
       for (const g of p.rows) {
         g.fought = true;
         if (p.kingdom !== winner) {
+          if (g.allied) {
+            g.allied.dispersed = true;
+            events.push({ type: "allyDispersed", formation: g.id, kingdom: g.kingdom, position });
+            continue;
+          }
           // Before append: movers may fall back to their departure square;
           // stationary losers must leave the position they just lost.
           g.retreatPath =
@@ -467,7 +472,7 @@ function movementStep(
     );
     const annihilated =
       winner !== null &&
-      !totalUnits(forces.find((f) => f.kingdom === winner)!.survivors);
+      !local.some(f => f.kingdom === winner && present(f));
     events.push({
       type: "battle",
       combatModel: input.config.combatModel ?? "current",
@@ -479,7 +484,7 @@ function movementStep(
     });
   }
   for (const g of groups)
-    if (!retreating.has(g.id) && totalUnits(g.units))
+    if (!retreating.has(g.id) && present(g))
       g.history = appendHistory(g.history, g.position);
   // Observe displacement before retreat landings or later substeps can retake it.
   observeRaidControl(state, groups, input.cycle, events);
@@ -489,11 +494,11 @@ function movementStep(
   observeRaidControl(state, groups, input.cycle, events);
   settleCargo(
     state,
-    groups.filter((g) => totalUnits(g.units)),
+    groups.filter((g) => present(g)),
     events,
   );
-  for(const g of groups.filter(g=>!totalUnits(g.units)))archiveEquipment(state,g,input.cycle,events);
-  return groups.filter((g) => totalUnits(g.units));
+  for(const g of groups.filter(g=>!present(g)))archiveEquipment(state,g,input.cycle,events);
+  return groups.filter((g) => present(g));
 }
 function mergeGroups(
   input: CycleInput,
@@ -501,7 +506,7 @@ function mergeGroups(
   groups: Group[],
   events: Event[],
 ): Formation[] {
-  return by(groups, (g) => JSON.stringify([g.kingdom, g.position]))
+  return by(groups, (g) => JSON.stringify([g.kingdom, g.position, g.allied ? g.id : "troops"]))
     .map(([, rows]) => {
       const first = rows[0];
       let source: Group | undefined;
@@ -550,6 +555,7 @@ function mergeGroups(
         kingdom: first.kingdom,
         position: first.position,
         units: combined(rows),
+        ...(first.allied ? { allied: { ...first.allied } } : {}),
         lastHighstormExposureId: state.highstorm?.active ? state.highstorm.id : first.lastHighstormExposureId,
         history: source ? [...source.history] : [first.position],
         order,
@@ -583,7 +589,7 @@ export function resolveCycle(input: CycleInput): CycleResult {
   const state = structuredClone(input.state),
     events: Event[] = [];
   exposeHighstorm(state,input.config,events);
-  for(const f of state.formations.filter(f=>!totalUnits(f.units)))archiveEquipment(state,f,input.cycle,events);
+  for(const f of state.formations.filter(f=>!present(f)))archiveEquipment(state,f,input.cycle,events);
   for (const f of sorted(state.formations))
     limitCargo(
       state,
@@ -599,7 +605,7 @@ export function resolveCycle(input: CycleInput): CycleResult {
     .sort((a, b) => compare(JSON.stringify(a), JSON.stringify(b)));
   applyArrivals(state,new Set(state.arrivals.filter(a=>a.cycle<=input.cycle).map(a=>a.id)),events,input.mergePreferences);
   let groups: Group[] = sorted(state.formations)
-    .filter((f) => totalUnits(f.units))
+    .filter((f) => present(f))
     .map((f) => {
       const research = state.kingdoms.find((k) => k.id === f.kingdom)!.research;
       let previous = f.position;
@@ -621,7 +627,7 @@ export function resolveCycle(input: CycleInput): CycleResult {
       return {
         ...f,
         speed:
-          formationStats(f.units, research, input.config).specialization ===
+          !f.allied && formationStats(f.units, research, input.config).specialization ===
           "Speed",
         fought: false,
         moved: false,
@@ -679,9 +685,9 @@ export function resolveCycle(input: CycleInput): CycleResult {
 export function applyArrivals(state:ConflictState,arrivalIds:Set<string>,events:Event[],mergePreferences?:Record<string,string>) {
   const garrison = state.formations.filter(
     (f) =>
-      f.kingdom === state.originalOwner &&
+      !f.allied && f.kingdom === state.originalOwner &&
       f.position === state.board.objective &&
-      totalUnits(f.units),
+      present(f),
   );
   const nominatedGarrison =
     mergePreferences?.[`${state.originalOwner}@${state.board.objective}`];
@@ -690,7 +696,7 @@ export function applyArrivals(state:ConflictState,arrivalIds:Set<string>,events:
     (garrison.length === 1 ? garrison[0] : undefined);
   const arrivals = sorted(state.arrivals.filter((a) => arrivalIds.has(a.id)));
   if(arrivalRecipient) {
-    const joining=arrivals.filter(a=>a.formation.kingdom===state.originalOwner && state.objective.controller===state.originalOwner);
+    const joining=arrivals.filter(a=>!a.formation.allied && a.formation.kingdom===state.originalOwner && state.objective.controller===state.originalOwner);
     const equipment=mergeEquipment([arrivalRecipient,...joining.map(a=>a.formation)]);
     if(equipment)arrivalRecipient.equipment=equipment;
   }
@@ -702,7 +708,7 @@ export function applyArrivals(state:ConflictState,arrivalIds:Set<string>,events:
           : state.board.reserve
         : state.board.approach;
     events.push({ type: "arrival", formation: a.formation.id, position });
-    if (position === state.board.objective && arrivalRecipient) {
+    if (!a.formation.allied && position === state.board.objective && arrivalRecipient) {
       if (a.formation.cargo)
         arrivalRecipient.cargo = combineCargo([arrivalRecipient, a.formation]);
       arrivalRecipient.units = addUnits(

@@ -1,4 +1,6 @@
 import { v } from "convex/values";
+import { DIPLOMACY } from "./diplomacyRules";
+import { ensureRelations, relations } from "./diplomacyHelpers";
 import { makeFunctionReference } from "convex/server";
 import {
   mutation,
@@ -403,6 +405,29 @@ export const reinforce = mutation({
     }),
 });
 
+export const callParshendi = mutation({
+  args: { ...commandFields, tier: v.number(), position: v.string() },
+  handler: (ctx, args) => command(ctx, args, "call-parshendi", args, async (s, player) => {
+    requireEnabled();
+    const p = participant(s, player._id);
+    if (p.withdrawing || Date.now() >= s.conflict.deadlineAt || s.state.objective.conqueredBy) throw Error("This conflict is closing or withdrawal is pending.");
+    const tier = Number.isInteger(args.tier) ? DIPLOMACY.tiers[args.tier - 1] : undefined;
+    if (!tier) throw Error("Choose a Favor tier from 1 to 5.");
+    const rel = await ensureRelations(ctx, player._id);
+    if (rel.activeFormationId) throw Error("You already have an active Parshendi ally in a conflict.");
+    if (rel.favor < tier.cost) throw Error("Not enough Favor.");
+    const entry = player._id === s.conflict.ownerId
+      ? s.state.objective.controller === player._id ? s.state.board.objective : s.state.board.reserve
+      : s.state.board.approach;
+    if (args.position !== entry || s.state.formations.some(f => f.position === entry && f.kingdom !== player._id)) throw Error("Choose the current legal entry position. Enemy-occupied entries are unavailable.");
+    const id = `parshendi:${player._id}:${args.requestId}`;
+    s.state.formations.push({ id, name: tier.name, kingdom: player._id, position: entry, history: [entry], units: emptyUnits(), allied: { tier: args.tier, power: tier.power }, order: holdOrder() });
+    checkBudget(s);
+    await ctx.db.patch(rel._id, { favor: rel.favor - tier.cost, activeConflictId: s.conflict._id, activeFormationId: id });
+    return id;
+  }),
+});
+
 export const order = mutation({
   args: {
     ...commandFields,
@@ -423,6 +448,7 @@ export const order = mutation({
           a.formation.id === args.formationId && a.formation.kingdom === p._id,
       );
       if (!deployed && !arrival) throw Error("Choose your own formation.");
+      if ((deployed ?? arrival!.formation).allied && args.kind === "raid") throw Error("Parshendi allies cannot raid or carry loot.");
       const entry =
         p._id === s.state.originalOwner
           ? s.state.objective.controller === p._id
@@ -502,7 +528,7 @@ export const switchFabrial = mutation({
   },
   handler: (ctx, args) =>
     command(ctx, args, "switch", args, async (s, p) => {
-      ownFormation(s, p._id, args.formationId);
+      if (ownFormation(s, p._id, args.formationId).allied) throw Error("Parshendi allies cannot equip Fabrials.");
       s.state = requestFabrialSwitch(
         s.state,
         p._id,
@@ -515,7 +541,7 @@ export const chooseMergeRoute = mutation({
   args: { ...commandFields, formationId: v.string(), position: v.string() },
   handler: (ctx, args) =>
     command(ctx, args, "merge-route", args, async (s, p) => {
-      ownFormation(s, p._id, args.formationId);
+      if (ownFormation(s, p._id, args.formationId).allied) throw Error("Parshendi allies cannot merge.");
       if (!s.state.board.positions.some((n) => n.id === args.position))
         throw Error("Unknown position.");
       s.mergePreferences[`${p._id}@${args.position}`] = args.formationId;
@@ -576,6 +602,7 @@ export const get = query({
       returnedUnits: p.returnedUnits,
       returnedSpheres: p.returnedSpheres,
       banked: p.banked,
+      diplomacy: { favor: (await relations(ctx, player._id))?.favor ?? 0, activeFormationId: (await relations(ctx, player._id))?.activeFormationId ?? null, tiers: DIPLOMACY.tiers },
       view: projectConflict(s.state, player._id, intel, true, s.config),
       ownArrivalTimes: s.state.arrivals
         .filter((a) => a.formation.kingdom === player._id)

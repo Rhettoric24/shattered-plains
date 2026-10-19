@@ -856,3 +856,90 @@ test('live timing projection exposes specialization only for the viewers traveli
   const red=await f.owner.client.query(q('get'),{conflictId:id});
   expect(red.view.ownArrivals).toHaveLength(0);
 });
+
+describe("Parshendi assistance deployment", () => {
+  async function favor(f: Fixture, player = f.blue, amount = 5) {
+    await f.t.run(ctx => ctx.db.insert("parshendiRelations", { playerId: player.id, favor: amount, tributeWindowAt: Date.now(), tributeCount: 0 }));
+  }
+  test.each([1, 2, 3, 4, 5])("tier %i charges exactly its Favor cost and retries charge once", async tier => {
+    const f = await setup(), { conflictId: id } = await open(f);
+    await favor(f);
+    const s = await read(f,id), args = { conflictId: id, requestId: requestId(), revision: s.conflict.revision, tier, position: "approach" };
+    await f.blue.client.mutation(m("callParshendi"), args);
+    await f.blue.client.mutation(m("callParshendi"), args);
+    const rel = await f.t.run(ctx => ctx.db.query("parshendiRelations").withIndex("by_playerId",q=>q.eq("playerId",f.blue.id)).unique());
+    expect(rel?.favor).toBe(5-tier);
+    expect((await read(f,id)).state.formations.filter(x=>x.allied)).toHaveLength(1);
+    expect((await read(f,id)).state.formations.find(x=>x.allied)?.allied?.power).toBe([150,300,500,750,1000][tier-1]);
+  });
+  test("illegal placement and insufficient Favor charge nothing; concurrent calls leave only one ally", async () => {
+    const f = await setup(), { conflictId: id } = await open(f);
+    await favor(f, f.blue, 2);
+    await expect(cmd(f,id,f.blue,"callParshendi",{tier:1,position:"B2"})).rejects.toThrow(/entry/);
+    await expect(cmd(f,id,f.blue,"callParshendi",{tier:5,position:"approach"})).rejects.toThrow(/Favor/);
+    const revision = (await read(f,id)).conflict.revision;
+    const outcomes = await Promise.allSettled([1,2].map(()=> f.blue.client.mutation(m("callParshendi"), { conflictId:id, revision, requestId:requestId(),tier:1,position:"approach" })));
+    expect(outcomes.filter(x=>x.status==="fulfilled")).toHaveLength(1);
+    const rel = await f.t.run(ctx=>ctx.db.query("parshendiRelations").withIndex("by_playerId",q=>q.eq("playerId",f.blue.id)).unique());
+    expect(rel?.favor).toBe(1);
+  });
+  test("defender deploys at the post, and uses the reserve after losing post control", async () => {
+    const f = await setup(), {conflictId:id} = await open(f); await favor(f,f.owner);
+    await cmd(f,id,f.owner,"callParshendi",{tier:1,position:"post"});
+    expect((await read(f,id)).state.formations.find(x=>x.allied)?.position).toBe("post");
+    await cmd(f,id,f.owner,"withdraw"); await nextCycle(f,id);
+    expect((await f.owner.client.query(q("get"),{conflictId:id})).diplomacy.activeFormationId).toBeNull();
+  });
+  test("one active ally globally, no splits/raids/equipment, withdrawal returns no ordinary units", async () => {
+    const f = await setup(), {conflictId:id} = await open(f); await favor(f);
+    const res = await cmd(f,id,f.blue,"callParshendi",{tier:1,position:"approach"}) as any;
+    const allyId = res.result;
+    await expect(cmd(f,id,f.blue,"callParshendi",{tier:1,position:"approach"})).rejects.toThrow(/already/);
+    await expect(cmd(f,id,f.blue,"order",{formationId:allyId,kind:"raid",route:[],onDefeat:"pause"})).rejects.toThrow(/cannot raid/);
+    await expect(cmd(f,id,f.blue,"split",{formationId:allyId,units:units(1),equipmentIds:[]})).rejects.toThrow(/cannot split/);
+    await expect(cmd(f,id,f.blue,"switchFabrial",{formationId:allyId,itemId:null})).rejects.toThrow(/cannot equip/);
+    await expect(cmd(f,id,f.blue,"chooseMergeRoute",{formationId:allyId,position:"approach"})).rejects.toThrow(/cannot merge/);
+    const secondPlateau = await f.t.run(async ctx => {const p=(await ctx.db.get(f.plateauId))!;const {_id,_creationTime,...fields}=p;return ctx.db.insert("plateaus",{...fields,name:"Second",activeConflictBoardId:undefined});});
+    const other = await f.blue.client.mutation(m("open"),{plateauId:secondPlateau,units:units(10),fabrials:[],requestId:requestId()}) as any;
+    await expect(cmd(f,other.conflictId,f.blue,"callParshendi",{tier:1,position:"approach"})).rejects.toThrow(/already/);
+    await cmd(f,id,f.blue,"withdraw"); await nextCycle(f,id);
+    expect((await f.blue.client.query(q("get"),{conflictId:id})).returnedUnits).toEqual(units(100));
+    await advanceTo(f,other.conflictId,Date.now());
+    await cmd(f,other.conflictId,f.blue,"callParshendi",{tier:1,position:"approach"});
+  });
+  test.each([20,200,2000])("real combat with %i defenders records only meaningful victories and clears defeated allies", async defenders => {
+    const f = await setup();
+    await f.t.run(ctx=>ctx.db.insert("playerSettings",{playerId:f.owner.id,confirmConsequentialMissions:true,autoDefenseEnabled:true,autoDefensePrimary:units(defenders),updatedAt:Date.now()}));
+    const {conflictId:id}=await open(f,units(1)); await favor(f);
+    const res = await cmd(f,id,f.blue,"callParshendi",{tier:5,position:"approach"}) as any;
+    await move(f,id,f.blue,res.result,["B3","B2","B1","post"]);
+    for(let i=0;i<4;i++) await nextCycle(f,id);
+    const s=await read(f,id);
+    const receipts=await f.t.run(ctx=>ctx.db.query("parshendiVictories").withIndex("by_winnerId_and_at",q=>q.eq("winnerId",f.blue.id)).collect());
+    expect(receipts.length).toBe(defenders===200?1:0);
+    if(defenders===2000) {
+      expect(s.state.formations.some(f=>f.allied)).toBe(false);
+      expect((await f.blue.client.query(q("get"),{conflictId:id})).diplomacy.activeFormationId).toBeNull();
+    } else {
+      expect(s.state.formations.some(f=>f.allied)).toBe(true);
+      await nextCycle(f,id);
+      expect((await read(f,id)).conflict.status).toBe("settled");
+      expect((await f.blue.client.query(q("get"),{conflictId:id})).diplomacy.activeFormationId).toBeNull();
+    }
+  });
+});
+
+test("Parshendi Favor cannot be farmed after the third rivalry attack",async()=>{
+  const f=await setup();
+  await f.t.run(ctx=>ctx.db.insert("playerSettings",{playerId:f.owner.id,confirmConsequentialMissions:true,autoDefenseEnabled:true,autoDefensePrimary:units(200),updatedAt:Date.now()}));
+  const {conflictId:id}=await open(f,units(1));
+  await f.t.run(async ctx=>{
+    const p=await ctx.db.query("boardParticipants").withIndex("by_conflictId_and_playerId",q=>q.eq("conflictId",id).eq("playerId",f.blue.id)).unique();
+    await ctx.db.patch(p!._id,{chainPosition:4});
+    await ctx.db.insert("parshendiRelations",{playerId:f.blue.id,favor:5,tributeCount:0,tributeWindowAt:Date.now()});
+  });
+  const res=await cmd(f,id,f.blue,"callParshendi",{tier:5,position:"approach"}) as any;
+  await move(f,id,f.blue,res.result,["B3","B2","B1","post"]);
+  for(let i=0;i<4;i++)await nextCycle(f,id);
+  expect(await f.t.run(ctx=>ctx.db.query("parshendiVictories").collect())).toHaveLength(0);
+});

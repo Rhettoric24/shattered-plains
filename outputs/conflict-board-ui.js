@@ -117,6 +117,11 @@ export function createConflictBoardUI({ root, historyRoot, query, mutate, onSele
     await submit("order", { ...commandArgs(), formationId: f.id, kind, route, onDefeat: values.defeat || f.order.onDefeat });
     draft = null;
   }
+  function assistanceMarkup(d) {
+    if (!d.diplomacy || d.status !== "active" || d.participantStatus !== "active" || d.withdrawing || !d.enabled) return "";
+    const rel = d.diplomacy, entry = arrivalPosition(d);
+    return '<details class="cb-assistance"><summary>Call Parshendi assistance · ' + rel.favor + '/5 Favor</summary><p>Deploy at ' + esc(d.view.board.positions.find(p => p.id === entry)?.name || entry) + '. One square per resolution; separate formation; disperses after defeat. Can capture objectives, cannot raid. No storm casualties.</p>' + (rel.activeFormationId ? '<p>You already have an active Parshendi ally. It must disperse or withdraw before another can be called.</p>' : rel.tiers.map(t => button("call-parshendi", esc(t.name) + ' · ' + t.power + ' Power · ' + t.cost + ' Favor', rel.favor < t.cost, 'data-tier="' + t.cost + '"')).join('')) + '</details>';
+  }
   function conflictTools(d) {
     return `<p>Deadline: ${esc(time(d.deadlineAt))} · Returned: ${esc(unitsText(d.returnedUnits))} · ${num(d.returnedSpheres)} Spheres returned · ${num(d.banked)} extracted.</p>
       ${d.withdrawing ? "<p>Withdrawal pending for next resolution.</p>" : ""}
@@ -128,34 +133,34 @@ export function createConflictBoardUI({ root, historyRoot, query, mutate, onSele
     const row = selectedForce(d, selectedArmy);
     if (!row) return "";
     const f = row.formation, stats = row.stats, locked = d.status !== "active" || d.withdrawing || d.participantStatus !== "active";
-    const raid = !row.traveling && d.view.viewer !== d.originalOwner && d.view.board.positions.find(p => p.id === f.position)?.objective === "raid";
+    const raid = !f.allied && !row.traveling && d.view.viewer !== d.originalOwner && d.view.board.positions.find(p => p.id === f.position)?.objective === "raid";
     const items = f.equipment?.items || [];
     const arrival = d.ownArrivalTimes.find(a => a.formationId === f.id)?.arriveAt;
     const position = d.view.board.positions.find(p => p.id === f.position)?.name || f.position;
     const next = d.withdrawing ? "Withdraw at next resolution" : row.traveling ? "Arrive, then follow orders when eligible" : f.order.paused ? "Paused after defeat" : f.order.kind === "move" && f.order.route.length ? "Move to " + f.order.route[0] + " when eligible" : f.order.kind === "raid" ? "Raid if foothold is eligible" : "Hold position";
     return `<section class="cb-sheet ${sheetExpanded ? "cb-sheet-expanded" : "cb-sheet-peek"}" aria-label="Selected formation">
       <div class="cb-sheet-top">${button("sheet-toggle", sheetExpanded ? "⌄ Collapse formation" : "⌃ Expand formation", false, `class="cb-sheet-handle" aria-expanded="${sheetExpanded}" aria-controls="cb-sheet-body"`)}${button("close-sheet", "Close", false, 'aria-label="Close formation controls"')}</div>
-      <div class="cb-sheet-overview"><strong>${esc(f.name)}</strong><span class="cb-expanded-only"> · ${num(Object.values(f.units).reduce((a,b)=>a+b,0))} troops</span>
+      <div class="cb-sheet-overview"><strong>${esc(f.name)}</strong><span class="cb-expanded-only"> · ${f.allied ? "Parshendi ally" : num(Object.values(f.units).reduce((a,b)=>a+b,0)) + " troops"}</span>
       <small>${row.traveling ? "Arrives " + esc(time(arrival)) + " · entry " : "At "}${esc(position)} · ${esc(f.order.kind)}${f.order.paused ? " (paused)" : ""}</small>
       <small>Next: ${esc(next)}</small>
-      ${stats ? `<small class="cb-expanded-only">Power ${num(stats.power)} · Speed ${num(stats.speed)} · Survive ${num(stats.survive)} · Plunder ${num(stats.plunder)}</small>` : ""}</div>
+      ${f.allied ? `<small>Power ${num(f.allied.power)} · Moves 1 square per resolution · Disperses after defeat</small>` : stats ? `<small class="cb-expanded-only">Power ${num(stats.power)} · Speed ${num(stats.speed)} · Survive ${num(stats.survive)} · Plunder ${num(stats.plunder)}</small>` : ""}</div>
       <div class="cb-actions cb-primary">${button("move", "Move", locked)}${button("orders", "Orders", locked, `aria-pressed="${sheetExpanded && sheetPanel === "orders"}"`)}${button("more", "More", false, `aria-pressed="${sheetExpanded && sheetPanel === "more"}"`)}</div>
       ${notice || busy ? `<p class="cb-sheet-notice" role="status">${esc(busy ? "Sending order…" : notice)}</p>` : ""}
       ${draft !== null ? `<div class="cb-route"><strong>Proposed: ${esc([draftOrigin, ...draft].join(" → "))}</strong><div>${button("confirm-route", "Confirm route", !draft.length || locked)} ${button("clear-route", "Clear")} ${button("cancel-route", "Cancel")}</div></div>` : ""}
       <div id="cb-sheet-body" class="cb-sheet-body" ${sheetExpanded ? "" : "hidden"}>
-      <p>${esc(unitsText(f.units))}</p>
-      ${stats ? `<p>${esc(stats.specialization)} specialization · Cargo ${num(row.cargo)} / ${num(row.capacity)}</p>` : "<p>Traveling: orders wait for arrival and the next eligible resolution. Defender reinforcements joining a garrison keep the resident garrison's order.</p>"}
+      <p>${f.allied ? "Indivisible Parshendi ally. Remains separate from every army, including on shared squares." : esc(unitsText(f.units))}</p>
+      ${f.allied ? "<p>No cargo or equipment. Withdraws when this conflict ends.</p>" : stats ? `<p>${esc(stats.specialization)} specialization · Cargo ${num(row.cargo)} / ${num(row.capacity)}</p>` : "<p>Traveling: orders wait for arrival and the next eligible resolution. Defender reinforcements joining a garrison keep the resident garrison's order.</p>"}
       <div ${sheetPanel === "orders" ? "" : "hidden"}>
         <div class="cb-actions">${button("hold", "Hold", locked)}${button("raid", "Raid", locked || !raid)}${button("stop-route", "Cancel queued route", locked || f.order.kind !== "move")}</div>
         <p>Queued route: ${esc(f.order.route.join(" → ") || "None")}</p>
         <small>Raid requires an outside force at West or East Raid with an eligible foothold.</small>
-        <label>After defeat <select data-cb-value="defeat"><option value="continue" ${(values.defeat || f.order.onDefeat) === "continue" ? "selected" : ""}>Continue toward destination</option><option value="pause" ${(values.defeat || f.order.onDefeat) === "pause" ? "selected" : ""}>Stop on loss</option></select></label>${button("standing", "Save standing order", locked)}
+        ${!f.allied ? `<label>After defeat <select data-cb-value="defeat"><option value="continue" ${(values.defeat || f.order.onDefeat) === "continue" ? "selected" : ""}>Continue toward destination</option><option value="pause" ${(values.defeat || f.order.onDefeat) === "pause" ? "selected" : ""}>Stop on loss</option></select></label>${button("standing", "Save standing order", locked)}` : "<p>Defeat disperses this ally; it cannot retreat.</p>"}
       </div>
       <div class="cb-more-panel" ${sheetPanel === "more" ? "" : "hidden"}>
-        <details><summary>Route and retreat details</summary>${button("history", showHistory ? "Hide extended history" : "Show extended history", false, `aria-pressed="${showHistory}"`)}<p>Approved: ${esc(f.order.route.join(" → ") || "None")}</p><p>Retreat history: ${esc(f.history.join(" → ") || "Not yet deployed")}</p><label>Preserve this formation's route when merging at <select data-cb-value="merge">${d.view.board.positions.map(p => `<option value="${esc(p.id)}" ${(values.merge || f.position) === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>${button("merge-route", "Choose merge route", locked || row.traveling)}</details>
+        ${!f.allied ? `<details><summary>Route and retreat details</summary>${button("history", showHistory ? "Hide extended history" : "Show extended history", false, `aria-pressed="${showHistory}"`)}<p>Approved: ${esc(f.order.route.join(" → ") || "None")}</p><p>Retreat history: ${esc(f.history.join(" → ") || "Not yet deployed")}</p><label>Preserve this formation's route when merging at <select data-cb-value="merge">${d.view.board.positions.map(p => `<option value="${esc(p.id)}" ${(values.merge || f.position) === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>${button("merge-route", "Choose merge route", locked || row.traveling)}</details>
         <details><summary>Split formation</summary><p>Cargo stays with the original army. Any capacity loss requires confirmation.</p>${inputs("split", f.units)}${items.map(item => `<label><input type="checkbox" data-cb-value="equipment:${esc(item.id)}" ${values[`equipment:${item.id}`] ? "checked" : ""}> Give ${esc(item.kind)} to the new formation</label>`).join("")}${button("split", "Split troops", locked || row.traveling)}</details>
         <details><summary>Carried Fabrials (${items.length})</summary>${items.map(item => `<p>${esc(item.kind)} — ${f.equipment.active === item.id ? "Active" : f.equipment.pending?.id === item.id ? "Activates after next resolution" : "Carried"} ${button("switch", "Select", locked || row.traveling || f.equipment.active === item.id, `data-item="${esc(item.id)}"`)}</p>`).join("") || "No carried equipment."}${f.equipment?.pending ? button("cancel-switch", "Cancel pending change", locked || row.traveling) : ""}</details>
-        ${conflictTools(d)}
+        ` : ""}${conflictTools(d)}
       </div></div>
     </section>`;
   }
@@ -166,7 +171,7 @@ export function createConflictBoardUI({ root, historyRoot, query, mutate, onSele
     const role = p.id === view.board.reserve ? "Defender fallback entry when the Command Post is lost. Safe staging; geometry and arrival rules are unchanged." : p.id === view.board.objective ? "Control this post through the next resolution to complete a conquest hold." : p.objective === "raid" ? "Raid objective. An outside army must establish a foothold before raiding." : p.id === view.board.approach ? "Safe entry for outside armies." : "Field position.";
     return `<aside class="cb-inspection" aria-label="Tile information"><strong>${esc(p.name)}</strong>${button("close-inspection", "Close", false, 'aria-label="Close tile information"')}<p>${role}</p>
       ${own.map(r => button("army", esc(r.formation.name) + (r.traveling ? " · incoming" : ""), false, `data-army="${esc(r.formation.id)}"`)).join("")}
-      ${contacts.map(c => `<p>${esc(view.kingdoms.find(k => k.id === c.kingdom)?.name || "Kingdom")} · ${esc(powerText(c.power))}${c.physicallyVisible ? " · in sight" : " · Intel report"}</p>`).join("")}
+      ${contacts.map(c => `<p>${esc(view.kingdoms.find(k => k.id === c.kingdom)?.name || "Kingdom")} · ${c.allied ? "Parshendi ally · " : ""}${esc(powerText(c.power))}${c.physicallyVisible ? " · in sight" : " · Intel report"}</p>`).join("")}
       ${!contacts.length ? `<p>${view.visiblePositions.includes(p.id) ? "No enemy force observed." : "Beyond vision. Enemy presence is unknown."}</p>` : ""}
       ${p.id === view.board.objective ? `<p>Controller: ${esc(view.kingdoms.find(k => k.id === d.commandPostController)?.name || "Kingdom")}${d.conquestHold ? ` · ${esc(view.kingdoms.find(k => k.id === d.conquestHold.kingdom)?.name || "Kingdom")} holds for conquest at the next resolution if retained.` : ""}</p>` : ""}
       <small>Inspecting never sends an order.</small></aside>`;
@@ -174,7 +179,7 @@ export function createConflictBoardUI({ root, historyRoot, query, mutate, onSele
   function movementMarks(d, position) {
     const row = selectedForce(d, selectedArmy), f = row?.formation;
     if (!f) return {classes:"", style:"", markup:""};
-    const shade = retreatShade(f, position), history = shade && (showHistory || shade.depth === 1);
+    const shade = f.allied ? null : retreatShade(f, position), history = shade && (showHistory || shade.depth === 1);
     const hints = queuedRouteHints(row, { nextCycleAt:d.nextCycleAt, resolutionIntervalMs:d.resolutionIntervalMs,
       arriveAt:d.ownArrivalTimes.find(a => a.formationId === f.id)?.arriveAt }).filter(h => h.position === position);
     const resolution = hints.length ? Math.min(...hints.map(h => h.resolution ?? Infinity)) : Infinity;
@@ -201,8 +206,8 @@ export function createConflictBoardUI({ root, historyRoot, query, mutate, onSele
         const ready = view.raidReady.find(r => r.position === p.id);
         return `<div data-player-position="${esc(p.id)}" class="cb-cell ${p.id === view.board.reserve ? "cb-reserve" : ""} ${p.id === view.board.objective || p.objective === "raid" ? "cb-objective" : ""} ${contacts.length ? "cb-known-contact" : ""} ${inspectedTile === p.id ? "cb-inspected" : ""} ${view.visiblePositions.includes(p.id) ? "" : "cb-fog"} ${f?.position === p.id ? "cb-current" : ""} ${marks.classes} ${valid ? "cb-next" : ""}" style="grid-column:${p.x + 1};grid-row:${p.y - minY + 1};${marks.style}">
         <button class="cb-position" type="button" data-cb="position" data-position="${esc(p.id)}" aria-pressed="${inspectedTile === p.id}" ${busy ? "disabled" : ""}>${p.id === view.board.objective || p.objective === "raid" ? "◇ " : ""}${esc(p.name)}</button>
-        ${own.length ? '<div class="cb-armies">' : ""}${own.map(r => button("army", `<span class="cb-army-name">${esc(r.formation.name)}</span><span>${r.traveling ? "◷" : "●"} ${num(Object.values(r.formation.units).reduce((a,b) => a+b,0))}</span>`, false, `aria-label="${esc(r.formation.name)}${r.traveling ? " (incoming)" : ""}" ${r.traveling ? 'data-incoming="true" title="Incoming formation: drag or tap to plan from its expected entry. Movement waits for arrival."' : ""} data-own="${esc(r.formation.id)}" data-army="${esc(r.formation.id)}" aria-pressed="${selectedArmy === r.formation.id}"`)).join("")}${own.length ? "</div>" : ""}
-        ${contacts.map(c => `<p class="cb-contact">◆ ${esc(kingdom(c.kingdom))}<span class="cb-contact-power"> · ${esc(powerText(c.power))}</span></p>`).join("")}
+        ${own.length ? '<div class="cb-armies">' : ""}${own.map(r => button("army", `<span class="cb-army-name">${esc(r.formation.name)}</span><span>${r.traveling ? "◷" : "●"} ${r.formation.allied ? "✦" : num(Object.values(r.formation.units).reduce((a,b) => a+b,0))}</span>`, false, `aria-label="${esc(r.formation.name)}${r.traveling ? " (incoming)" : ""}" ${r.traveling ? 'data-incoming="true" title="Incoming formation: drag or tap to plan from its expected entry. Movement waits for arrival."' : ""} data-own="${esc(r.formation.id)}" data-army="${esc(r.formation.id)}" aria-pressed="${selectedArmy === r.formation.id}"`)).join("")}${own.length ? "</div>" : ""}
+        ${contacts.map(c => `<p class="cb-contact">${c.allied ? "✦" : "◆"} ${esc(kingdom(c.kingdom))}<span class="cb-contact-power"> · ${esc(powerText(c.power))}</span></p>`).join("")}
         ${!view.visiblePositions.includes(p.id) ? '<span class="cb-fog-mark" aria-label="Beyond vision; tap to inspect">?</span>' : ""}
         ${ready ? `<small class="cb-foothold">Foothold</small>` : ""}<span class="cb-movement-marks">${marks.markup}</span></div>`;
       }).join("")}</div></div>
@@ -241,6 +246,7 @@ export function createConflictBoardUI({ root, historyRoot, query, mutate, onSele
       ${!battlefield && !historyRoot ? conflictList(lobby.conflicts.filter(c => c.status !== "active"), true) : ""}
       ${battlefield && !d ? "<p>Loading authenticated battlefield…</p>" : ""}
       ${battlefield && d ? `<section data-entity-id="${esc(selected)}"><h3>${esc(lobby.conflicts.find(c => c.conflictId === selected)?.name || "Conflict")}</h3>
+      ${assistanceMarkup(d)}
       ${d.status === "settled" ? `<p>Finished: ${esc(d.outcome)}. Surviving assets have returned.</p>` : boardMarkup(d)}
       ${!selectedForce(d, selectedArmy) ? `<details><summary>Conflict actions and reports</summary>${conflictTools(d)}</details>` : ""}</section>` : ""}`;
     for (const el of root.querySelectorAll("details")) if (openDetails.has(el.querySelector("summary")?.textContent)) el.open = true;
@@ -294,6 +300,10 @@ export function createConflictBoardUI({ root, historyRoot, query, mutate, onSele
         const payload = { units: readUnits("commit"), fabrials: fabrials("commit") };
         const result = c ? await submit("reinforce", { ...payload, conflictId: c.conflictId, revision: c.revision }) : await submit("open", { ...payload, plateauId });
         select(c?.conflictId || result.conflictId);
+      } else if (action === "call-parshendi") {
+        const tier = Number(target.dataset.tier);
+        if (!await confirm('Spend ' + tier + ' Favor to deploy a separate Parshendi ally at your current entry? It disperses after defeat and withdraws when this conflict ends.')) return;
+        await submit("callParshendi", { ...commandArgs(), tier, position: arrivalPosition(data()) });
       } else if (action === "reinforce") await submit("reinforce", { ...commandArgs(), units: readUnits("reinforce"), fabrials: fabrials("reinforce") });
       else if (action === "withdraw") await submit("withdraw", commandArgs());
       else if (action === "confirm-route") {

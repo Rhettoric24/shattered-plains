@@ -414,3 +414,26 @@ test('mobile board height survives toolbar height changes, scrolling, sheet chan
   await expect(page.locator('#history')).toBeHidden();
   expect(await page.evaluate(()=>(window as any).board.selected)).toBe('old');
  });
+
+test("Parshendi purchase uses the legal entry and allied controls never offer merging or splitting", async ({page}) => {
+  await page.evaluate(() => {
+    const w=window as any;
+    w.fixture.conflict.diplomacy={favor:5,activeFormationId:null,tiers:[{cost:1,power:150,name:'Parshendi Scouts'},{cost:5,power:1000,name:'Chasmfiend'}]};
+    w.board.update(w.fixture);
+  });
+  await page.getByText('Call Parshendi assistance', {exact:false}).click();
+  await page.getByRole('button',{name:'Chasmfiend · 1000 Power · 5 Favor'}).click();
+  expect(await page.evaluate(()=>(window as any).calls[0])).toMatchObject({name:'conflictBoards:callParshendi',args:{tier:5,position:'approach',revision:3}});
+  await page.evaluate(()=>{
+    const w=window as any, r=w.fixture.conflict.view.own[0];
+    r.formation.name='Chasmfiend';r.formation.units={bridgeman:0,spearman:0,chull:0,heavy:0,scout:0,shardbearer:0};
+    r.formation.allied={tier:5,power:1000}; r.stats={power:1000,movement:1,specialization:'None'};
+    w.board.update(w.fixture);
+  });
+  await page.getByRole('button',{name:/^Chasmfiend/}).last().click();
+  await page.getByRole('button',{name:'More',exact:true}).click();
+  await expect(page.locator('[data-cb="split"]')).toHaveCount(0);
+  await expect(page.locator('[data-cb="merge-route"]')).toHaveCount(0);
+  await expect(page.getByRole('region',{name:'Selected formation'})).toContainText('Moves 1 square');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});

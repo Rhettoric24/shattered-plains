@@ -62,7 +62,7 @@ export function finishRaids(
     const foothold = state.raidFootholds?.[position.id];
     if (!foothold) continue;
     const force = state.formations.find(
-      (f) => f.position === position.id && f.kingdom === foothold.kingdom,
+      (f) => !f.allied && f.position === position.id && f.kingdom === foothold.kingdom,
     );
     if (!force) continue;
     foothold.occupants = [force.id];

@@ -1,3 +1,4 @@
+import { present, piecePower, pieceStats } from "./allies";
 import { stormSettings } from "./highstorms";
 import { effectivePower, totalUnits } from "../convex/rules";
 import {
@@ -12,7 +13,7 @@ export type MilitaryIntel = Record<string, number>;
 export function battlefieldVision(state: ConflictState, viewer: string, radius = 1) {
   const visible = new Set<string>();
   for (const f of state.formations.filter(
-    (f) => f.kingdom === viewer && totalUnits(f.units) > 0,
+    (f) => f.kingdom === viewer && present(f),
   )) {
     visible.add(f.position);
   }
@@ -51,11 +52,11 @@ export function projectConflict(
     .filter((f) => f.kingdom === viewer)
     .map((f) => ({
       formation: structuredClone(f),
-      stats: config ? formationStats(f.units, state.kingdoms.find(k => k.id === viewer)!.research, config) : undefined,
+      stats: config ? pieceStats(f, state.kingdoms.find(k => k.id === viewer)!.research, config) : undefined,
       cargo: cargoAmount(f),
       capacity: cargoCapacity(state, f),
-      power: effectivePower(
-        f.units,
+      power: piecePower(
+        f,
         state.kingdoms.find((k) => k.id === viewer)!.research,
       ),
     }));
@@ -64,19 +65,21 @@ export function projectConflict(
     position: string;
     power: ReturnType<typeof presentIntelNumber>;
     physicallyVisible: boolean;
+    allied?: boolean;
     level: number;
   }[] = [];
   for (const f of state.formations) {
-    if (f.kingdom === viewer || !totalUnits(f.units)) continue;
+    if (f.kingdom === viewer || !present(f)) continue;
     const physical = visible.has(f.position),
       level = disclosureLevel(intel[f.kingdom] ?? 0, fog && !physical, storm ? weather.fogPenalty : 1);
     if (level < 0) continue;
     contacts.push({
       kingdom: f.kingdom,
+      ...(f.allied ? { allied: true } : {}),
       position: f.position,
       power: presentIntelNumber(
-        effectivePower(
-          f.units,
+        piecePower(
+          f,
           state.kingdoms.find((k) => k.id === f.kingdom)!.research,
         ),
         level,
@@ -102,7 +105,7 @@ export function projectConflict(
     ownArrivals: state.arrivals
       .filter((a) => a.formation.kingdom === viewer)
       .map((a) => ({ ...structuredClone(a),
-        stats: config ? formationStats(a.formation.units, state.kingdoms.find(k => k.id === viewer)!.research, config) : undefined,
+        stats: config ? pieceStats(a.formation, state.kingdoms.find(k => k.id === viewer)!.research, config) : undefined,
       })),
     ownEquipmentRecords:(state.equipmentRecords??[]).filter(r=>r.item.owner===viewer).map(r=>structuredClone(r)),
     raidReady: Object.entries(state.raidFootholds ?? {})

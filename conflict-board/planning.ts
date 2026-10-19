@@ -67,6 +67,7 @@ export function splitFormation(
     next.arrivals.some((a) => a.formation.id === childId)
   )
     throw new Error("Choose an existing formation and a new child identity.");
+  if (parent.allied) throw Error("Parshendi allies cannot split or merge.");
   const units = normalizeUnits(requested);
   for (const key of unitKeys())
     if (

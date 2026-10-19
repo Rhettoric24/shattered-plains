@@ -284,6 +284,20 @@ export async function applyHostility(
   return { hostility, state: hostilityState(hostility) };
 }
 
+/** Diplomacy de-escalates without changing the aggression/peace-decay clock. */
+export async function reduceHostility(ctx: MutationCtx, playerId: Id<"players">, reduction: number, now: number) {
+  const existing = await pressureRow(ctx, playerId);
+  const effective = effectivePressure(existing, now);
+  const hostility = clampHostility(effective.hostility - Math.max(0, reduction));
+  const row = await writePressure(ctx, playerId, {
+    now, hostility, lastPlayerAggressionAt: existing?.lastPlayerAggressionAt,
+    decayIntervalsApplied: effective.decayIntervalsApplied,
+  });
+  await notifyStateChange(ctx, playerId, effective.hostility, hostility, now);
+  await scheduleRetaliation(ctx, row, now, hostilityState(effective.hostility).key !== hostilityState(hostility).key);
+  return hostility;
+}
+
 export async function resetWorldPressureForSeason(ctx: MutationCtx, now: number) {
   const rows = await ctx.db.query("kingdomWorldPressure").take(500);
   for (const row of rows) {

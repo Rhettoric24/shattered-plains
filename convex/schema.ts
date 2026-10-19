@@ -42,6 +42,29 @@ const plateauType = v.union(
 export default defineSchema({
   ...authTables,
 
+  parshendiRelations: defineTable({
+    playerId: v.id("players"), favor: v.number(),
+    tributeWindowAt: v.number(), tributeCount: v.number(),
+    activeConflictId: v.optional(v.id("boardConflicts")), activeFormationId: v.optional(v.string()),
+  }).index("by_playerId", ["playerId"]),
+  parshendiReserve: defineTable({ key: v.string(), gemhearts: v.number() }).index("by_key", ["key"]),
+  parshendiPetitions: defineTable({
+    slot: v.number(), active: v.boolean(),
+    kind: v.union(v.literal("plateau"), v.literal("aggressor"), v.literal("supplies")),
+    title: v.string(), objective: v.string(),
+    plateauId: v.optional(v.id("plateaus")), targetId: v.optional(v.id("players")),
+    sphereCost: v.number(), favor: v.number(), hostilityReduction: v.number(),
+    createdAt: v.number(), expiresAt: v.number(),
+    fulfilledBy: v.optional(v.id("players")), fulfilledAt: v.optional(v.number()),
+  }).index("by_active_and_slot", ["active", "slot"])
+    .index("by_expiresAt", ["expiresAt"]),
+  parshendiVictories: defineTable({
+    key: v.string(), winnerId: v.id("players"), targetIds: v.array(v.id("players")), at: v.number(),
+    petitionId: v.optional(v.id("parshendiPetitions")),
+  }).index("by_key", ["key"]).index("by_winnerId_and_at", ["winnerId", "at"]),
+  parshendiTributes: defineTable({ playerId: v.id("players"), requestId: v.string(), at: v.number() })
+    .index("by_playerId_and_requestId", ["playerId", "requestId"]),
+
   // Private authoritative snapshots. Only allowlisted viewer projections leave
   // the backend; commands never accept any of these payloads from clients.
   boardConflicts: defineTable({
@@ -162,6 +185,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_status", ["status"])
+    .index("by_status_and_heldSince", ["status", "heldSince"])
     .index("by_owner", ["ownerPlayerId"])
     .index("by_active_siege", ["activeSiegeId"])
     .index("by_origin_and_balance_version", ["origin", "neutralDefenseBalanceVersion"]),
@@ -265,7 +289,7 @@ export default defineSchema({
     retaliationScheduleToken: v.optional(v.string()),
     lastRetaliationLaunchAt: v.optional(v.number()),
     updatedAt: v.number(),
-  }).index("by_playerId", ["playerId"]),
+  }).index("by_playerId", ["playerId"]).index("by_hostility", ["hostility"]),
 
   parshendiRetaliations: defineTable({
     playerId: v.id("players"),
