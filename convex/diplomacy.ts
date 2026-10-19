@@ -2,12 +2,17 @@ import { v } from "convex/values";
 import { internalMutation, mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireCompetitivePlayer, requireCurrentPlayer } from "./ownership";
-import { DIPLOMACY, requireFavorRoom, donationReduction, tributeProgress, chooseOccupationTarget } from "./diplomacyRules";
+import { DIPLOMACY, requireFavorRoom, donationReduction, tributeProgress, chooseOccupationTarget, missionMinimumPower } from "./diplomacyRules";
 import { ensureRelations, relations, donationWindow } from "./diplomacyHelpers";
 import { materializeHostilityDecay, reclamationDefense, seededFraction } from "./worldPressureRules";
 import { reduceHostility, reconcileRetaliationSchedule } from "./worldPressure";
 import { activeSeason, observePlateauNeutralized } from "./seasonLedger";
 import { reconcileResearch } from "./researchHelpers";
+import { serviceEligibility, consumeIntel, fillIntelPetition, insertTroopPetition, scheduleReturn, intelBalance } from "./diplomacyServices";
+import { activeHighstorm } from "./highstorms";
+import { completedResearch } from "./researchHelpers";
+import { unitCountsValidator, subtractAvailableUnits, validateMissionUnits } from "./armyRules";
+import { normalizeUnits, unitKeys, effectivePower, emptyUnits, applySurvivalLosses } from "./rules";
 import { settlePlayerEconomy } from "./economyHelpers";
 
 type ReadCtx = QueryCtx | MutationCtx;
@@ -20,6 +25,7 @@ const availablePlateau = (p: Doc<"plateaus"> | null) => p && p.status === "owned
 async function eligibility(ctx: ReadCtx, p: Doc<"players">, petition: Doc<"parshendiPetitions">) {
   if (petition.kind === "supplies") return { missing: "Resource payments are available only through standing tribute. Refresh Diplomacy." };
   if (!petition.active || petition.expiresAt <= Date.now()) return { missing: "This petition has expired or was fulfilled." };
+  if (["intel", "escort", "storm"].includes(petition.kind)) return { missing: await serviceEligibility(ctx, p, petition) };
   if (petition.kind === "plateau") {
     const plateau = petition.plateauId ? await ctx.db.get(petition.plateauId) : null;
     return { missing: availablePlateau(plateau) && plateau!.ownerPlayerId === p._id ? null : "You must currently own this plateau, free of active conflict or siege." };
@@ -55,6 +61,11 @@ export const get = query({
     const window = donationWindow(rel, now);
     const reserve = await ctx.db.query("parshendiReserve").withIndex("by_key", q => q.eq("key", "shared")).unique();
     return {
+      missions: { minimumPower: missionMinimumPower(p.createdAt, now), units: normalizeUnits(p.units), completed: await completedResearch(ctx, p._id),
+        stormBaseRate: DIPLOMACY.researchStormBaseCasualtyRate, stormSurviveCap: DIPLOMACY.researchStormSurviveCap },
+      assignments: (await ctx.db.query("parshendiAssignments").withIndex("by_playerId_and_status", q => q.eq("playerId", p._id).eq("status", "away")).take(1)).map(a => ({ kind: a.kind, units: a.units, casualties: a.casualties, returnAt: a.returnAt })),
+      intelPurchases: (await ctx.db.query("parshendiIntelHours").withIndex("by_hour", q => q.eq("hour", Math.floor(now / 3_600_000))).unique())?.purchases ?? 0,
+      intelResetsAt: (Math.floor(now / 3_600_000) + 1) * 3_600_000,
       favor, hostility, cap: DIPLOMACY.favorCap, tiers: DIPLOMACY.tiers,
       activeConflictId: rel?.activeConflictId ?? null, reserveGemhearts: reserve?.gemhearts ?? 0,
       tribute: {
@@ -66,7 +77,7 @@ export const get = query({
       petitions: await Promise.all(petitions.filter(petition => petition.kind !== "supplies").map(async petition => {
         const result = await eligibility(ctx, p, petition);
         const missing = p.isAdminObserver ? "Observers cannot fulfill petitions." : favor + petition.favor > DIPLOMACY.favorCap ? "Spend Favor first: this reward would exceed the cap of 5. Nothing will be consumed." : result.missing;
-        return { id: petition._id, kind: petition.kind, title: petition.title, objective: petition.objective, sphereCost: petition.sphereCost, favor: petition.favor, hostilityReduction: petition.hostilityReduction, expiresAt: petition.expiresAt, missing };
+        return { id: petition._id, kind: petition.kind, category: petition.category ?? null, title: petition.title, objective: petition.objective, sphereCost: petition.sphereCost, favor: petition.favor, hostilityReduction: petition.hostilityReduction, expiresAt: petition.expiresAt, intelRemaining: petition.kind === "intel" ? (await intelBalance(ctx, p._id, petition)).amount - DIPLOMACY.intelCost : null, missing };
       })),
     };
   },
@@ -121,6 +132,7 @@ export const fulfill = mutation({
     const current = await requireCompetitivePlayer(ctx);
     const petition = await ctx.db.get(args.petitionId);
     if (!petition) throw Error("This petition is no longer available.");
+    if (petition.kind === "escort" || petition.kind === "storm") throw Error("Select troops and use Dispatch troops for this petition.");
     const rel = await ensureRelations(ctx, current._id);
     requireFavorRoom(rel.favor, petition.favor);
     await settlePlayerEconomy(ctx, current);
@@ -138,6 +150,8 @@ export const fulfill = mutation({
       await observePlateauNeutralized(ctx, { plateauId: plateau._id, previousOwnerId: p._id, now });
       await reconcileResearch(ctx, p._id, now);
       await reconcileRetaliationSchedule(ctx, p._id, now);
+    } else if (petition.kind === "intel") {
+      await consumeIntel(ctx, p, petition);
     } else if (petition.kind === "occupation") {
       await ctx.db.patch(result.capture!._id, { parshendiPetitionId: petition._id });
     } else {
@@ -146,6 +160,7 @@ export const fulfill = mutation({
     await ctx.db.patch(rel._id, { favor: rel.favor + petition.favor });
     await reduceHostility(ctx, p._id, petition.hostilityReduction, now);
     await ctx.db.patch(petition._id, { active: false, fulfilledBy: p._id, fulfilledAt: now });
+    if (petition.kind === "intel") await fillIntelPetition(ctx, now);
   },
 });
 
@@ -156,7 +171,8 @@ export const refreshPetitions = internalMutation({
     const now = Date.now();
     const active = await ctx.db.query("parshendiPetitions").withIndex("by_active_and_slot", q => q.eq("active", true)).take(20);
     for (const p of active) if (p.expiresAt <= now || p.kind === "supplies") await ctx.db.patch(p._id, { active: false });
-    const recent = await ctx.db.query("parshendiPetitions").withIndex("by_expiresAt", q => q.gte("expiresAt", now - DIPLOMACY.petitionDurationMs)).take(100);
+    await fillIntelPetition(ctx, now);
+    const recent = await ctx.db.query("parshendiPetitions").withIndex("by_expiresAt", q => q.gte("expiresAt", now - DIPLOMACY.petitionDurationMs)).order("desc").take(200);
     const plateaus = await ctx.db.query("plateaus").withIndex("by_status_and_heldSince", q => q.eq("status", "owned").gte("heldSince", now - DIPLOMACY.petitionDurationMs)).order("desc").take(200);
     const pressures = await ctx.db.query("kingdomWorldPressure").withIndex("by_hostility", q => q.gte("hostility", DIPLOMACY.aggressorHostility)).order("desc").take(200);
     // Select the occupation target first, so Return Plateau never requests the same holding.
@@ -169,8 +185,11 @@ export const refreshPetitions = internalMutation({
         !active.some(r => r.active && r.expiresAt > now && r.kind !== "supplies" && r.plateauId === p._id) &&
         !recent.some(r => r.kind === "occupation" && r.plateauId === p._id && r.createdAt > now - DIPLOMACY.petitionDurationMs);
     });
-    for (const slot of [DIPLOMACY.occupationSlot, 0, 1]) {
+    for (const slot of [DIPLOMACY.occupationSlot, 0]) {
       if (active.some(p => p.slot === slot && p.expiresAt > now && p.kind !== "supplies")) continue;
+      // Alternate world requests with escorts; active storms take priority at refill.
+      const previous = recent.filter(p => p.slot === 0).sort((a, b) => b.createdAt - a.createdAt)[0];
+      if (slot === 0 && ((await insertTroopPetition(ctx, now, true)) || (previous && ["plateau", "aggressor"].includes(previous.kind) && await insertTroopPetition(ctx, now)))) continue;
       const common = { slot, active: true, favor: 1, hostilityReduction: DIPLOMACY.petitionHostilityReduction, createdAt: now, expiresAt: now + DIPLOMACY.petitionDurationMs };
       const plateau = plateaus.find(p => availablePlateau(p) && p.heldSince !== undefined && p.heldSince >= now - DIPLOMACY.petitionDurationMs && !recent.some(r => r.plateauId === p._id));
       const pressure = pressures.find(p => materializeHostilityDecay({ ...p, now }).hostility >= DIPLOMACY.aggressorHostility && !recent.some(r => r.kind === "aggressor" && r.targetId === p.playerId));
@@ -185,8 +204,46 @@ export const refreshPetitions = internalMutation({
       } else if (pressure) {
         const target = await ctx.db.get(pressure.playerId);
         id = await ctx.db.insert("parshendiPetitions", { ...common, kind: "aggressor", title: "Challenge the Aggressor", objective: `Win a qualifying PvP battle against ${target?.name ?? "the aggressor"} during this petition, then claim the reward here.`, targetId: pressure.playerId, sphereCost: 0 });
-      } else continue;
+      } else { await insertTroopPetition(ctx, now); continue; }
       recent.push((await ctx.db.get(id))!);
     }
+  },
+});
+
+/** Troops are reserved and the fixed service reward paid in one atomic transaction. */
+export const dispatch = mutation({
+  args: { petitionId: v.id("parshendiPetitions"), units: unitCountsValidator },
+  handler: async (ctx, args) => {
+    const current = await requireCompetitivePlayer(ctx), now = Date.now();
+    for (const n of Object.values(args.units)) if (!Number.isSafeInteger(n) || n < 0) throw Error("Choose whole, nonnegative troop counts.");
+    const units = normalizeUnits(args.units), petition = await ctx.db.get(args.petitionId);
+    if (!petition || (petition.kind !== "escort" && petition.kind !== "storm")) throw Error("This is not a troop petition.");
+    const prior = await ctx.db.query("parshendiAssignments").withIndex("by_petitionId", q => q.eq("petitionId", petition._id)).unique();
+    if (prior && prior.playerId === current._id && unitKeys().every(k => prior.committed[k] === units[k])) return;
+    if (!petition.active || petition.expiresAt <= now) throw Error("This petition has expired or was fulfilled.");
+    const rel = await ensureRelations(ctx, current._id);
+    requireFavorRoom(rel.favor, petition.favor);
+    const missing = await serviceEligibility(ctx, current, petition);
+    if (missing) throw Error(missing);
+    validateMissionUnits(current.buildings, units);
+    await settlePlayerEconomy(ctx, current);
+    const player = (await ctx.db.get(current._id))!;
+    const remaining = subtractAvailableUnits(normalizeUnits(player.units), units);
+    const completed = await completedResearch(ctx, player._id);
+    const minimumPower = missionMinimumPower(player.createdAt, now), power = effectivePower(units, completed);
+    if (power < minimumPower) throw Error("Selected troops do not meet your minimum Power requirement of " + minimumPower + ".");
+    const weather = await activeHighstorm(ctx, now);
+    if (petition.kind === "storm" && !weather.active) throw Error("The Highstorm has ended.");
+    const loss = petition.kind === "storm" ? applySurvivalLosses(units, DIPLOMACY.researchStormBaseCasualtyRate,
+      "research:" + petition._id + ":" + player._id + ":" + weather.storm.stormId, completed, false, DIPLOMACY.researchStormSurviveCap) : { survivors: units, casualties: emptyUnits() };
+    const returnAt = petition.kind === "storm" ? weather.storm.endAt : now + DIPLOMACY.escortDurationMs;
+    await ctx.db.patch(player._id, { units: remaining });
+    const id = await ctx.db.insert("parshendiAssignments", { playerId: player._id, petitionId: petition._id, kind: petition.kind,
+      status: "away", committed: units, units: loss.survivors, casualties: loss.casualties, minimumPower, power,
+      dispatchedAt: now, returnAt, ...(petition.kind === "storm" ? { stormId: weather.storm.stormId } : {}) });
+    await ctx.db.patch(rel._id, { favor: rel.favor + petition.favor });
+    await reduceHostility(ctx, player._id, petition.hostilityReduction, now);
+    await ctx.db.patch(petition._id, { active: false, fulfilledBy: player._id, fulfilledAt: now });
+    await scheduleReturn(ctx, id, returnAt);
   },
 });

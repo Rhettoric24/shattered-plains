@@ -2,7 +2,8 @@ import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
 
 const crons = cronJobs();
-crons.interval("evaluate Parshendi Petitions", { hours: 1 }, internal.diplomacy.refreshPetitions, {});
+crons.interval("recover Parshendi troop returns", { minutes: 5 }, internal.diplomacyServices.recoverReturns, {});
+crons.cron("evaluate Parshendi Petitions", "0 * * * *", internal.diplomacy.refreshPetitions, {});
 
 crons.cron("process active Highstorm exposure", "* * * * *", internal.highstorms.processActiveStorm, {});
 crons.interval("recover overdue Conflict Board events", { minutes: 5 }, internal.conflictBoards.recoverDue, {});

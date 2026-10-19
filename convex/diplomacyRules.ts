@@ -12,6 +12,14 @@ export const DIPLOMACY = {
   aggressorHostility: 68,
   minimumEnemyPower: 100,
   minimumEnemyCasualties: 10,
+  escortDurationMs: 4 * 3_600_000,
+  minimumMissionPower: 200,
+  matureMissionPower: 1000,
+  missionMaturityMs: 14 * 24 * 3_600_000,
+  intelCost: 50,
+  intelPurchasesPerHour: 3,
+  researchStormBaseCasualtyRate: 0.60,
+  researchStormSurviveCap: 300,
   occupationSlot: 2,
   occupationTargetWeights: { gemheart: 4, ancient: 3, other: 1 },
   occupationTargetPool: 500,
@@ -56,4 +64,10 @@ export function tributeProgress(spheres: number, gemhearts: number, favor: numbe
 export function requireFavorRoom(favor: number, reward = 1) {
   if (!Number.isSafeInteger(favor) || favor < 0 || favor + reward > DIPLOMACY.favorCap)
     throw Error("Favor cap is 5. Spend Favor before fulfilling this contract; nothing was consumed.");
+}
+
+/** Personal age in real time, capped so veteran costs never grow without limit. */
+export function missionMinimumPower(createdAt: number, now: number) {
+  const age = Math.max(0, Math.min(1, (now - createdAt) / DIPLOMACY.missionMaturityMs));
+  return Math.ceil(DIPLOMACY.minimumMissionPower + age * (DIPLOMACY.matureMissionPower - DIPLOMACY.minimumMissionPower));
 }

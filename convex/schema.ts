@@ -52,14 +52,26 @@ export default defineSchema({
   parshendiReserve: defineTable({ key: v.string(), gemhearts: v.number() }).index("by_key", ["key"]),
   parshendiPetitions: defineTable({
     slot: v.number(), active: v.boolean(),
-    kind: v.union(v.literal("plateau"), v.literal("aggressor"), v.literal("occupation"), v.literal("supplies")),
+    kind: v.union(v.literal("plateau"), v.literal("aggressor"), v.literal("occupation"), v.literal("supplies"), v.literal("intel"), v.literal("escort"), v.literal("storm")),
     title: v.string(), objective: v.string(),
     plateauId: v.optional(v.id("plateaus")), targetId: v.optional(v.id("players")),
+    category: v.optional(espionageCategory), stormId: v.optional(v.string()),
     sphereCost: v.number(), favor: v.number(), hostilityReduction: v.number(),
     createdAt: v.number(), expiresAt: v.number(),
     fulfilledBy: v.optional(v.id("players")), fulfilledAt: v.optional(v.number()),
   }).index("by_active_and_slot", ["active", "slot"])
     .index("by_expiresAt", ["expiresAt"]),
+  parshendiIntelHours: defineTable({ hour: v.number(), purchases: v.number() }).index("by_hour", ["hour"]),
+  parshendiAssignments: defineTable({
+    playerId: v.id("players"), petitionId: v.id("parshendiPetitions"),
+    kind: v.union(v.literal("escort"), v.literal("storm")),
+    status: v.union(v.literal("away"), v.literal("returned")),
+    committed: unitCounts, units: unitCounts, casualties: unitCounts,
+    minimumPower: v.number(), power: v.number(), dispatchedAt: v.number(), returnAt: v.number(),
+    stormId: v.optional(v.string()), returnedAt: v.optional(v.number()),
+  }).index("by_playerId_and_status", ["playerId", "status"])
+    .index("by_status_and_returnAt", ["status", "returnAt"])
+    .index("by_petitionId", ["petitionId"]),
   parshendiVictories: defineTable({
     key: v.string(), winnerId: v.id("players"), targetIds: v.array(v.id("players")), at: v.number(),
     petitionId: v.optional(v.id("parshendiPetitions")),

@@ -61,6 +61,11 @@ export async function ownedUnitsIncludingAway(
     units = addUnits(units, participant.units);
   }
 
+  for await (const assignment of ctx.db.query("parshendiAssignments")
+    .withIndex("by_playerId_and_status", q => q.eq("playerId", playerId).eq("status", "away"))) {
+    units = addUnits(units, assignment.units);
+  }
+
   const recentCommitments = await ctx.db
     .query("plateauCommitments")
     .withIndex("by_player", (q) => q.eq("playerId", playerId))

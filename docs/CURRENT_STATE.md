@@ -21,7 +21,13 @@ remain intact. [Rules, balance, safeguards and limitations](PARSHENDI_DIPLOMACY_
 Break the Occupation adds a shared 24-hour conquest target, with hourly refill
 after completion and weighted Gemheart/Ancient selection. Claims use existing
 Board conquest records and current ownership; capture itself is unchanged.
-Escort loans, Intel sharing and Highstorm research are assessed only, not implemented.
+Four-hour escort loans, category Intel sharing (50 Intel, up to three shared
+purchases per hour), and active-Highstorm research now use the same petition board.
+Troop minimum Power scales by personal kingdom age from 200 to 1,000 over fourteen
+real days, then caps. One troop assignment at a time; soldiers remain in Provisions.
+Research uses one tunable 60% base exposure roll with Survive mitigation, leaving
+normal storm rules unchanged. Rewards are paid at dispatch; returns are idempotent.
+See [service rules and publication policy](PARSHENDI_PETITION_FEASIBILITY.md).
 
 ### Conflict Board mobile fit and movement indicators — 2026-10-17
 

@@ -89,14 +89,14 @@ test("old full contracts keep their awarded Favor without granting new donation 
   await f.t.run(ctx=>ctx.db.insert("parshendiRelations",{playerId:f.id,favor:2,tributeCount:2,tributeWindowAt:Date.now()}));
   expect(await f.player.query(api.diplomacy.get,{})).toMatchObject({favor:2,tribute:{sphereCredit:0,gemheartCredit:0,window:{spheres:20000,gemhearts:2}}});
 });
-test("rotation removes resource petitions and stays empty without suitable events",async()=>{
+test("rotation removes resource petitions and falls back to troop and Intel services",async()=>{
   const f=await setup();
   const id=await f.t.run(ctx=>ctx.db.insert("parshendiPetitions",{kind:"supplies",slot:0,active:true,title:"old",objective:"Pay",sphereCost:2500,favor:1,hostilityReduction:15,createdAt:Date.now(),expiresAt:Date.now()+DIPLOMACY.petitionDurationMs}));
   expect((await f.player.query(api.diplomacy.get,{})).petitions).toEqual([]);
   await expect(f.player.mutation(api.diplomacy.fulfill,{petitionId:id})).rejects.toThrow(/only through standing/);
   await f.t.mutation(internal.diplomacy.refreshPetitions,{});
   expect(await f.t.run(ctx=>ctx.db.get(id))).toMatchObject({active:false});
-  expect((await f.player.query(api.diplomacy.get,{})).petitions).toEqual([]);
+  expect((await f.player.query(api.diplomacy.get,{})).petitions.map(p=>p.kind)).toEqual(["escort","intel"]);
 });
 test("world petitions retain shared first-come completion, cap safeguards and expiration",async()=>{
   const f=await setup();

@@ -18,6 +18,9 @@ All values live in `convex/diplomacyRules.ts`.
 | Donate Plateau | Relinquish the requested neutral-origin plateau | 1 Favor | 15 |
 | Challenge the Aggressor | Qualifying authoritative PvP battle victory | 1 Favor | 15 |
 | Break the Occupation | Conquer a named plateau from its listed owner during the petition, retain control and claim | 1 Favor | 15 |
+| Escort | Loan minimum-Power troops for four hours; safe return | 1 Favor upfront | 15 |
+| Share Intelligence | 50 Intel about the random named player/category; three purchases globally per hour | 1 Favor | 15 |
+| Investigate New Forms | Loan minimum-Power troops until the active storm ends; one 60% base exposure roll with Survive | 1 Favor upfront | 15 |
 
 Personal donation progress has two bars, one for Spheres and one for Gemhearts.
 Each completed pair consumes exactly 10,000 Sphere credit and one Gemheart credit
@@ -63,18 +66,15 @@ general Power range. No ordinary unit balance was changed.
 
 ## Shared petition lifecycle and eligibility
 
-An internal hourly mutation maintains up to three shared slots, each lasting
-24 hours. Slot 2 is reserved for Break the Occupation once available: a random
-player-owned holding weighted Gemheart 4, Ancient 3, other 1. Completion opens
-that slot for the next hourly refresh; expiration selects a fresh 24-hour request.
-The other slots select recently captured plateaus and kingdoms with effective
-Hostility of at least 68, preferring a mix where possible. Available petitions
-keep their original expiration. Fulfilled petitions leave immediately; hourly
-evaluation fills empty slots only when another suitable world objective exists.
-There are no rotating Sphere or Gemheart payments, including fallback offers.
-Old unfulfilled supply petitions are hidden/rejected immediately and marked inactive
-by the next refresh. Their historical rows remain intact. An empty board explains
-that there are no suitable world events yet; it never invents a payment objective.
+An internal mutation runs at every UTC hour boundary and maintains up to three
+shared slots. Occupation retains slot 2 and its 24-hour target. Slot 1 becomes
+random player/category Intel when an existing request there ends; Intel refills
+immediately after purchase, up to three purchases globally per hour. Slot 0
+alternates world requests and four-hour escort offers at refill; active storm
+research takes priority when the slot is free. Existing unexpired offers keep
+their terms. World objectives last 24 hours; research expires at the active storm's
+end. There are no rotating Sphere or Gemheart payments, including fallback offers.
+Old supply records remain historical, inactive and unfulfillable.
 No personal acceptance, quest journal, or separate quest progress system exists.
 
 Generation reads the most recent 200 captured owned plateaus and the highest
@@ -83,8 +83,8 @@ reissuing a plateau/target while it appears in the bounded recent petition windo
 This is a small-world V1 selection policy, not a global event-processing system.
 Occupation considers up to the 500 most recently created owned holdings, avoids
 requesting the same plateau within 24 hours and avoids overlap with Return Plateau.
-Its conquest proof, anti-farming checks and deliberately unimplemented mission
-ideas are documented in [the targeted feasibility assessment](PARSHENDI_PETITION_FEASIBILITY.md).
+Conquest proof, anti-farming checks and the complete service rules are documented
+in [the targeted implementation assessment](PARSHENDI_PETITION_FEASIBILITY.md).
 
 Plateau donation requires current ownership, a neutral origin/resistance history,
 and no active siege or Conflict Board. Home plateaus cannot be donated. Donation
@@ -152,9 +152,10 @@ deployment, the global active limit, movement, merges/arrivals, small and large
 combat, Chasmfiend defeat, storms, objectives, Intel and conflict-end withdrawal.
 Browser tests cover mobile/desktop purchase controls and donation confirmation.
 
-Release checks for the Occupation update: 504 Vitest tests; 50 live Board/Diplomacy browser tests at
-390/1440 widths; 45 Lab browser tests at 390/700/1440; two static Pages-prefix
-tests. Both static frontend and isolated Lab builds pass. The existing Plateau
+Release checks for the service update: 520 Vitest tests; 52 live Board/Diplomacy browser tests at
+390/1440 widths. The preceding release also passed 45 Lab browser tests at
+390/700/1440 and two static Pages-prefix tests; combat code is unchanged by services.
+Both static frontend and isolated Lab builds pass. The existing Plateau
 Run tests can log scheduled push teardown warnings while still passing.
 
 Schema changes add Diplomacy tables and indexes; no reset, destructive migration,

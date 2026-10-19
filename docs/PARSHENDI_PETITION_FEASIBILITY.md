@@ -1,9 +1,8 @@
 # Additional Parshendi petitions — code fit and unresolved design
 
-Assessment requested 2026-10-18. **Only Break the Occupation is implemented.**
-Escort, Intel sharing and Highstorm research below are concepts under discussion,
-not approved requirements or a feature backlog. No assignment tables, mission
-endpoints, Intel spending actions or storm changes were added for these concepts.
+Initial assessment requested 2026-10-18; service requirements approved 2026-10-19.
+Occupation and all three service types below are implemented. Numerical balance
+remains TESTING; the current rules replace the earlier discussion-only proposals.
 
 ## Break the Occupation — implemented
 
@@ -41,119 +40,97 @@ the conquest does not consume an unrelated battle receipt used by Aggressor.
 
 No combat, territorial transfer, Board geometry or casualty rules were changed.
 
-## Escort loan — fits, with a small new reservation record
+## Escort, Intel and Highstorm services — implemented 2026-10-19
 
-The proposed four-hour escort can reuse `armyRules.ts` commitment validation,
-`subtractAvailableUnits`, scheduler patterns and normal troop return operations.
-It cannot simply store troops in the petition: after shared fulfillment disappears,
-the game still needs a durable, idempotent record of whose troops are due back.
+All remain shared, first-come petitions. There is no acceptance, personal quest log,
+community contribution meter, or separate completion step. Favor and Hostility
+rewards are paid atomically at dispatch/sharing: **1 Favor and 15 Hostility**.
+The cap is checked before spending Intel or reserving troops.
 
-A future assignment record would hold the kingdom, committed units, dispatch/return
-times, status and petition receipt. Dispatch atomically subtracts available home
-troops, fulfills the shared petition and schedules the return. Completion returns
-troops once; an indexed overdue recovery pass covers scheduler delays. No army
-may be donated twice, disbanded from home while away, or returned twice by retries.
+### Troop requirements and returns
 
-`ownedUnitsIncludingAway` in `provisionHelpers.ts` explicitly sums each deployment
-table. It must include escorts so loaned troops continue using Provisions. That
-same helper supplies recruitment capacity, player accounting and world military
-capacity. The normal roster should show an escort commitment and return time;
-that is an army activity, not a personal quest log.
+Both troop missions use Research-adjusted ordinary formation Power, including the
+existing Shardbearer support rule. Minimum Power is personal to the contributing
+kingdom, using real age since founding, rather than world age or current army size:
 
-Recommended first version for discussion: guaranteed return after four real hours,
-no cancellation, no equipment or Conclaves, fixed minimum meaningful commitment,
-and one active escort per kingdom. Speed should not shorten a deliberately fixed
-service commitment. Minimum contribution must consider combat value/composition,
-not merely headcount, or cheap support troops could dominate the action.
+`ceil(200 + 800 × clamp((now - kingdom.createdAt) / 14 days, 0, 1))`.
 
-OPEN: how many troops/Power, which types, whether there are losses, and reward
-timing. An upfront Favor reward works for a guaranteed four-hour service loan.
-If reward waits until return, later Favor gains can fill the cap: that requires
-reserved reward capacity or an explicitly retained unclaimed reward. Silently
-discarding Favor at return is unacceptable. Reservation would need every Favor
-grant path to account for it; that is a larger change than the troop loan itself.
+This reaches 600 at seven days and 1,000 at fourteen, then stays capped. A new
+kingdom in an old world starts at 200. Sending troops elsewhere cannot lower this
+requirement. It remains TESTING; age is a predictable initial proxy for development,
+not evidence that every kingdom will grow at the same pace.
 
-## Intel sharing — the smallest additional integration
+Dispatch subtracts selected ready troops and creates an authoritative assignment
+in the same transaction as shared fulfillment and reward. Counts must be whole,
+nonnegative, available and currently allowed by Barracks/unit rules. Allied
+Parshendi pieces, equipment, operatives and Conclaves cannot be loaned.
 
-`espionage.ts` already has four independent per-rival Intel pools and an atomic
-Intel debit in Sphere Heist. A future Share Intelligence petition could ask for
-a specified category against a named hostile kingdom; one eligible click spends
-that Intel and grants Favor atomically. Existing investigations supply the Intel.
-No new spy travel mission or operative risk is necessary for this version.
+A kingdom may have **one active troop assignment across both mission types**.
+Survivors still count toward Provisions, recruitment capacity and military ownership
+through the existing away-unit accounting helper. The Diplomacy view shows the
+commitment, losses and return time as army activity. No cancellation or early recall.
+The scheduled internal return and five-minute overdue recovery share an idempotent
+return operation; retries cannot duplicate soldiers. A completed dispatch can be
+retried with the same petition and composition without another cost/reward.
 
-The current `categoryIntelAmount` and `intelResource` helpers are private to
-`espionage.ts`. A future implementation should extract/reuse these helpers rather
-than inventing another Intel balance or debit path. Category-specific fields must
-be written explicitly, including zero, to mask legacy `amount`/report fallbacks
-and prevent an already-spent dossier from appearing to replenish itself.
+Escort service lasts exactly four real hours. All loaned soldiers return safely,
+including if an ordinary Highstorm occurs during the loan. Speed does not shorten
+this commitment. Its safe-service exception is deliberate.
 
-OPEN: category and cost (Military Intel has the clearest connection to an aggressor),
-Hostility eligibility at publication versus fulfillment, and fixed reward. The UI
-must preview the Intel remaining and any disclosure tier lost. Current information
-can become less precise; old reports remain historical observations. Never erase
-other category pools or another rival's Intel. A shared named target, cap checks,
-and atomic first fulfillment prevent repeated consumption of the same petition.
+### Share Intelligence
 
-If the intention is to actually dispatch spies, use the existing espionage mission
-lifecycle and explicitly define operative commitment, return/loss and reward timing.
-That is a separate decision from sharing already-gathered Intel.
+The server chooses a random non-observer kingdom from the latest 200 kingdoms and
+one of Military, Economy, Research or Territory. Targets need not have high
+Hostility. Self/same-account targets are ineligible to the contributor. Another
+kingdom can fulfill that shared request. With fewer than two candidate kingdoms,
+no request is published. A draw may repeat a target or category.
 
-## Highstorm field research — feasible, with the most decisions
+The action spends **50 Intel in that category against that target**, using the
+existing persistent category pool and legacy report fallback. Explicit zero balances
+mask old fallback data after spending; other targets/categories and historical
+reports remain intact. The preview shows the balance and disclosure tier after
+sharing. This is Intel sold to the Parshendi for Favor, with no spy travel, new
+operative mission, or transfer of player reports to another kingdom.
 
-The existing server owns storm identity/timing (`activeHighstorm`, `highstormRules.ts`).
-`applySurvivalLosses` already uses Research-adjusted formation Survive, a seeded
-whole-army casualty lottery, and an optional Survive cap. A future research
-assignment can reuse it with a dedicated higher base casualty rate, preserving
-ordinary exposure's existing 15% base and 300 Survive cap.
+At most **three successful purchases globally per UTC clock hour**. The third
+removes the Intel offer until the next hour. Purchases immediately draw the next
+request in the same transaction; concurrent claims, repeated refreshes and stale
+buttons cannot bypass the counter or duplicate a reward. Requests expire at the
+next hour boundary; the shared hourly refresh runs on that boundary.
 
-For nonnegative Survive, the current formula is
-`baseRate × 100 / (100 + min(Survive, cap))`. Negative Survive instead increases
-losses and must retain its existing rule. Examples for discussion, before seeded
-whole-troop rounding, without equipment or Conclave effects:
+### Investigate New Forms
 
-| Formation Survive | Current ordinary storm: 15% base | Example research only: 60% base |
-| --- | --- | --- |
-| 0 | 15% | 60% |
-| 100 | 7.5% | 30% |
-| 300 or more, capped at 300 | 3.75% | 15% |
+Dispatch is legal only during an authoritative active Highstorm. Selected troops
+undergo one immediate deterministic exposure roll with a dedicated **60% base
+casualty rate**, Research-adjusted pooled Survive, and a **300 Survive cap**.
+For nonnegative Survive, final rate is `0.60 × 100 / (100 + min(Survive,300))`;
+negative Survive follows the existing increased-loss formula and final-rate cap.
+Existing seeded whole-troop casualty selection/rounding is reused. Equipment and
+Conclave mitigation do not apply. Ordinary storm exposure remains at its 15% base.
 
-**60% is an illustrative design value, not an implemented constant.** Survive is
-a pooled formation stat; it does not independently protect each soldier type.
-Large formations can hit the cap, so requirements/rewards must not encourage
-arbitrary troop splitting or a huge cheap force purely to exploit mitigation.
+Examples before rounding: 0 Survive → 60%, 100 → 30%, 300+ → 15%. These are
+research-only TESTING constants in diplomacyRules.ts and can be tuned separately.
+Casualties are permanent. Useful committed Power earns the fixed reward even if
+none survive; the reward never scales with deaths. Late storm entry still pays
+the full one-time exposure roll, but survivors wait less time before return.
 
-A future assignment needs a fixed storm ID and exactly one exposure receipt.
-Retries, the ordinary storm cron, and mission completion cannot apply the research
-loss twice. Troops committed during a storm need an explicit one-time entry rule;
-late joining must not bypass the dangerous roll. Survivors return once at the end,
-and committed troops stay in Provisions until losses/return settle. Equipment and
-Conclave eligibility must be explicit. Parshendi allied pieces are not loanable
-ordinary units and retain their agreed storm immunity.
+The assignment retains its storm ID, losses and original return deadline. Neither
+ordinary storm processing, retries nor return applies a second exposure. No future
+forecast timing leaks through a petition: research publishes only during an active
+storm. “New forms” is narrative purpose only, without unlocks or allied upgrades.
 
-The narrowest first version would enable the action only during an active storm:
-commit the required troops, apply one research exposure roll immediately, grant a
-fixed Favor reward in that same transaction, and return survivors when the storm
-ends. This matches existing exposure-on-entry behavior, avoids reserving future
-Favor capacity, and hides no extra forecast information. Late entry would still
-pay the full casualty risk; only survivor waiting time would be shorter. This is
-a suggested design to discuss, not an implemented rule. Publishing a minimum
-useful military contribution remains necessary even if all losses earn fixed Favor.
+### Three-slot publication policy
 
-OPEN: preparation versus joining an active storm, exact commitment, base loss rate,
-Fabrial protection, whether complete loss can still fulfill the research, and when
-Favor is awarded/reserved. Fixed rewards should depend on useful committed effort
-or successful research, never on maximizing deaths. Use a preview of risk and
-Survive mitigation. Do not reveal exact future storm times through petition
-expiration or assignment countdowns to low-Watchtower players.
+Occupation retains slot 2, its 24-hour objective and hourly refill after completion.
+Slot 1 becomes Intel when any pre-upgrade request there ends; published requests
+keep their original terms. Slot 0 alternates available world objectives and escorts
+at refill. Return Plateau and Aggressor remain world candidates; an escort is the
+fallback when neither qualifies. Active storms take priority when slot 0 is free.
+World objectives last 24 hours, escort offers four hours, and research offers until
+the active storm ends. Existing unexpired requests are never evicted for a storm,
+so research is opportunistic rather than guaranteed every storm. Troop/world
+fulfillments refill hourly; only Intel refills immediately after purchase.
 
-“Investigate new forms” can provide narrative purpose. It does not authorize a
-new forms system, persistent Parshendi upgrades, Research unlocks or allied stat
-changes. Any such mechanical outcome needs a separate design decision.
-
-## Suggested discussion order
-
-Intel sharing is the smallest next addition. A guaranteed four-hour escort is a
-moderate extension with clear opportunity cost. Highstorm research has the strongest
-risk/reward potential but needs the reward timing, casualty policy and exposure
-boundary resolved before implementation. All three can preserve the shared
-button-driven board; the delayed missions need army activity records, not quest logs.
+Selection remains bounded for this small-world version. Recent-petition selection
+now takes the newest 200 rows in the indexed recent-expiry window to accommodate
+up to 72 Intel purchases per day alongside the world/escort records.

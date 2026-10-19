@@ -26,9 +26,14 @@ outside V1. See [the implementation contract](PARSHENDI_DIPLOMACY_V1.md).
 Break the Occupation uses one shared 24-hour target, an hourly refill after
 completion, and provisional target weights of Gemheart 4 / Ancient 3 / other 1.
 The winner keeps the holding and claims using verified conquest and current
-ownership. [Escort, Intel sharing and storm research](PARSHENDI_PETITION_FEASIBILITY.md)
-remain discussion-only concepts with unresolved costs/reward timing; they are
-not approved implementations.
+ownership. User-approved [escort, Intel sharing and storm research](PARSHENDI_PETITION_FEASIBILITY.md)
+are implemented as shared service petitions. Troops need 200→1,000 Power over the
+kingdom's first fourteen real days, capped thereafter. Escort loans last four hours;
+research rolls one 60% base storm exposure with Survive, survivors returning at
+storm end. One active troop assignment per kingdom; rewards paid upfront. Random
+rival/category Intel requests spend 50 Intel and refill immediately, capped at
+three purchases globally per clock hour. All numbers remain TESTING, especially
+research casualty balance. No actual new-forms progression is authorized.
 
 ### DECIDED — Cargo-bearing formations may split
 
