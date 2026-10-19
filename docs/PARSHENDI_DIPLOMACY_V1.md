@@ -17,6 +17,7 @@ All values live in `convex/diplomacyRules.ts`.
 | Standing tribute | Separate Sphere or Gemheart donations; accumulated 10,000 Spheres AND 1 Gemheart per Favor | 1 Favor per completed pair | First 10,000 Spheres: 8; first Gemheart: 4; cumulative logarithmic diminishing returns |
 | Donate Plateau | Relinquish the requested neutral-origin plateau | 1 Favor | 15 |
 | Challenge the Aggressor | Qualifying authoritative PvP battle victory | 1 Favor | 15 |
+| Break the Occupation | Conquer a named plateau from its listed owner during the petition, retain control and claim | 1 Favor | 15 |
 
 Personal donation progress has two bars, one for Spheres and one for Gemhearts.
 Each completed pair consumes exactly 10,000 Sphere credit and one Gemheart credit
@@ -63,7 +64,10 @@ general Power range. No ordinary unit balance was changed.
 ## Shared petition lifecycle and eligibility
 
 An internal hourly mutation maintains up to three shared slots, each lasting
-24 hours. It selects recently captured plateaus and kingdoms with effective
+24 hours. Slot 2 is reserved for Break the Occupation once available: a random
+player-owned holding weighted Gemheart 4, Ancient 3, other 1. Completion opens
+that slot for the next hourly refresh; expiration selects a fresh 24-hour request.
+The other slots select recently captured plateaus and kingdoms with effective
 Hostility of at least 68, preferring a mix where possible. Available petitions
 keep their original expiration. Fulfilled petitions leave immediately; hourly
 evaluation fills empty slots only when another suitable world objective exists.
@@ -77,6 +81,10 @@ Generation reads the most recent 200 captured owned plateaus and the highest
 200 stored Hostility rows, using indexes and effective peaceful decay. It avoids
 reissuing a plateau/target while it appears in the bounded recent petition window.
 This is a small-world V1 selection policy, not a global event-processing system.
+Occupation considers up to the 500 most recently created owned holdings, avoids
+requesting the same plateau within 24 hours and avoids overlap with Return Plateau.
+Its conquest proof, anti-farming checks and deliberately unimplemented mission
+ideas are documented in [the targeted feasibility assessment](PARSHENDI_PETITION_FEASIBILITY.md).
 
 Plateau donation requires current ownership, a neutral origin/resistance history,
 and no active siege or Conflict Board. Home plateaus cannot be donated. Donation
@@ -144,7 +152,7 @@ deployment, the global active limit, movement, merges/arrivals, small and large
 combat, Chasmfiend defeat, storms, objectives, Intel and conflict-end withdrawal.
 Browser tests cover mobile/desktop purchase controls and donation confirmation.
 
-Release checks for the separate-donation update: 493 Vitest tests; 48 live Board/Diplomacy browser tests at
+Release checks for the Occupation update: 504 Vitest tests; 50 live Board/Diplomacy browser tests at
 390/1440 widths; 45 Lab browser tests at 390/700/1440; two static Pages-prefix
 tests. Both static frontend and isolated Lab builds pass. The existing Plateau
 Run tests can log scheduled push teardown warnings while still passing.

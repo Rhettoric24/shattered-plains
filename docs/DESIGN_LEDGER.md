@@ -23,6 +23,13 @@ withdraw at conflict end. Numerical balance remains provisional. This reopens
 only this narrow diplomacy scope; broader treaties and exchange systems remain
 outside V1. See [the implementation contract](PARSHENDI_DIPLOMACY_V1.md).
 
+Break the Occupation uses one shared 24-hour target, an hourly refill after
+completion, and provisional target weights of Gemheart 4 / Ancient 3 / other 1.
+The winner keeps the holding and claims using verified conquest and current
+ownership. [Escort, Intel sharing and storm research](PARSHENDI_PETITION_FEASIBILITY.md)
+remain discussion-only concepts with unresolved costs/reward timing; they are
+not approved implementations.
+
 ### DECIDED — Cargo-bearing formations may split
 
 Cargo remains on the original formation; the detached formation receives none.

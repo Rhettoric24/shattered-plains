@@ -52,7 +52,7 @@ export default defineSchema({
   parshendiReserve: defineTable({ key: v.string(), gemhearts: v.number() }).index("by_key", ["key"]),
   parshendiPetitions: defineTable({
     slot: v.number(), active: v.boolean(),
-    kind: v.union(v.literal("plateau"), v.literal("aggressor"), v.literal("supplies")),
+    kind: v.union(v.literal("plateau"), v.literal("aggressor"), v.literal("occupation"), v.literal("supplies")),
     title: v.string(), objective: v.string(),
     plateauId: v.optional(v.id("plateaus")), targetId: v.optional(v.id("players")),
     sphereCost: v.number(), favor: v.number(), hostilityReduction: v.number(),
@@ -80,7 +80,9 @@ export default defineSchema({
     revision: v.number(), overtime: v.boolean(), state: v.any(), config: v.any(),
     escrow: v.number(), settledAt: v.optional(v.number()), winnerId: v.optional(v.id("players")),
     outcome: v.optional(v.string()),
-  }).index("by_status_and_nextWakeAt", ["status", "nextWakeAt"]),
+    parshendiPetitionId: v.optional(v.id("parshendiPetitions")),
+  }).index("by_status_and_nextWakeAt", ["status", "nextWakeAt"])
+    .index("by_plateauId_and_settledAt", ["plateauId", "settledAt"]),
   boardParticipants: defineTable({
     conflictId: v.id("boardConflicts"), playerId: v.id("players"),
     status: v.union(v.literal("active"), v.literal("returned")),

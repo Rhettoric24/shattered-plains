@@ -943,3 +943,18 @@ test("Parshendi Favor cannot be farmed after the third rivalry attack",async()=>
   for(let i=0;i<4;i++)await nextCycle(f,id);
   expect(await f.t.run(ctx=>ctx.db.query("parshendiVictories").collect())).toHaveLength(0);
 });
+
+test("Break the Occupation accepts a real Board conquest without changing capture or settlement",async()=>{
+  const f=await setup();
+  const petitionId=await f.t.run(ctx=>ctx.db.insert("parshendiPetitions",{slot:2,active:true,kind:"occupation",plateauId:f.plateauId,targetId:f.owner.id,title:"Break the Occupation",objective:"Capture Test Plateau",sphereCost:0,favor:1,hostilityReduction:15,createdAt:Date.now(),expiresAt:Date.now()+24*3600000}));
+  const {conflictId:id,formationId}=await open(f,units(100));
+  await move(f,id,f.blue,formationId,["B3","B2","B1","post"]);
+  for(let n=0;n<8 && (await read(f,id)).conflict.status!=="settled";n++)await nextCycle(f,id);
+  const settled=await read(f,id);
+  expect(settled.conflict).toMatchObject({status:"settled",outcome:"conquest",winnerId:f.blue.id});
+  expect(await f.t.run(ctx=>ctx.db.get(f.plateauId))).toMatchObject({ownerPlayerId:f.blue.id});
+  await f.blue.client.mutation(makeFunctionReference<"mutation">("diplomacy:fulfill"),{petitionId});
+  expect(await f.t.run(ctx=>ctx.db.get(id))).toMatchObject({parshendiPetitionId:petitionId});
+  expect((await f.blue.client.query(makeFunctionReference<"query">("diplomacy:get"),{})).favor).toBe(1);
+  expect(await f.t.run(ctx=>ctx.db.get(f.plateauId))).toMatchObject({ownerPlayerId:f.blue.id});
+});

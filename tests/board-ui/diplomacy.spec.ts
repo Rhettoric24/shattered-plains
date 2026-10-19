@@ -35,3 +35,22 @@ test("shared petitions render on mobile and plateau donation requires confirmati
   await page.getByRole('button',{name:'Donate 1 Gemheart',exact:true}).click();
   expect(await page.evaluate(()=>(window as any).calls[2])).toMatchObject({name:'diplomacy:tribute',args:{resource:'gemhearts',amount:1}});
 });
+
+test("Occupation shows the capture objective and claims only after server eligibility", async ({page})=>{
+  await page.route('**/occupation-fixture',route=>route.fulfill({contentType:'text/html',body:'<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/shattered-plains/shattered-plains-styles.css"><link rel="stylesheet" href="/shattered-plains/clarity-components.css"><link rel="stylesheet" href="/shattered-plains/clarity-responsive.css"><section class="panel"><div id="diplomacy"></div></section>'}));
+  await page.route('**/occupation-fixture.js',route=>route.fulfill({contentType:'text/javascript',body:buildSync({entryPoints:['outputs/diplomacy-ui.js'],bundle:true,format:'esm',write:false}).outputFiles[0].text}));
+  await page.goto('/occupation-fixture');
+  await page.evaluate(async()=>{
+    const m=await import('/occupation-fixture.js'),w=window as any;
+    w.calls=[];w.d={favor:0,cap:5,hostility:75,reserveGemhearts:0,tribute:{spheres:10000,gemhearts:1,sphereCredit:0,gemheartCredit:0,window:{spheres:0,gemhearts:0}},tiers:[],petitions:[{id:'occupation',kind:'occupation',title:'Break the Occupation',objective:'Capture Stormwatch from Red through PvP, keep control and claim.',favor:1,hostilityReduction:15,expiresAt:Date.now()+86400000,missing:'Capture this plateau during the petition and keep control.'}]};
+    w.ui=m.createDiplomacyUI({root:document.getElementById('diplomacy'),mutate:async(name:string,args:any)=>w.calls.push({name,args}),refresh:async()=>({...w.d,favor:1,petitions:[]})});
+    w.ui.update(w.d,{spheres:10000,gemhearts:1});
+  });
+  await expect(page.getByText('Break the Occupation',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Claim Reward'})).toBeDisabled();
+  await page.evaluate(()=>{const w=window as any;w.d.petitions[0].missing=null;w.ui.update(w.d,{spheres:10000,gemhearts:1});});
+  await page.getByRole('button',{name:'Claim Reward'}).click();
+  await expect(page.getByText('Fulfilled. Favor received.')).toBeVisible();
+  expect(await page.evaluate(()=>(window as any).calls)).toEqual([{name:'diplomacy:fulfill',args:{petitionId:'occupation'}}]);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});

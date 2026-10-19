@@ -2,9 +2,9 @@ import { v } from "convex/values";
 import { internalMutation, mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireCompetitivePlayer, requireCurrentPlayer } from "./ownership";
-import { DIPLOMACY, requireFavorRoom, donationReduction, tributeProgress } from "./diplomacyRules";
+import { DIPLOMACY, requireFavorRoom, donationReduction, tributeProgress, chooseOccupationTarget } from "./diplomacyRules";
 import { ensureRelations, relations, donationWindow } from "./diplomacyHelpers";
-import { materializeHostilityDecay, reclamationDefense } from "./worldPressureRules";
+import { materializeHostilityDecay, reclamationDefense, seededFraction } from "./worldPressureRules";
 import { reduceHostility, reconcileRetaliationSchedule } from "./worldPressure";
 import { activeSeason, observePlateauNeutralized } from "./seasonLedger";
 import { reconcileResearch } from "./researchHelpers";
@@ -23,6 +23,21 @@ async function eligibility(ctx: ReadCtx, p: Doc<"players">, petition: Doc<"parsh
   if (petition.kind === "plateau") {
     const plateau = petition.plateauId ? await ctx.db.get(petition.plateauId) : null;
     return { missing: availablePlateau(plateau) && plateau!.ownerPlayerId === p._id ? null : "You must currently own this plateau, free of active conflict or siege." };
+  }
+  if (petition.kind === "occupation") {
+    const missing = "Capture this plateau from the listed owner in PvP during this petition, then keep control and claim. Only the first three attacks in a rivalry chain qualify.";
+    if (!petition.plateauId || !petition.targetId || petition.targetId === p._id) return { missing: petition.targetId === p._id ? "Your kingdom held this plateau when the petition appeared; another kingdom must break the occupation." : missing };
+    const plateau = await ctx.db.get(petition.plateauId);
+    if (plateau?.status !== "owned" || plateau.ownerPlayerId !== p._id) return { missing };
+    const target = await ctx.db.get(petition.targetId);
+    if (!target || target.isAdminObserver || (p.authUserId && target.authUserId === p.authUserId)) return { missing };
+    const captures = await ctx.db.query("boardConflicts").withIndex("by_plateauId_and_settledAt", q => q.eq("plateauId", petition.plateauId!).gte("settledAt", petition.createdAt)).order("desc").take(20);
+    for (const capture of captures) {
+      if (capture.status !== "settled" || capture.outcome !== "conquest" || capture.winnerId !== p._id || capture.ownerId !== petition.targetId || capture.settledAt! >= petition.expiresAt || capture.parshendiPetitionId || plateau.heldSince !== capture.settledAt) continue;
+      const participant = await ctx.db.query("boardParticipants").withIndex("by_conflictId_and_playerId", q => q.eq("conflictId", capture._id).eq("playerId", p._id)).unique();
+      if (participant?.chainPosition && participant.chainPosition <= 3) return { missing: null, capture };
+    }
+    return { missing };
   }
   const victories = await ctx.db.query("parshendiVictories").withIndex("by_winnerId_and_at", q => q.eq("winnerId", p._id).gte("at", petition.createdAt)).take(200);
   const victory = victories.find(row => row.targetIds.includes(petition.targetId!) && row.at < petition.expiresAt && !row.petitionId);
@@ -123,6 +138,8 @@ export const fulfill = mutation({
       await observePlateauNeutralized(ctx, { plateauId: plateau._id, previousOwnerId: p._id, now });
       await reconcileResearch(ctx, p._id, now);
       await reconcileRetaliationSchedule(ctx, p._id, now);
+    } else if (petition.kind === "occupation") {
+      await ctx.db.patch(result.capture!._id, { parshendiPetitionId: petition._id });
     } else {
       await ctx.db.patch(result.victory!._id, { petitionId: petition._id });
     }
@@ -142,13 +159,28 @@ export const refreshPetitions = internalMutation({
     const recent = await ctx.db.query("parshendiPetitions").withIndex("by_expiresAt", q => q.gte("expiresAt", now - DIPLOMACY.petitionDurationMs)).take(100);
     const plateaus = await ctx.db.query("plateaus").withIndex("by_status_and_heldSince", q => q.eq("status", "owned").gte("heldSince", now - DIPLOMACY.petitionDurationMs)).order("desc").take(200);
     const pressures = await ctx.db.query("kingdomWorldPressure").withIndex("by_hostility", q => q.gte("hostility", DIPLOMACY.aggressorHostility)).order("desc").take(200);
-    for (let slot = 0; slot < 3; slot++) {
+    // Select the occupation target first, so Return Plateau never requests the same holding.
+    const holdings = await ctx.db.query("plateaus").withIndex("by_status", q => q.eq("status", "owned")).order("desc").take(DIPLOMACY.occupationTargetPool);
+    const owners = new Map<Id<"players">, Doc<"players"> | null>();
+    for (const plateau of holdings) if (plateau.ownerPlayerId && !owners.has(plateau.ownerPlayerId)) owners.set(plateau.ownerPlayerId, await ctx.db.get(plateau.ownerPlayerId));
+    const occupationCandidates = holdings.filter(p => {
+      const owner = p.ownerPlayerId ? owners.get(p.ownerPlayerId) : null;
+      return owner && !owner.isAdminObserver && !p.activeSiegeId &&
+        !active.some(r => r.active && r.expiresAt > now && r.kind !== "supplies" && r.plateauId === p._id) &&
+        !recent.some(r => r.kind === "occupation" && r.plateauId === p._id && r.createdAt > now - DIPLOMACY.petitionDurationMs);
+    });
+    for (const slot of [DIPLOMACY.occupationSlot, 0, 1]) {
       if (active.some(p => p.slot === slot && p.expiresAt > now && p.kind !== "supplies")) continue;
       const common = { slot, active: true, favor: 1, hostilityReduction: DIPLOMACY.petitionHostilityReduction, createdAt: now, expiresAt: now + DIPLOMACY.petitionDurationMs };
       const plateau = plateaus.find(p => availablePlateau(p) && p.heldSince !== undefined && p.heldSince >= now - DIPLOMACY.petitionDurationMs && !recent.some(r => r.plateauId === p._id));
-      const pressure = pressures.find(p => materializeHostilityDecay({ ...p, now }).hostility >= DIPLOMACY.aggressorHostility && !recent.some(r => r.targetId === p.playerId));
+      const pressure = pressures.find(p => materializeHostilityDecay({ ...p, now }).hostility >= DIPLOMACY.aggressorHostility && !recent.some(r => r.kind === "aggressor" && r.targetId === p.playerId));
       let id: Id<"parshendiPetitions">;
-      if (plateau && (slot % 2 === 0 || !pressure)) {
+      if (slot === DIPLOMACY.occupationSlot) {
+        const target = chooseOccupationTarget(occupationCandidates, seededFraction(`occupation:${Math.floor(now / 3_600_000)}`));
+        if (!target?.ownerPlayerId) continue;
+        const owner = owners.get(target.ownerPlayerId)!;
+        id = await ctx.db.insert("parshendiPetitions", { ...common, kind: "occupation", title: "Break the Occupation", objective: `Capture ${target.name} from ${owner.name} through PvP before this petition expires. Keep the plateau and claim the reward here.`, plateauId: target._id, targetId: target.ownerPlayerId, sphereCost: 0 });
+      } else if (plateau && (slot % 2 === 0 || !pressure)) {
         id = await ctx.db.insert("parshendiPetitions", { ...common, kind: "plateau", title: `Return ${plateau.name}`, objective: `Donate ${plateau.name} to the Parshendi. The current owner must relinquish it immediately, free of active conflict.`, plateauId: plateau._id, sphereCost: 0 });
       } else if (pressure) {
         const target = await ctx.db.get(pressure.playerId);

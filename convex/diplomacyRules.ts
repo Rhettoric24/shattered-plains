@@ -12,6 +12,9 @@ export const DIPLOMACY = {
   aggressorHostility: 68,
   minimumEnemyPower: 100,
   minimumEnemyCasualties: 10,
+  occupationSlot: 2,
+  occupationTargetWeights: { gemheart: 4, ancient: 3, other: 1 },
+  occupationTargetPool: 500,
   tiers: [
     { cost: 1, power: 150, name: "Parshendi Scouts" },
     { cost: 2, power: 300, name: "Parshendi Warband" },
@@ -20,6 +23,20 @@ export const DIPLOMACY = {
     { cost: 5, power: 1000, name: "Chasmfiend" },
   ],
 };
+export function occupationTargetWeight(type: string) {
+  return type === "gemheart" ? DIPLOMACY.occupationTargetWeights.gemheart :
+    type === "ancient" || type === "ancient_ruins" ? DIPLOMACY.occupationTargetWeights.ancient : DIPLOMACY.occupationTargetWeights.other;
+}
+/** Pure weighted draw; server supplies its seed. No client-selected bounty target. */
+export function chooseOccupationTarget<T extends { type: string }>(candidates: T[], fraction: number): T | undefined {
+  const total = candidates.reduce((n, p) => n + occupationTargetWeight(p.type), 0);
+  let roll = Math.max(0, Math.min(1 - Number.EPSILON, fraction)) * total;
+  for (const p of candidates) {
+    roll -= occupationTargetWeight(p.type);
+    if (roll < 0) return p;
+  }
+  return undefined;
+}
 export function donationCurve(spheres: number, gemhearts: number) {
   return DIPLOMACY.sphereHostilityScale * Math.log2(1 + spheres / DIPLOMACY.tributeSpheres) +
     DIPLOMACY.gemheartHostilityScale * Math.log2(1 + gemhearts / DIPLOMACY.tributeGemhearts);

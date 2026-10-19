@@ -121,6 +121,9 @@ test("world petitions retain shared first-come completion, cap safeguards and ex
 test("Donate Plateau validates current ownership, rejects conflict, and applies neutral reclamation rules", async () => {
   const f = await setup();
   const plateauId = await f.t.run(ctx => ctx.db.insert("plateaus", { name: "Recent", type: "gemheart", status: "owned", ownerPlayerId: f.id, origin: "neutral", highground: false, neutralDefenseInitial: 100, neutralDefenseRemaining: 0, heldSince: Date.now(), createdAt: Date.now(), updatedAt: Date.now() }));
+  // This test exercises an existing Return request; the new occupation slot gets
+  // first choice of an otherwise-unrequested holding during generation.
+  await f.t.run(ctx => ctx.db.insert("parshendiPetitions", { slot:0,active:true,kind:"plateau",plateauId,title:"Return Recent",objective:"Return Recent",sphereCost:0,favor:1,hostilityReduction:15,createdAt:Date.now(),expiresAt:Date.now()+DIPLOMACY.petitionDurationMs }));
   await f.t.mutation(internal.diplomacy.refreshPetitions, {});
   const p = (await f.player.query(api.diplomacy.get, {})).petitions.find(p => p.kind === "plateau")!;
   await expect(f.rival.mutation(api.diplomacy.fulfill, { petitionId: p.id })).rejects.toThrow(/currently own/);
